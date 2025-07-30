@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- MODELS ---
+
+enum UniteDuree {
+  jour
+  heure
+}
+
+model Client {
+  id        String    @id @default(uuid())
+  nom       String    @unique
+  email     String?
+  telephone String?
+  adresse   String?
+  factures  Invoice[]
+}
+
+model Produit {
+  id              String           @id @default(uuid())
+  nom             String           
+  prixUnitaire    Decimal
+  produitsFacture InvoiceProduit[]
+}
+
+model Invoice {
+  id                      String           @id @default(uuid())
+  numero                  String           @unique
+  dateCreation            DateTime         @default(now())
+  objet                   String
+  clientId                String
+  client                  Client           @relation(fields: [clientId], references: [id])
+  totalHT                 Decimal
+  tva                     Decimal
+  totalTTC                Decimal
+  statut                  String
+  pdfUrl                  String?
+  produits                InvoiceProduit[]
+  historiqueModifications Json?
+  societeNom              String
+  societeIFU              String
+  societeAdresse          String?
+}
+
+model InvoiceProduit {
+  id           String     @id @default(uuid())
+  invoiceId    String
+  productId    String
+  invoice      Invoice    @relation(fields: [invoiceId], references: [id])
+  produit      Produit    @relation(fields: [productId], references: [id])
+  designation  String
+  quantite     Int
+  prixUnitaire Decimal
+  duree        Decimal
+  uniteDuree   UniteDuree
+  montantTotal Decimal
+}
