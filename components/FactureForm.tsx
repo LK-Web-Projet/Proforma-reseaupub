@@ -311,6 +311,8 @@ export default function FactureForm() {
                           <SelectContent>
                             <SelectItem value="jour">Jour</SelectItem>
                             <SelectItem value="heure">Heure</SelectItem>
+                            <SelectItem value="mois">Mois</SelectItem>
+
                           </SelectContent>
                         </Select>
                       )}
