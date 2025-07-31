@@ -2,6 +2,14 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("fr-FR", {
@@ -64,6 +72,7 @@ export default function Home() {
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
             className="border rounded px-2 py-1"
+            title="Sélectionnez un client"
           >
             <option value="">Tous</option>
             {clients.map((c) => (
@@ -80,6 +89,8 @@ export default function Home() {
             value={dateMin}
             onChange={(e) => setDateMin(e.target.value)}
             className="border rounded px-2 py-1"
+            title="Date minimale"
+            placeholder="Sélectionnez la date min"
           />
         </div>
         <div>
@@ -89,6 +100,8 @@ export default function Home() {
             value={dateMax}
             onChange={(e) => setDateMax(e.target.value)}
             className="border rounded px-2 py-1"
+            title="Date maximale"
+            placeholder="Sélectionnez la date max"
           />
         </div>
         <div>
@@ -103,59 +116,43 @@ export default function Home() {
         </div>
       </form>
 
-      <div className="overflow-x-auto rounded shadow bg-white">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Date
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Numéro
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Client
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                Total TTC
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                Statut
-              </th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                Action
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
+      <div className="rounded-md border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Numéro</TableHead>
+              <TableHead>Client</TableHead>
+              <TableHead className="text-right">Total TTC</TableHead>
+              <TableHead className="text-center">Statut</TableHead>
+              <TableHead className="text-center">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading ? (
-              <tr>
-                <td colSpan={6} className="text-center py-8">
+              <TableRow>
+                <TableCell colSpan={6} className="text-center h-24">
                   Chargement...
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : factures.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center py-8">
+              <TableRow>
+                <TableCell colSpan={6} className="text-center h-24">
                   Aucune facture trouvée.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               factures.map((facture) => (
-                <tr key={facture.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                <TableRow key={facture.id}>
+                  <TableCell>
                     {formatDateFR(facture.dateCreation)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-mono">
-                    {facture.numero}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {facture.client?.nom || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-semibold">
+                  </TableCell>
+                  <TableCell className="font-mono">{facture.numero}</TableCell>
+                  <TableCell>{facture.client?.nom || "-"}</TableCell>
+                  <TableCell className="text-right font-semibold">
                     {formatMoney(facture.totalTTC)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                  </TableCell>
+                  <TableCell className="text-center">
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-bold ${
                         facture.statut === "deliver"
@@ -165,20 +162,20 @@ export default function Home() {
                     >
                       {facture.statut}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                  </TableCell>
+                  <TableCell className="text-center">
                     <Link
                       href={`/facture/${facture.id}`}
                       className="text-primary underline hover:text-primary/80"
                     >
                       Voir
                     </Link>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );
