@@ -77,7 +77,7 @@ export async function GET(
   y -= 20;
   drawText(`Adresse : ${facture.client?.adresse ?? "Adresse Client"}`, 40, y);
   y -= 20;
-  drawText(`Mail : ${facture.client?.mail ?? "Mail Destinataire"}`, 40, y);
+  drawText(`Mail : ${facture.client?.email ?? "Mail Destinataire"}`, 40, y);
   y -= 20;
   drawText(`Téléphone : ${facture.client?.telephone ?? "Téléphone Client"}`, 40, y);
   y -= 25;
@@ -138,9 +138,7 @@ export async function GET(
   y -= 40;
   // Conditions de paiement
   drawText(
-    `Arreté la présente facture Proforma à la somme de  ${totalHT.toFixed(
-      0
-    )} XOF  francs FCFA () TTC`,
+    `Arreté la présente facture Proforma à la somme de   ${totalTTC.toFixed(0)} XOF  francs FCFA (XOF) TTC`,
     40,
     y
   );
@@ -165,7 +163,7 @@ export async function GET(
 
   const pdfBytes = await pdfDoc.save();
 
-  return new NextResponse(pdfBytes, {
+  return new NextResponse(Buffer.from(pdfBytes) , {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",

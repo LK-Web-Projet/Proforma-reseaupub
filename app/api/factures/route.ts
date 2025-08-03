@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const dateMax = searchParams.get("dateMax");
     const objet = searchParams.get("objet");
 
-    const where: any = {};
+    const where: { [key: string]: any } = {};
 
     if (statut) where.statut = statut;
     if (clientId) where.clientId = clientId;
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     // Soit tout réussit, soit tout est annulé.
     const newInvoice = await prisma.$transaction(async (tx) => {
       // 1. Gestion du client : trouver ou créer
-      let client = await tx.client.findFirst({
+      let client: { id: string; nom: string; adresse: string | null; email: string | null; telephone: string | null; } | null = await tx.client.findFirst({
         where: { nom: clientNom },
       });
 
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
 
       // 2. Création des lignes de produits
       await Promise.all(
-        produits.map(async (p) => {
+        produits.map(async (p: { quantite: number; prixUnitaire: number; duree: number; inclureDuree: boolean; designation: string; uniteDuree: "jour" | "mois" | "an"; }) => {
           const quantite = Number(p.quantite) || 1;
           const prixUnitaire = Number(p.prixUnitaire) || 0;
           const duree = Number(p.duree) || 1;

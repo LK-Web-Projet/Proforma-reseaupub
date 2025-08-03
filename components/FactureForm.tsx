@@ -48,8 +48,8 @@ const productSchema = z.object({
   designation: z.string().min(1, "La désignation est requise."),
   quantite: z.coerce.number().min(1, "Qté. min. 1."),
   prixUnitaire: z.coerce.number().min(0, "Le prix ne peut être négatif."),
-  duree: z.coerce.number().optional(),
-  uniteDuree: z.enum(["jour", "heure"]).optional(),
+  duree: z.coerce.number().min(1, "Durée min. 1.").optional(),
+  uniteDuree: z.enum(["jour", "heure","mois"]).optional(),
   inclureDuree: z.boolean().default(false),
 });
 
@@ -161,7 +161,7 @@ export default function FactureForm() {
       toast.success("Facture enregistrée avec succès !");
       router.push("/"); // Redirection vers la page d'accueil
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error((error as Error).message);
     } finally {
       setLoading(false);
     }
