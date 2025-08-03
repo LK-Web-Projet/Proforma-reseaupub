@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     "Système de facturation proforma avec Next.js, Prisma, Shadcn UI",
 };
 
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function RootLayout({
   children,
@@ -47,6 +47,12 @@ export default function RootLayout({
                 className="rounded px-3 py-2 hover:bg-gray-100 font-medium text-gray-700"
               >
                 Nouvelle facture
+              </Link>
+              <Link
+                href="/client"
+                className="rounded px-3 py-2 hover:bg-gray-100 font-medium text-gray-700"
+              >
+                Clients
               </Link>
             </nav>
             <div className="mt-auto text-xs text-gray-400">
