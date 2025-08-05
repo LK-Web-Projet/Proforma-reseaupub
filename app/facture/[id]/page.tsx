@@ -37,6 +37,10 @@ export default function FactureDetailPage() {
   const { id } = useParams();
   const [facture, setFacture] = useState<Facture | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState<"success" | "error" | null>(
+    null
+  );
 
   useEffect(() => {
     async function fetchFacture() {
@@ -48,6 +52,25 @@ export default function FactureDetailPage() {
     }
     if (id) fetchFacture();
   }, [id]);
+
+  const handleSendEmail = async () => {
+    setIsSending(true);
+    setSendStatus(null);
+    try {
+      const response = await fetch(`/api/factures/${id}/send-email`, {
+        method: "POST",
+      });
+      if (response.ok) {
+        setSendStatus("success");
+      } else {
+        setSendStatus("error");
+      }
+    } catch (error) {
+      setSendStatus("error");
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   if (loading) return <div className="flex justify-center items-center h-96">Chargement...</div>;
   if (!facture) return <div className="text-center text-red-500 mt-10">Facture non trouvée.</div>;
@@ -125,19 +148,34 @@ export default function FactureDetailPage() {
         </table>
       </div>
       {/* Bouton PDF */}
-      <div className="flex justify-end mb-6">
+      <div className="flex justify-end mb-6 space-x-2">
         <a
           href={`/api/factures/${id}/pdf`}
           target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded shadow hover:bg-primary/80 transition"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Télécharger PDF
-              </a>
-            </div>
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded shadow hover:bg-primary/80 transition"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Télécharger PDF
+        </a>
+        <button
+          onClick={handleSendEmail}
+          disabled={isSending}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded shadow hover:bg-blue-600 transition disabled:bg-blue-300"
+        >
+          {isSending ? "Envoi en cours..." : "Envoyer par e-mail"}
+        </button>
+      </div>
+      {sendStatus === "success" && (
+        <p className="text-green-500 text-right">E-mail envoyé avec succès!</p>
+      )}
+      {sendStatus === "error" && (
+        <p className="text-red-500 text-right">
+          Erreur lors de l'envoi de l'e-mail.
+        </p>
+      )}
             {/* Tableau des produits/services */}
             <div className="overflow-x-auto mb-8">
               <table className="min-w-full border rounded">
