@@ -18,6 +18,7 @@ datasource db {
 enum UniteDuree {
   jour
   heure
+  mois
 }
 
 model Client {
@@ -30,11 +31,12 @@ model Client {
 }
 
 model Produit {
-  id              String           @id @default(uuid())
-  nom             String           
-  prixUnitaire    Decimal
+  id           String @id @default(uuid())
+  nom          String @unique
+  prixUnitaire Decimal
   produitsFacture InvoiceProduit[]
 }
+
 
 model Invoice {
   id                      String           @id @default(uuid())
