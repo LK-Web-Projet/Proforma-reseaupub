@@ -55,7 +55,10 @@ model Invoice {
   societeNom              String
   societeIFU              String
   societeAdresse          String?
+  gestionnaires InvoiceGestionnaire[]
 }
+
+
 
 model InvoiceProduit {
   id           String     @id @default(uuid())
@@ -69,4 +72,22 @@ model InvoiceProduit {
   duree        Decimal
   uniteDuree   UniteDuree
   montantTotal Decimal
+}
+
+model Gestionnaire {
+  id        String                @id @default(uuid())
+  nom       String
+  prenom    String
+  email     String                @unique
+  telephone String?
+  factures  InvoiceGestionnaire[]
+}
+
+model InvoiceGestionnaire {
+  invoiceId      String
+  gestionnaireId String
+  invoice        Invoice      @relation(fields: [invoiceId], references: [id])
+  gestionnaire   Gestionnaire @relation(fields: [gestionnaireId], references: [id])
+
+  @@id([invoiceId, gestionnaireId])
 }

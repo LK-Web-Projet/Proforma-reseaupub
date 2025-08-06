@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     const dateMax = searchParams.get("dateMax");
     const objet = searchParams.get("objet");
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: { [key: string]: any } = {};
 
     if (statut) where.statut = statut;
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
 // POST /api/factures
 export async function POST(request: Request) {
   try {
-    const { clientNom, objet, produits } = await request.json();
+    const { clientNom, objet, produits, gestionnaireId } = await request.json();
 
     if (!clientNom || !objet || !produits || !produits.length) {
       return NextResponse.json(
@@ -54,7 +55,6 @@ export async function POST(request: Request) {
     }
 
     // Utilisation d'une transaction pour garantir l'intégrité des données
-    // Soit tout réussit, soit tout est annulé.
     const newInvoice = await prisma.$transaction(async (tx) => {
       // 1. Gestion du client : trouver ou créer
       let client: { id: string; nom: string; adresse: string | null; email: string | null; telephone: string | null; } | null = await tx.client.findFirst({
@@ -67,26 +67,23 @@ export async function POST(request: Request) {
         });
       }
 
-      // 2. Calcul des totaux en amont
+      // 2. Calcul des totaux
       let totalHT = 0;
       for (const prod of produits) {
         const quantite = Number(prod.quantite) || 1;
         const prixUnitaire = Number(prod.prixUnitaire) || 0;
         const duree = Number(prod.duree) || 1;
         const inclureDuree = prod.inclureDuree ?? false;
-
         let montantTotalLigne = quantite * prixUnitaire;
         if (inclureDuree) {
           montantTotalLigne *= duree;
         }
         totalHT += montantTotalLigne;
       }
-
       const tva = totalHT * 0.18;
       const totalTTC = totalHT + tva;
 
-      // 3. Création de la facture et des lignes de produits associées en une seule opération
-      // 1. Création de la facture
+      // 3. Création de la facture
       const facture = await tx.invoice.create({
         data: {
           numero: "PRO-" + Date.now(),
@@ -96,14 +93,14 @@ export async function POST(request: Request) {
           totalHT,
           tva,
           totalTTC,
-          societeNom: Entreprise.nom, // À remplir dynamiquement
-          societeIFU: Entreprise.IFU, // À remplir dynamiquement
+          societeNom: Entreprise.nom,
+          societeIFU: Entreprise.IFU,
         },
       });
 
-      // 2. Création des lignes de produits
+      // 4. Création des lignes de produits
       await Promise.all(
-        produits.map(async (p: { quantite: number; prixUnitaire: number; duree: number; inclureDuree: boolean; designation: string; uniteDuree: "jour" | "mois" | "an"; }) => {
+        produits.map(async (p: { quantite: number; prixUnitaire: number; duree: number; inclureDuree: boolean; designation: string; uniteDuree: "jour" | "heure" | "mois"; }) => {
           const quantite = Number(p.quantite) || 1;
           const prixUnitaire = Number(p.prixUnitaire) || 0;
           const duree = Number(p.duree) || 1;
@@ -113,51 +110,43 @@ export async function POST(request: Request) {
             montantTotal *= duree;
           }
 
-          // 2. Création des lignes de produits
-          // Création des lignes de produits
-          await Promise.all(
-            produits.map(async (p) => {
-              const quantite = Number(p.quantite) || 1;
-              const prixUnitaire = Number(p.prixUnitaire) || 0;
-              const duree = Number(p.duree) || 1;
-              const inclureDuree = p.inclureDuree ?? false;
+          let produit = await tx.produit.findUnique({
+            where: { nom: p.designation },
+          });
 
-              let montantTotal = quantite * prixUnitaire;
-              if (inclureDuree) {
-                montantTotal *= duree;
-              }
+          if (!produit) {
+            produit = await tx.produit.create({
+              data: {
+                nom: p.designation,
+                prixUnitaire: prixUnitaire,
+              },
+            });
+          }
 
-              // Recherche du produit existant par son nom
-              let produit = await tx.produit.findUnique({
-                where: { nom: p.designation }, // possible car nom est @unique
-              });
-
-              if (!produit) {
-                produit = await tx.produit.create({
-                  data: {
-                    nom: p.designation,
-                    prixUnitaire: prixUnitaire,
-                  },
-                });
-              }
-
-              // Création de la ligne de facture
-              await tx.invoiceProduit.create({
-                data: {
-                  invoiceId: facture.id,
-                  productId: produit.id,
-                  designation: p.designation,
-                  quantite,
-                  prixUnitaire,
-                  duree,
-                  uniteDuree: p.uniteDuree || "jour",
-                  montantTotal,
-                },
-              });
-            })
-          );
+          await tx.invoiceProduit.create({
+            data: {
+              invoiceId: facture.id,
+              productId: produit.id,
+              designation: p.designation,
+              quantite,
+              prixUnitaire,
+              duree,
+              uniteDuree: p.uniteDuree || "jour",
+              montantTotal,
+            },
+          });
         })
       );
+
+      // 5. Association du gestionnaire (si fourni)
+      if (gestionnaireId) {
+        await tx.invoiceGestionnaire.create({
+          data: {
+            invoiceId: facture.id,
+            gestionnaireId: gestionnaireId,
+          },
+        });
+      }
 
       return facture;
     });

@@ -54,6 +54,13 @@ export default function RootLayout({
               >
                 Clients
               </Link>
+              <Link
+                href="/gestionnaire"
+                className="rounded px-3 py-2 hover:bg-gray-100 font-medium text-gray-700"
+              >
+                Gestionnaires
+              </Link>
+              
             </nav>
             <div className="mt-auto text-xs text-gray-400">
               &copy; {new Date().getFullYear()} Proforma

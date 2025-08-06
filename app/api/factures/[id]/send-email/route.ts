@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import nodemailer from "nodemailer";
@@ -16,6 +15,15 @@ export async function POST(
       include: {
         client: true,
         produits: true,
+        gestionnaires: {
+          select: {
+            gestionnaire: {
+              select: {
+                email: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -28,6 +36,12 @@ export async function POST(
         status: 400,
       });
     }
+    if (!facture.gestionnaires || facture.gestionnaires.length === 0) {
+      return new NextResponse("Aucun gestionnaire associé à cette facture", {
+        status: 400,
+      });
+    }
+
 
     const pdfBytes = await generateInvoicePdf(facture);
 
@@ -45,8 +59,10 @@ export async function POST(
       from: process.env.EMAIL_FROM,
       to: facture.client.email,
       subject: `Facture Proforma N°${facture.numero} - ${facture.objet}`,
-      cc: "finance@reseaupub.com", // ← copie visible
-      bcc: "karamatouagbetou@reseaupub.com, informatique@reseaupub.com", // ← copie cachée
+      cc: "karamatouagbetou@reseaupub.com", // ← copie visible
+      bcc: `informatique@reseaupub.com, ${facture.gestionnaires
+        .map((g) => g.gestionnaire.email)
+        .join(", ")}`, // ← copie cachée
       html: `
         <p>Bonjour ${facture.client.nom},</p>
         <p>Veuillez trouver ci-joint notre facture proforma n°<strong>${facture.numero}</strong> concernant <strong>${facture.objet}</strong>.</p>

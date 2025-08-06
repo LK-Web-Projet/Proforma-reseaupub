@@ -57,6 +57,7 @@ const schema = z.object({
   clientNom: z.string().min(1, "Le nom du client est requis."),
   objet: z.string().min(1, "L'objet de la facture est requis."),
   produits: z.array(productSchema).min(1, "Au moins un produit est requis."),
+  gestionnaireId: z.string().optional(),
 });
 
 type FactureFormType = z.infer<typeof schema>;
@@ -73,6 +74,7 @@ const defaultProduct = {
 export default function FactureForm() {
   const [clients, setClients] = useState<Client[]>([]);
   const [produits, setProduits] = useState<Produit[]>([]);
+  const [gestionnaires, setGestionnaires] = useState<{ id: string; nom: string; prenom: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -102,8 +104,20 @@ export default function FactureForm() {
       }
     };
 
+    const fetchGestionnaires = async () => {
+      try {
+        const res = await fetch("/api/gestionnaires");
+        if (!res.ok) throw new Error("Erreur chargement gestionnaires");
+        const data = await res.json();
+        setGestionnaires(data);
+      } catch (error) {
+        toast.error("Impossible de charger les gestionnaires.");
+      }
+    };
+
     fetchClients();
     fetchProduits();
+    fetchGestionnaires();
   }, []);
 
   const {
@@ -119,6 +133,7 @@ export default function FactureForm() {
       clientNom: "",
       objet: "",
       produits: [defaultProduct],
+      gestionnaireId: "", // Ajout du champ gestionnaire
     },
   });
 
@@ -147,6 +162,10 @@ export default function FactureForm() {
 
   // --- Soumission du formulaire ---
   const onSubmit: SubmitHandler<FactureFormType> = async (data) => {
+    // 🔹 Transformation de la valeur "none" en undefined
+    if (data.gestionnaireId === "null") {
+      data.gestionnaireId = undefined;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/factures", {
@@ -162,7 +181,7 @@ export default function FactureForm() {
 
       toast.success("Facture enregistrée avec succès !");
       router.push("/"); // Redirection vers la page d'accueil
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       toast.error((error as Error).message);
     } finally {
@@ -217,11 +236,37 @@ export default function FactureForm() {
               {...register("objet")}
               placeholder="Ex: Prestation de services"
             />
-            {errors.objet && (
+            {
               <p className="text-red-500 text-xs mt-1">
-                {errors.objet.message}
+                {errors.objet?.message}
               </p>
-            )}
+            }
+          </div>
+          {/* Gestionnaire */}
+          <div>
+            <label htmlFor="gestionnaireId">Gestionnaire (Optionnel)</label>
+            <Controller
+              name="gestionnaireId"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner un gestionnaire" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="null">Aucun</SelectItem>
+                    {gestionnaires.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.prenom} {g.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
         </CardContent>
       </Card>
@@ -315,7 +360,6 @@ export default function FactureForm() {
                             <SelectItem value="jour">Jour</SelectItem>
                             <SelectItem value="heure">Heure</SelectItem>
                             <SelectItem value="mois">Mois</SelectItem>
-
                           </SelectContent>
                         </Select>
                       )}
