@@ -3,6 +3,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { Invoice, InvoiceProduit, Client } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
+import { Entreprise } from "@/components/Data";
 
 type InvoiceWithDetails = Invoice & {
   client: Client;
@@ -45,9 +46,11 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
   y -= 50;
  
   // Coordonnées entreprise
-  drawText("Delivrer par : reseaupub", 40, y);
+  drawText(`Delivrer par : ${facture.societeNom ?? Entreprise.nom}`, 40, y);
   y -= 16;
-  drawText("Adresse : Etoile Rouge, Cotonou , Benin", 40, y);
+  drawText(`Adresse : ${facture.societeAdresse ?? Entreprise.adresse}`, 40, y);
+  y -= 16;
+  drawText(`IFU : ${facture.societeIFU ?? Entreprise.IFU}`, 40, y);
   y -= 16;
   drawText("Email : finance@reseaupub.com", 40, y);
   y -= 16;
@@ -64,7 +67,7 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
     370,
     y
   );
-  y -= 40;
+  y -= 50;
 
 
   //ESPACE ENTRE LES DEUX PARTIES
@@ -76,7 +79,7 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
     thickness: 1,
     color: rgb(0, 0, 0),
   });
-  y -= 30;
+  y -= 27;
 
   // Facturé à & Envoyé à
 
@@ -84,9 +87,9 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
   y -= 20;
   drawText(`Adresse : ${facture.client?.adresse ?? "Adresse Client"}`, 40, y);
   y -= 20;
-  drawText(`Mail : ${facture.client?.email ?? "Mail Destinataire"}`, 40, y);
+  drawText(`Mail : ${facture.client?.email ?? "destinataire@mail.com"}`, 40, y);
   y -= 20;
-  drawText(`Téléphone : ${facture.client?.telephone ?? "Téléphone Client"}`, 40, y);
+  drawText(`Téléphone : ${facture.client?.telephone ?? "+229 01 XX XX XX XX"}`, 40, y);
   y -= 25;
 
   // Tableau des produits
