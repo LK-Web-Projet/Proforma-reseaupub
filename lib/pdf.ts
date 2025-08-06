@@ -1,6 +1,8 @@
 
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { Invoice, InvoiceProduit, Client } from "@prisma/client";
+import * as fs from "fs";
+import * as path from "path";
 
 type InvoiceWithDetails = Invoice & {
   client: Client;
@@ -22,20 +24,34 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
     const textWidth = font.widthOfTextAtSize(text, size);
     drawText(text, (width - textWidth) / 2, y, size);
   };
+
+  const logoPath = path.join(process.cwd(), "public", "rplogo.png");
+  const logoImageBytes = fs.readFileSync(logoPath);
+  const logoImage = await pdfDoc.embedPng(logoImageBytes);
+  const logoWidth = 150;
+  const logoHeight = logoImage.height * (logoWidth / logoImage.width);
+
+  page.drawImage(logoImage, {
+    x: 40,
+    y: 700,
+    width: logoWidth,
+    height: logoHeight,
+  });
+
   // ESPACE EN HAUT
-  y -= 40;
+  y -= 30;
   // Titre
   centerText("FACTURE PROFORMA", y, 16);
   y -= 50;
  
   // Coordonnées entreprise
-  drawText("Delivrer par : Nom de la société", 40, y);
+  drawText("Delivrer par : reseaupub", 40, y);
   y -= 16;
   drawText("Adresse : Etoile Rouge, Cotonou , Benin", 40, y);
   y -= 16;
-  drawText("finance@reseaupub.com", 40, y);
+  drawText("Email : finance@reseaupub.com", 40, y);
   y -= 16;
-  drawText("Téléphone : +229 01 XX XX XX XX", 40, y);
+  drawText("Téléphone : +229 01 69 81 30 30", 40, y);
   y = 670;
 
   // Partie droite : infos facture
@@ -48,18 +64,16 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
     370,
     y
   );
+  y -= 40;
 
-  y -= 16;
-  drawText(`Commande n° : --------`, 370, y);
-  y -= 16;
-  drawText(`Échéance : --------`, 370, y);
-  y -= 30;
+
   //ESPACE ENTRE LES DEUX PARTIES
-  y -= 30;
+
   // Ligne de séparation
   page.drawLine({
     start: { x: 40, y },
     end: { x: 560, y },
+    thickness: 1,
     color: rgb(0, 0, 0),
   });
   y -= 30;
