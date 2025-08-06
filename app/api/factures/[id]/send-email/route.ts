@@ -44,11 +44,17 @@ export async function POST(
     const mailOptions = {
       from: process.env.EMAIL_FROM,
       to: facture.client.email,
-      subject: `Facture de ${facture.objet} Proforma N° ${facture.numero}`,
-      text: `Veuillez trouver ci-joint la facture de ${facture.objet} proforma n° ${facture.numero}.`,
+      subject: `Facture Proforma N°${facture.numero} - ${facture.objet}`,
+      html: `
+        <p>Bonjour ${facture.client.nom},</p>
+        <p>Veuillez trouver ci-joint notre facture proforma n°<strong>${facture.numero}</strong> concernant <strong>${facture.objet}</strong>.</p>
+        <p>N'hésitez pas à nous contacter pour toute question.</p>
+        <p>Cordialement,</p>
+        <p>L'équipe de ${facture.societeNom}</p>
+      `,
       attachments: [
         {
-          filename: `facture-${facture.numero}.pdf`,
+          filename: `facture-${facture.numero}-${facture.objet}.pdf`,//numero de la facture et le clients et l'objet
           content: Buffer.from(pdfBytes),
           contentType: "application/pdf",
         },

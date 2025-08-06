@@ -4,19 +4,23 @@ import prisma from '@/lib/prisma';
 // GET /api/clients/[id]
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params; // <-- attendre la résolution
     const client = await prisma.client.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
     if (!client) {
-      return NextResponse.json({ error: 'Client non trouvé' }, { status: 404 });
+      return NextResponse.json({ error: "Client non trouvé" }, { status: 404 });
     }
     return NextResponse.json(client);
   } catch (error) {
     console.error("Erreur lors de la récupération du client :", error);
-    return NextResponse.json({ error: 'Erreur Interne du Serveur' }, { status: 500 });
+    return NextResponse.json(
+      { error: "Erreur Interne du Serveur" },
+      { status: 500 }
+    );
   }
 }
 
