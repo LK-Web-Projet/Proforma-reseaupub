@@ -29,7 +29,15 @@ export async function GET(request: Request) {
     const factures = await prisma.invoice.findMany({
       where,
       orderBy: { dateCreation: "desc" },
-      include: { client: true, produits: true },
+      include: {
+        client: true,
+        produits: true,
+        gestionnaires: {
+          include: {
+            gestionnaire: true,
+          },
+        },
+      },
     });
 
     return NextResponse.json(factures);

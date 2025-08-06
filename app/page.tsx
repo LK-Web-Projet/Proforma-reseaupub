@@ -60,7 +60,8 @@ export default function Home() {
       .then((res) => res.json())
       .then(setFactures)
       .finally(() => setLoading(false));
-  }, [clientId, dateMin, dateMax, objet]);
+  }, [clientId, dateMin, dateMax, objet ]);
+
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -125,9 +126,12 @@ export default function Home() {
               <TableHead>Date</TableHead>
               <TableHead>Numéro</TableHead>
               <TableHead>Client</TableHead>
+              <TableHead>Objet</TableHead>
+              <TableHead className="text-center">Gestionnaire</TableHead>
               <TableHead className="text-right">Total TTC</TableHead>
               <TableHead className="text-center">Statut</TableHead>
               <TableHead className="text-center">Action</TableHead>
+
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -149,6 +153,14 @@ export default function Home() {
                   <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
                   <TableCell className="font-mono">{facture.numero}</TableCell>
                   <TableCell>{facture.client?.nom || "-"}</TableCell>
+                  <TableCell>{facture.objet}</TableCell>
+                  <TableCell className="text-center">
+                    {facture.gestionnaires?.length > 0
+                      ? facture.gestionnaires
+                          .map((g: { gestionnaire: { prenom: string; nom: string; }; }) => `${g.gestionnaire.prenom} ${g.gestionnaire.nom}`)
+                          .join(", ")
+                      : "-"}
+                  </TableCell>
                   <TableCell className="text-right font-semibold">
                     {formatMoney(facture.totalTTC)}
                   </TableCell>

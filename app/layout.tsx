@@ -21,6 +21,10 @@ export const metadata: Metadata = {
 
 import { Toaster } from "@/components/ui/sonner";
 
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
+import { Header } from "@/components/Header";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,43 +35,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
       >
-        <div className="min-h-screen flex">
-          {/* Barre latérale verticale */}
-          <aside className="w-60 bg-white border-r flex flex-col py-8 px-4 gap-8 shadow-sm">
-            <div className="text-xl font-bold text-primary mb-8">Proforma</div>
-            <nav className="flex flex-col gap-4">
-              <Link
-                href="/"
-                className="rounded px-3 py-2 hover:bg-gray-100 font-medium text-gray-700"
-              >
-                Liste des factures
-              </Link>
-              <Link
-                href="/facture/new"
-                className="rounded px-3 py-2 hover:bg-gray-100 font-medium text-gray-700"
-              >
-                Nouvelle facture
-              </Link>
-              <Link
-                href="/client"
-                className="rounded px-3 py-2 hover:bg-gray-100 font-medium text-gray-700"
-              >
-                Clients
-              </Link>
-              <Link
-                href="/gestionnaire"
-                className="rounded px-3 py-2 hover:bg-gray-100 font-medium text-gray-700"
-              >
-                Gestionnaires
-              </Link>
-              
-            </nav>
-            <div className="mt-auto text-xs text-gray-400">
-              &copy; {new Date().getFullYear()} Proforma
+        <SidebarProvider>
+          <div className="flex min-h-screen">
+            <AppSidebar />
+            <div className="flex flex-1 flex-col">
+              <Header />
+              <main className="flex-1 p-8">{children}</main>
             </div>
-          </aside>
-          <main className="flex-1 p-8">{children}</main>
-        </div>
+          </div>
+        </SidebarProvider>
         <Toaster />
       </body>
     </html>
