@@ -45,9 +45,9 @@ interface Produit {
 
 // --- Schéma de validation ---
 const productSchema = z.object({
-  designation: z.string().min(1, "La désignation est requise."),
-  quantite: z.coerce.number().min(1, "Qté. min. 1."),
-  prixUnitaire: z.coerce.number().min(0, "Le prix ne peut être négatif."),
+  designation: z.string().min(1, "La désignation est requise.").default(""),
+  quantite: z.coerce.number().min(1, "Qté. min. 1.").default(1),
+  prixUnitaire: z.coerce.number().min(0, "Le prix ne peut être négatif.").default(0),
   duree: z.coerce.number().min(1, "Durée min. 1.").optional(),
   uniteDuree: z.enum(["jour", "heure","mois"]).optional(),
   inclureDuree: z.boolean().default(false),
@@ -84,6 +84,7 @@ export default function FactureForm() {
         if (!res.ok) throw new Error("Erreur chargement clients");
         const data = await res.json();
         setClients(data);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
         toast.error("Impossible de charger les clients.");
       }
@@ -95,6 +96,7 @@ export default function FactureForm() {
         if (!res.ok) throw new Error("Erreur chargement produits");
         const data = await res.json();
         setProduits(data);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
         toast.error("Impossible de charger les produits.");
       }
@@ -160,6 +162,7 @@ export default function FactureForm() {
 
       toast.success("Facture enregistrée avec succès !");
       router.push("/"); // Redirection vers la page d'accueil
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       toast.error((error as Error).message);
     } finally {

@@ -70,8 +70,9 @@ export async function POST(
     });
 
     return new NextResponse("E-mail envoyé avec succès", { status: 200 });
-  } catch (error) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
     console.error("Erreur lors de l'envoi de l'e-mail:", error);
-    return new NextResponse("Erreur interne du serveur", { status: 500 });
+    return new NextResponse(`Erreur interne du serveur: ${error.message}`, { status: 500 });
   }
 }
