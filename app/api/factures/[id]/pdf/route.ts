@@ -36,7 +36,7 @@ export async function GET(
       headers: {
         "Content-Type": "application/pdf", // Indique que le contenu est un PDF
         // Définit le nom du fichier pour le téléchargement ou l'affichage en ligne
-        "Content-Disposition": `inline; filename="facture-${facture.numero}-${facture.objet}.pdf"`,
+        "Content-Disposition": `inline; filename="facture-${facture.numero}-${facture.objet}-${facture.client.nom}.pdf"`,
       },
     });
   } catch (error) {

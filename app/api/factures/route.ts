@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+// Importation de la configuration de l'entreprise 
+import {Entreprise} from "@/components/Data";
 
 export async function GET(request: Request) {
   try {
@@ -94,8 +96,8 @@ export async function POST(request: Request) {
           totalHT,
           tva,
           totalTTC,
-          societeNom: "Ma Société", // À remplir dynamiquement
-          societeIFU: "1234567890", // À remplir dynamiquement
+          societeNom: Entreprise.nom, // À remplir dynamiquement
+          societeIFU: Entreprise.IFU, // À remplir dynamiquement
         },
       });
 
@@ -111,34 +113,49 @@ export async function POST(request: Request) {
             montantTotal *= duree;
           }
 
-          // Recherche du produit existant
-          let produit = await tx.produit.findUnique({
-            where: { nom: p.designation },
-          });
+          // 2. Création des lignes de produits
+          // Création des lignes de produits
+          await Promise.all(
+            produits.map(async (p) => {
+              const quantite = Number(p.quantite) || 1;
+              const prixUnitaire = Number(p.prixUnitaire) || 0;
+              const duree = Number(p.duree) || 1;
+              const inclureDuree = p.inclureDuree ?? false;
 
-          if (!produit) {
-            // Création seulement si le produit n'existe pas
-            produit = await tx.produit.create({
-              data: {
-                nom: p.designation,
-                prixUnitaire: prixUnitaire,
-              },
-            });
-          }
+              let montantTotal = quantite * prixUnitaire;
+              if (inclureDuree) {
+                montantTotal *= duree;
+              }
 
-          // Création de la ligne de facture (InvoiceProduit)
-          await tx.invoiceProduit.create({
-            data: {
-              invoiceId: facture.id, // ici facture existe bien
-              productId: produit.id,
-              designation: p.designation,
-              quantite: quantite,
-              prixUnitaire: prixUnitaire,
-              duree: duree,
-              uniteDuree: p.uniteDuree || "jour",
-              montantTotal,
-            },
-          });
+              // Recherche du produit existant par son nom
+              let produit = await tx.produit.findUnique({
+                where: { nom: p.designation }, // possible car nom est @unique
+              });
+
+              if (!produit) {
+                produit = await tx.produit.create({
+                  data: {
+                    nom: p.designation,
+                    prixUnitaire: prixUnitaire,
+                  },
+                });
+              }
+
+              // Création de la ligne de facture
+              await tx.invoiceProduit.create({
+                data: {
+                  invoiceId: facture.id,
+                  productId: produit.id,
+                  designation: p.designation,
+                  quantite,
+                  prixUnitaire,
+                  duree,
+                  uniteDuree: p.uniteDuree || "jour",
+                  montantTotal,
+                },
+              });
+            })
+          );
         })
       );
 

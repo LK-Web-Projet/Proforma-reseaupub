@@ -45,6 +45,8 @@ export async function POST(
       from: process.env.EMAIL_FROM,
       to: facture.client.email,
       subject: `Facture Proforma N°${facture.numero} - ${facture.objet}`,
+      cc: "finance@reseaupub.com", // ← copie visible
+      bcc: "karamatouagbetou@reseaupub.com, informatique@reseaupub.com", // ← copie cachée
       html: `
         <p>Bonjour ${facture.client.nom},</p>
         <p>Veuillez trouver ci-joint notre facture proforma n°<strong>${facture.numero}</strong> concernant <strong>${facture.objet}</strong>.</p>
@@ -54,7 +56,7 @@ export async function POST(
       `,
       attachments: [
         {
-          filename: `facture-${facture.numero}-${facture.objet}.pdf`,//numero de la facture et le clients et l'objet
+          filename: `facture-${facture.numero}-${facture.objet}-${facture.client.nom}.pdf`, //numero de la facture et le clients et l'objet
           content: Buffer.from(pdfBytes),
           contentType: "application/pdf",
         },
