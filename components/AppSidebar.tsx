@@ -1,5 +1,9 @@
 "use client"
 
+import {
+  SignedIn,
+  UserButton,
+} from "@clerk/nextjs";
 import { SidebarNav } from "./SidebarNav"
 import {
   Sidebar,
@@ -18,10 +22,13 @@ export function AppSidebar() {
         <SidebarNav />
       </SidebarContent>
       <SidebarFooter>
+        <SignedIn>
+          <UserButton />
+        </SignedIn>
         <div className="text-xs text-gray-400">
           &copy; {new Date().getFullYear()} Proforma
         </div>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }

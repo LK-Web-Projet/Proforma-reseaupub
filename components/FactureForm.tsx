@@ -20,7 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -47,9 +52,12 @@ interface Produit {
 const productSchema = z.object({
   designation: z.string().min(1, "La désignation est requise.").default(""),
   quantite: z.coerce.number().min(1, "Qté. min. 1.").default(1),
-  prixUnitaire: z.coerce.number().min(0, "Le prix ne peut être négatif.").default(0),
+  prixUnitaire: z.coerce
+    .number()
+    .min(0, "Le prix ne peut être négatif.")
+    .default(0),
   duree: z.coerce.number().min(1, "Durée min. 1.").optional(),
-  uniteDuree: z.enum(["jour", "heure","mois"]).optional(),
+  uniteDuree: z.enum(["jour", "heure", "mois"]).optional(),
   inclureDuree: z.boolean().default(false),
 });
 
@@ -74,7 +82,9 @@ const defaultProduct = {
 export default function FactureForm() {
   const [clients, setClients] = useState<Client[]>([]);
   const [produits, setProduits] = useState<Produit[]>([]);
-  const [gestionnaires, setGestionnaires] = useState<{ id: string; nom: string; prenom: string }[]>([]);
+  const [gestionnaires, setGestionnaires] = useState<
+    { id: string; nom: string; prenom: string }[]
+  >([]);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -86,7 +96,7 @@ export default function FactureForm() {
         if (!res.ok) throw new Error("Erreur chargement clients");
         const data = await res.json();
         setClients(data);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
         toast.error("Impossible de charger les clients.");
       }
@@ -98,7 +108,7 @@ export default function FactureForm() {
         if (!res.ok) throw new Error("Erreur chargement produits");
         const data = await res.json();
         setProduits(data);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
         toast.error("Impossible de charger les produits.");
       }
