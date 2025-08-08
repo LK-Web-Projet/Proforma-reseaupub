@@ -108,7 +108,9 @@ export default function ClientDetailPage() {
   }
 
   if (!client) {
-    return <div className="text-center text-red-500 p-10">Client non trouvé.</div>;
+    return (
+      <div className="text-center text-red-500 p-10">Client non trouvé.</div>
+    );
   }
 
   return (
@@ -169,7 +171,6 @@ export default function ClientDetailPage() {
                     }
                   />
                 </div>
-                
               </div>
               <Button type="submit">Enregistrer les modifications</Button>
             </form>
@@ -184,7 +185,6 @@ export default function ClientDetailPage() {
               <p>
                 <strong>Adresse:</strong> {client.adresse || "N/A"}
               </p>
-              
             </div>
           )}
         </CardContent>

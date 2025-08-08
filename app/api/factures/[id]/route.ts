@@ -11,7 +11,7 @@ export async function GET(
     // 'include' permet de récupérer également les données du client et des produits associés à la facture.
     const facture = await prisma.invoice.findUnique({
       where: { id }, // Utilise l'ID extrait des paramètres de l route pour la recherche
-      include: { client: true, produits: true },
+      include: { client: true, produits: true, gestionnaires: true },
     });
 
     // Si aucune facture n'est trouvée avec l'ID donné

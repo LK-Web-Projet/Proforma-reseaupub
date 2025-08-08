@@ -23,10 +23,10 @@ export function SidebarNav() {
       <SidebarMenuItem>
         <SidebarMenuButton
           asChild
-          isActive={isActive("/")}
+          isActive={isActive("/facture")}
           tooltip="Liste des factures"
         >
-          <Link href="/">
+          <Link href="/facture">
             <HomeIcon />
             <span>Liste des factures</span>
           </Link>
