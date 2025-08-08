@@ -32,6 +32,12 @@ type Facture = {
     uniteDuree?: string;
     montantTotal: string;
   }>;
+  gestionnaires:Array< {
+    nom: string;
+    prenom: string;
+    email?: string;
+    telephone?: string;
+  }>;
 };
 
 export default function FactureDetailPage() {
@@ -117,8 +123,11 @@ export default function FactureDetailPage() {
           )}
         </div>
         <div>
+          
           <h2 className="font-semibold text-lg mb-2 text-primary">Client</h2>
           <div className="font-bold">{facture.client.nom}</div>
+          <h2 className="font-semibold text-lg mb-2 text-primary">Commercial/Gestionnaire</h2>
+          <div className="font-bold">{facture.gestionnaires?.[0]?.nom + " " + facture.gestionnaires?.[0]?.prenom || "Aucun gestionnaire"}</div>
           {facture.client.email && <div>Email : {facture.client.email}</div>}
           {facture.client.telephone && (
             <div>Tél : {facture.client.telephone}</div>

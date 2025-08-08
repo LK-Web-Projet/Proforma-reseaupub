@@ -62,6 +62,8 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
   y -= 10;
   drawText(`Facture n° ${facture.numero ?? "001"}`, 370, y);
   y -= 16;
+  drawText(`Objet : ${facture.objet ?? "Objet"}`, 370, y);
+  y -= 16;
   drawText(
     `Date : ${new Date(facture.dateCreation).toLocaleDateString("fr-FR")}`,
     370,

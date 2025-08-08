@@ -1,11 +1,18 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import { toast } from 'sonner';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import Link from 'next/link';
+import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import Link from "next/link";
 
 // Définition des types
 interface Client {
@@ -35,7 +42,9 @@ interface GestionnaireDetails {
 export default function GestionnaireDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const [gestionnaire, setGestionnaire] = useState<GestionnaireDetails | null>(null);
+  const [gestionnaire, setGestionnaire] = useState<GestionnaireDetails | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,7 +54,7 @@ export default function GestionnaireDetailPage() {
       try {
         const res = await fetch(`/api/gestionnaires/${id}`);
         if (!res.ok) {
-          throw new Error('Gestionnaire non trouvé');
+          throw new Error("Gestionnaire non trouvé");
         }
         const data = await res.json();
         setGestionnaire(data);
@@ -60,7 +69,11 @@ export default function GestionnaireDetailPage() {
   }, [id]);
 
   if (loading) {
-    return <div className="flex justify-center items-center h-screen">Chargement...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Chargement...
+      </div>
+    );
   }
 
   if (!gestionnaire) {
@@ -75,9 +88,17 @@ export default function GestionnaireDetailPage() {
           <CardTitle>Détails du Gestionnaire</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p><strong>Nom:</strong> {gestionnaire.prenom} {gestionnaire.nom}</p>
-          <p><strong>Email:</strong> {gestionnaire.email}</p>
-          {gestionnaire.telephone && <p><strong>Téléphone:</strong> {gestionnaire.telephone}</p>}
+          <p>
+            <strong>Nom:</strong> {gestionnaire.prenom} {gestionnaire.nom}
+          </p>
+          <p>
+            <strong>Email:</strong> {gestionnaire.email}
+          </p>
+          {gestionnaire.telephone && (
+            <p>
+              <strong>Téléphone:</strong> {gestionnaire.telephone}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -103,20 +124,29 @@ export default function GestionnaireDetailPage() {
                 gestionnaire.factures.map(({ invoice }) => (
                   <TableRow key={invoice.id}>
                     <TableCell>
-                      <Link href={`/facture/${invoice.id}`} className="text-blue-600 hover:underline">
+                      <Link
+                        href={`/facture/${invoice.id}`}
+                        className="text-blue-600 hover:underline"
+                      >
                         {invoice.numero}
                       </Link>
                     </TableCell>
                     <TableCell>{invoice.client.nom}</TableCell>
                     <TableCell>{invoice.objet}</TableCell>
                     <TableCell>{invoice.statut}</TableCell>
-                    <TableCell>{new Date(invoice.dateCreation).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">{Number(invoice.totalTTC).toFixed(2)} XOF</TableCell>
+                    <TableCell>
+                      {new Date(invoice.dateCreation).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {Number(invoice.totalTTC).toFixed(2)} XOF
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center">Aucune facture associée.</TableCell>
+                  <TableCell colSpan={6} className="text-center">
+                    Aucune facture associée.
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
