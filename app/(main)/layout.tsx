@@ -7,8 +7,8 @@ export const metadata: Metadata = {
 };
 
 
-import { SidebarProvider } from "../../components/ui/sidebar";
-import { AppSidebar } from "../../components/AppSidebar";
+import { SidebarProvider, SidebarTrigger } from "../../components/ui/sidebar";
+import { AppSidebar,  } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 
 export default async function RootLayout({
@@ -17,13 +17,14 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   
-  return (  
-     
-          <SidebarProvider>
-              <AppSidebar />
-                <main>{children}</main>
-          <Toaster />
-        </SidebarProvider>
-        
- );
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarTrigger />
+      <main>
+        {children}
+      </main>
+      <Toaster />
+    </SidebarProvider>
+  );
 }

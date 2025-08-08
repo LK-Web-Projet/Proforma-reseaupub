@@ -58,7 +58,7 @@ export default function NewGestionnairePage() {
     <div className="container mx-auto p-4 flex justify-center">
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle>Ajouter un nouveau Gestionnaire</CardTitle>
+          <CardTitle>Ajouter un nouveau Commercial</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -95,7 +95,7 @@ export default function NewGestionnairePage() {
             </div>
             <div className="flex justify-end">
               <Button type="submit" disabled={loading}>
-                {loading ? "Ajout en cours..." : "Ajouter le gestionnaire"}
+                {loading ? "Ajout en cours..." : "Ajouter le commercial"}
               </Button>
             </div>
           </form>

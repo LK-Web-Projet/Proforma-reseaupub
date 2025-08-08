@@ -47,6 +47,9 @@ export default function ClientsPage() {
     <div className="max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Liste des Clients</h1>
+        <Button asChild>
+          <Link href="/client/new">Nouveau Client</Link>
+        </Button>
       </div>
 
       <div className="rounded-md border bg-white">

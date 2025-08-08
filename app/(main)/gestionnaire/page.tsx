@@ -24,7 +24,7 @@ export default function GestionnairesPage() {
       try {
         const res = await fetch("/api/gestionnaires");
         if (!res.ok) {
-          throw new Error("Erreur lors du chargement des gestionnaires");
+          throw new Error("Erreur lors du chargement des commerciaux.");
         }
         const data = await res.json();
         setGestionnaires(data);
@@ -45,10 +45,10 @@ export default function GestionnairesPage() {
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Liste des Gestionnaires</h1>
-        {/* Vous pouvez ajouter un bouton pour créer un nouveau gestionnaire ici si nécessaire */}
+        <h1 className="text-2xl font-bold">Liste des Commerciaux</h1>
+        {/* Vous pouvez ajouter un bouton pour créer un nouveau commercial ici si nécessaire */}
         <Button onClick={() => router.push("/gestionnaire/new")}>
-          Ajouter un Gestionnaire
+          Ajouter un commercial
         </Button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
