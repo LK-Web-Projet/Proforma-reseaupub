@@ -164,9 +164,9 @@ export async function generateInvoicePdf(
 
   // Signature
   // mettre a droite la signature
-  drawText("Directrice Générale", 400, y, 14); // mettre en gras et souligné
-  y -= 50;
-  drawText("Karamatou AGBETOU", 400, y);
+  // drawText("Directrice Générale", 400, y, 14); // mettre en gras et souligné
+  // y -= 50;
+  // drawText("Karamatou AGBETOU", 400, y);
 
   // Ajouter une ligne pour expliquer les abbréviations
   y -= 0;

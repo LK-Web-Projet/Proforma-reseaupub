@@ -21,7 +21,7 @@ export default async function RootLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarTrigger />
-      <main>
+      <main className="w-full h-full flex-1 p-4">
         {children}
       </main>
       <Toaster />

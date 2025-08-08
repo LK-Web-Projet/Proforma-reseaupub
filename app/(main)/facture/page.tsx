@@ -10,6 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {Eye} from "lucide-react"
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("fr-FR", {
@@ -61,6 +63,7 @@ export default function Home() {
       .then(setFactures)
       .finally(() => setLoading(false));
   }, [clientId, dateMin, dateMax, objet]);
+
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -129,7 +132,7 @@ export default function Home() {
               <TableHead className="text-center">Gestionnaire</TableHead>
               <TableHead className="text-right">Total TTC</TableHead>
               <TableHead className="text-center">Statut</TableHead>
-              <TableHead className="text-center">Action</TableHead>
+              <TableHead className="text-center">Voir</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -168,7 +171,16 @@ export default function Home() {
                     {formatMoney(facture.totalTTC)}
                   </TableCell>
                   <TableCell className="text-center">
-                    <span
+                    <Badge
+                      variant={
+                        facture.statut === "Envoyé"
+                          ? "envoyer"
+                          : facture.statut === "Validé"
+                          ? "valider"
+                          : facture.statut === "Annulé"
+                          ? "annuler"
+                          : "default" // Fallback to "default" if no match
+                      }
                       className={`inline-block px-2 py-1 rounded text-xs font-bold ${
                         facture.statut === "Envoyé"
                           ? "bg-green-100 text-green-700"
@@ -180,14 +192,14 @@ export default function Home() {
                       }`}
                     >
                       {facture.statut}
-                    </span>
+                    </Badge>
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-right">
                     <Link
                       href={`/facture/${facture.id}`}
-                      className="text-primary underline hover:text-primary/80"
+                      className="text-primary font-extrabold hover:text-pink-500/80"
                     >
-                      Voir
+                      <Eye />
                     </Link>
                   </TableCell>
                 </TableRow>

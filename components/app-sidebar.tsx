@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { SignedIn, UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import {
   Calendar,
@@ -99,11 +98,9 @@ export function AppSidebar() {
   }
   return (
     <Sidebar>
-      <SidebarHeader>
-        <div className="flex facture-center gap-2">
-          <Image src="/rplogo.png" alt="Logo" width={32} height={32} />
-          <h1 className="text-lg font-bold">Proforma</h1>
-        </div>
+      <SidebarHeader className="flex flex-col items-start justify-between ">
+        <div className="relative"></div>
+        <h1 className="text-lg font-bold">Proforma</h1>
         <p className="text-sm text-gray-500">Gestion de factures proforma</p>
       </SidebarHeader>
       <SidebarContent>
@@ -187,12 +184,12 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <div className="flex facture-center gap-2">
+        <div className="flex facture-center gap-2 pl-4">
           <SignedIn>
             <UserButton />
           </SignedIn>
           <SignedIn>
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 ">
               <div className="font-semibold">{user?.username}</div>
               <div className="text-xs text-gray-400">
                 {user?.emailAddresses[0].emailAddress}

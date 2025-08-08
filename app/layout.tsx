@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-
+import Image from "next/image"
 import "./globals.css";
 import {
   ClerkProvider,
@@ -39,8 +39,13 @@ export default async function RootLayout({
           className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 relative`}
         >
           {userId ? (
-            <div className="absolute top-0 right-0 w-content h-auto  shadow-md flex items-center justify-between px-4 bg-transparent">
-              <h1 className="text-sm font-bold">reseaupub</h1>
+            <div className="absolute top-0 right-0 w-content h-auto  shadow-md flex items-center justify-between px-4 bg-transparent rounded-b-md">
+              <Image
+                src="/RESEAUPUB LOGO MIX COLOR@300xcoupé.png"
+                alt="Logo"
+                width={100}
+                height={100}
+              />
             </div>
           ) : (
             <div className="flex justify-end items-center p-4 gap-4 ">
