@@ -1,4 +1,3 @@
-
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { Invoice, InvoiceProduit, Client } from "@prisma/client";
 import * as fs from "fs";
@@ -10,7 +9,9 @@ type InvoiceWithDetails = Invoice & {
   produits: InvoiceProduit[];
 };
 
-export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<Uint8Array> {
+export async function generateInvoicePdf(
+  facture: InvoiceWithDetails
+): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([600, 800]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -44,7 +45,7 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
   // Titre
   centerText("FACTURE PROFORMA", y, 16);
   y -= 50;
- 
+
   // Coordonnées entreprise
   drawText(`Delivrer par : ${facture.societeNom ?? Entreprise.nom}`, 40, y);
   y -= 16;
@@ -69,7 +70,6 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
   );
   y -= 50;
 
-
   //ESPACE ENTRE LES DEUX PARTIES
 
   // Ligne de séparation
@@ -89,7 +89,11 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
   y -= 20;
   drawText(`Mail : ${facture.client?.email ?? "destinataire@mail.com"}`, 40, y);
   y -= 20;
-  drawText(`Téléphone : ${facture.client?.telephone ?? "+229 01 XX XX XX XX"}`, 40, y);
+  drawText(
+    `Téléphone : ${facture.client?.telephone ?? "+229 01 XX XX XX XX"}`,
+    40,
+    y
+  );
   y -= 25;
 
   // Tableau des produits
@@ -158,17 +162,17 @@ export async function generateInvoicePdf(facture: InvoiceWithDetails): Promise<U
 
   // Signature
   // mettre a droite la signature
-  drawText("Directrice Générale", 400, y, 14 ); // mettre en gras et souligné
+  drawText("Directrice Générale", 400, y, 14); // mettre en gras et souligné
   y -= 50;
   drawText("Karamatou AGBETOU", 400, y);
 
   // Ajouter une ligne pour expliquer les abbréviations
   y -= 0;
-  drawText("HT : Hors Taxes", 40, y , 10);
+  drawText("HT : Hors Taxes", 40, y, 10);
   y -= 15;
-  drawText("TTC : Toutes Taxes Comprises", 40, y , 10);
+  drawText("TTC : Toutes Taxes Comprises", 40, y, 10);
   y -= 15;
-  drawText("TVA : Taxe sur la Valeur Ajoutée", 40, y , 10);
+  drawText("TVA : Taxe sur la Valeur Ajoutée", 40, y, 10);
   y -= 15;
 
   return await pdfDoc.save();
