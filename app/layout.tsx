@@ -5,9 +5,10 @@ import "./globals.css";
 import {
   ClerkProvider,
   SignInButton,
-  SignUpButton,
   SignedOut,
 } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,31 +27,32 @@ export const metadata: Metadata = {
 };
 
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { userId } = await auth();
   return (
     <ClerkProvider>
       <html lang="fr">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
+          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 relative`}
         >
-          <header className="flex justify-end items-center p-4 gap-4 h-16">
-            <SignedOut>
-              <SignInButton />
-              <SignUpButton>
-                <button className="bg-[#6c47ff] text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
-                  Sign Up
-                </button>
-              </SignUpButton>
-            </SignedOut>
-          </header>
-          <div className="flex min-h-screen">
-            <div className="flex flex-1 flex-col">
-              <main className="flex-1 p-8">{children}</main>
+          {userId ? (
+            <div className="absolute top-0 right-0 w-content h-auto  shadow-md flex items-center justify-between px-4 bg-transparent">
+              <h1 className="text-sm font-bold">reseaupub</h1>
             </div>
+          ) : (
+            <div className="flex justify-end items-center p-4 gap-4 ">
+              <SignedOut>
+                <SignInButton />
+              </SignedOut>
+            </div>
+          )}
+
+          <div>
+            <main>{children}</main>
           </div>
         </body>
       </html>

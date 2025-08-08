@@ -1,17 +1,15 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
-export default function MainApp(){
+export default async function MainApp() {
+  const { userId } = await auth();
+  if (userId) {
+    redirect("/facture");
+  }
   return (
-    <div className="div">
+    <div className="flex items-center justify-center h-screen">
       <h1 className="text-2xl font-bold">Welcome to Proforma</h1>
-      <p className="mt-4">This is the main application page.</p>
-      {/* Include other components or content here */}
       <p className="mt-2 text-gray-600">Explore the features and functionalities of Proforma.</p>
-      {/* You can add more content or components as needed */}
-      Signed in as: <span className="font-semibold">User</span>
-      <div className="mt-4">
-
-        <p className="mt-2 text-sm text-gray-500">Please sign in to continue.</p>
-      </div>
     </div>
   )
 }

@@ -73,7 +73,7 @@ export default function Home() {
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="border rounded px-2 py-1"
+            className=" rounded px-2 py-1"
             title="Sélectionnez un client"
           >
             <option value="">Tous</option>
@@ -90,7 +90,7 @@ export default function Home() {
             type="date"
             value={dateMin}
             onChange={(e) => setDateMin(e.target.value)}
-            className="border rounded px-2 py-1"
+            className="  rounded px-2 py-1"
             title="Date minimale"
             placeholder="Sélectionnez la date min"
           />
@@ -101,7 +101,7 @@ export default function Home() {
             type="date"
             value={dateMax}
             onChange={(e) => setDateMax(e.target.value)}
-            className="border rounded px-2 py-1"
+            className="  rounded px-2 py-1"
             title="Date maximale"
             placeholder="Sélectionnez la date max"
           />
@@ -113,12 +113,12 @@ export default function Home() {
             value={objet}
             onChange={(e) => setObjet(e.target.value)}
             placeholder="Rechercher par objet"
-            className="border rounded px-2 py-1"
+            className="  rounded px-2 py-1"
           />
         </div>
       </form>
 
-      <div className="rounded-md border bg-white">
+      <div className="rounded-md   bg-white">
         <Table>
           <TableHeader>
             <TableRow>
