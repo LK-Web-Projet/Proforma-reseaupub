@@ -11,11 +11,12 @@ import {
   Calendar,
   Home,
   Plus,
-  Search,
-  Settings,
   UserPlus,
   UserRoundPlus,
+  BarChart
 } from "lucide-react";
+// Search,
+// Settings,
 import {
   Sidebar,
   SidebarHeader,
@@ -42,15 +43,20 @@ const facture = [
     url: "/facture/new",
     icon: Plus,
   },
+  // {
+  //   title: "Search",
+  //   url: "#",
+  //   icon: Search,
+  // },
+  // {
+  //   title: "Settings",
+  //   url: "#",
+  //   icon: Settings,
+  // },
   {
-    title: "Search",
-    url: "#",
-    icon: Search,
-  },
-  {
-    title: "Settings",
-    url: "#",
-    icon: Settings,
+    title: "Statistiques",
+    url: "/statistiques",
+    icon: BarChart,
   },
 ];
 

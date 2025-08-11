@@ -4,8 +4,6 @@ import Image from "next/image"
 import "./globals.css";
 import {
   ClerkProvider,
-  SignInButton,
-  SignedOut,
 } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 
@@ -48,11 +46,7 @@ export default async function RootLayout({
               />
             </div>
           ) : (
-            <div className="flex justify-end items-center p-4 gap-4 ">
-              <SignedOut>
-                <SignInButton />
-              </SignedOut>
-            </div>
+          <h1 className="absolute top-0 right-0"></h1>
           )}
 
           <div>

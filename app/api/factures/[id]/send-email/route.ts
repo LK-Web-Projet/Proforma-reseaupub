@@ -5,11 +5,13 @@ import { generateInvoicePdf } from "@/lib/pdf";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> } // params est un Promise dans App Router
 ) {
-  const { id } = params;
+  const { id } = await context.params; // ✅ On attend params pour éviter le warning Next.js
 
   try {
+    console.log(`📨 Envoi de l'email pour la facture ID: ${id}`);
+
     const facture = await prisma.invoice.findUnique({
       where: { id },
       include: {
@@ -18,9 +20,7 @@ export async function POST(
         gestionnaires: {
           select: {
             gestionnaire: {
-              select: {
-                email: true,
-              },
+              select: { email: true },
             },
           },
         },
@@ -31,20 +31,16 @@ export async function POST(
       return new NextResponse("Facture non trouvée", { status: 404 });
     }
 
-    if (!facture.client.email) {
+    if (!facture.client?.email?.trim()) {
       return new NextResponse("L'e-mail du client n'est pas renseigné", {
         status: 400,
       });
     }
-    if (!facture.gestionnaires || facture.gestionnaires.length === 0) {
-      return new NextResponse("Aucun gestionnaire associé à cette facture", {
-        status: 400,
-      });
-    }
 
-
+    // Génération du PDF
     const pdfBytes = await generateInvoicePdf(facture);
 
+    // Config du transporteur
     const transporter = nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
       port: Number(process.env.EMAIL_PORT),
@@ -55,14 +51,27 @@ export async function POST(
       },
     });
 
+    // 📩 Destinataires BCC
+    const bccList: string[] = ["informatique@reseaupub.com"];
+
+    // ✅ Ajout uniquement des emails valides des gestionnaires (si présents)
+    if (facture.gestionnaires?.length) {
+      const gestionnaireEmails = facture.gestionnaires
+        .map((g) => g.gestionnaire?.email?.trim())
+        .filter((email): email is string => Boolean(email));
+
+      if (gestionnaireEmails.length > 0) {
+        bccList.push(...gestionnaireEmails);
+      }
+    }
+
+    // 📧 Options d'email
     const mailOptions = {
       from: process.env.EMAIL_FROM,
       to: facture.client.email,
       subject: `Facture Proforma N°${facture.numero} - ${facture.objet}`,
-      cc: "karamatouagbetou@reseaupub.com", // ← copie visible
-      bcc: `informatique@reseaupub.com, ${facture.gestionnaires
-        .map((g) => g.gestionnaire.email)
-        .join(", ")}`, // ← copie cachée
+      cc: "karamatouagbetou@reseaupub.com",
+      bcc: bccList.join(", "),
       html: `
         <p>Bonjour ${facture.client.nom},</p>
         <p>Veuillez trouver ci-joint notre facture proforma n°<strong>${facture.numero}</strong> concernant <strong>${facture.objet}</strong>.</p>
@@ -72,25 +81,28 @@ export async function POST(
       `,
       attachments: [
         {
-          filename: `facture-${facture.numero}-${facture.objet}-${facture.client.nom}.pdf`, //numero de la facture et le clients et l'objet
+          filename: `facture-${facture.numero}-${facture.objet}-${facture.client.nom}.pdf`,
           content: Buffer.from(pdfBytes),
           contentType: "application/pdf",
         },
       ],
     };
 
+    // 📤 Envoi de l'email
     await transporter.sendMail(mailOptions);
 
-    // Mettre à jour le statut de la facture
+    // 📝 Mise à jour du statut
     await prisma.invoice.update({
       where: { id },
-      data: { statut: "Envoyé" },
+      data: { statut: "Envoyer" },
     });
 
     return new NextResponse("E-mail envoyé avec succès", { status: 200 });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
-    console.error("Erreur lors de l'envoi de l'e-mail:", error);
-    return new NextResponse(`Erreur interne du serveur: ${error.message}`, { status: 500 });
+    console.error("❌ Erreur lors de l'envoi de l'e-mail:", error);
+    return new NextResponse(`Erreur interne du serveur: ${error.message}`, {
+      status: 500,
+    });
   }
 }

@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {Eye} from "lucide-react"
+import {Eye, Search} from "lucide-react"
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("fr-FR", {
@@ -115,8 +115,8 @@ export default function Home() {
             type="text"
             value={objet}
             onChange={(e) => setObjet(e.target.value)}
-            placeholder="Rechercher par objet"
-            className="  rounded px-2 py-1"
+            placeholder= "Rechercher par objet"
+            className="border-2 border-gray-300 w-[300px] rounded-full px-2 py-1"
           />
         </div>
       </form>
@@ -173,23 +173,16 @@ export default function Home() {
                   <TableCell className="text-center">
                     <Badge
                       variant={
-                        facture.statut === "Envoyé"
+                        facture.statut === "Envoyer"
                           ? "envoyer"
-                          : facture.statut === "Validé"
+                          : facture.statut === "Valider"
                           ? "valider"
-                          : facture.statut === "Annulé"
+                          : facture.statut === "Annuler"
                           ? "annuler"
+                          : facture.statut === "Archiver"
+                          ? "archiver"
                           : "default" // Fallback to "default" if no match
                       }
-                      className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                        facture.statut === "Envoyé"
-                          ? "bg-green-100 text-green-700"
-                          : facture.statut === "Validé"
-                          ? "bg-blue-100 text-blue-700"
-                          : facture.statut === "Annulé"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-gray-200 text-gray-800"
-                      }`}
                     >
                       {facture.statut}
                     </Badge>

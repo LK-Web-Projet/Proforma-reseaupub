@@ -26,6 +26,15 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
+// --- ENUMS ---
+enum StatusFacture {
+  Brouillon
+  Envoyer
+  Valider
+  Annuler
+  Archiver
+}
+
 enum UniteDuree {
   jour
   heure
@@ -59,7 +68,7 @@ model Invoice {
   totalHT                 Decimal
   tva                     Decimal
   totalTTC                Decimal
-  statut                  String
+  statut                  StatusFacture @default(Brouillon)
   pdfUrl                  String?
   produits                InvoiceProduit[]
   historiqueModifications Json?

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+
 export const metadata: Metadata = {
   title: "Facturation Proforma",
   description:
@@ -16,7 +17,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  
   return (
     <SidebarProvider>
       <AppSidebar />

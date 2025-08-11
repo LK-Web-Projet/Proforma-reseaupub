@@ -17,20 +17,22 @@ const badgeVariants = cva(
           "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
           "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
-        envoyer:
-          "text-foreground [a&]:hover:bg-green-500 [a&]:hover:text-accent-foreground",
         valider:
-          "text-foreground [a&]:hover:bg-blue-500 [a&]:hover:text-accent-foreground",
+          "bg-green-100 text-green-700 [a&]:hover:bg-green-500 [a&]:hover:text-accent-foreground",
+        envoyer:
+          "bg-blue-100 text-blue-700 [a&]:hover:bg-blue-500 [a&]:hover:text-accent-foreground",
         annuler:
-          "text-foreground [a&]:hover:bg-red-500 [a&]:hover:text-accent-foreground",
-
+          "bg-red-100 text-red-700 [a&]:hover:bg-red-500 [a&]:hover:text-accent-foreground",
+        archiver:
+          "bg-orange-100 text-orange-700 [a&]:hover:bg-orange-500 [a&]:hover:text-accent-foreground",
+        
       },
     },
     defaultVariants: {
       variant: "default",
     },
   }
-)
+);
 
 function Badge({
   className,

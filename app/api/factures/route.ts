@@ -97,7 +97,7 @@ export async function POST(request: Request) {
           numero: "PRO-" + Date.now(),
           objet,
           clientId: client.id,
-          statut: "brouillon",
+          statut: "Brouillon",
           totalHT,
           tva,
           totalTTC,
