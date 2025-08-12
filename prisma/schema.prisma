@@ -40,7 +40,11 @@ enum UniteDuree {
   heure
   mois
 }
-
+enum Devise {
+  XOF   // Franc CFA
+  EUR   // Euro
+  USD   // Dollar
+}
 model Client {
   id        String    @id @default(uuid())
   nom       String    @unique
@@ -76,6 +80,7 @@ model Invoice {
   societeIFU              String
   societeAdresse          String?
   gestionnaires InvoiceGestionnaire[]
+  devise                  Devise           @default(XOF) // 💰 Nouvelle colonne
 }
 
 
@@ -92,6 +97,7 @@ model InvoiceProduit {
   duree        Decimal
   uniteDuree   UniteDuree
   montantTotal Decimal
+  includeduree  Boolean @default(false)
 }
 
 model Gestionnaire {

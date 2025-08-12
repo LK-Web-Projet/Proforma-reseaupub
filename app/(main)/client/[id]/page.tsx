@@ -30,12 +30,13 @@ type Facture = {
   dateCreation: string;
   statut: string;
   totalTTC: number;
+  devise: string;
 };
 
-function formatMoney(amount: number) {
+function formatMoney(amount: number, currency: string) {
   return Number(amount).toLocaleString("fr-FR", {
     style: "currency",
-    currency: "XOF",
+    currency: currency,
   });
 }
 
@@ -243,7 +244,7 @@ export default function ClientDetailPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      {formatMoney(facture.totalTTC)}
+                      {formatMoney(facture.totalTTC, facture.devise)}
                     </TableCell>
                     <TableCell className="text-center">
                       <Button asChild variant="outline" size="sm">

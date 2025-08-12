@@ -58,7 +58,7 @@ const productSchema = z.object({
     .default(0),
   duree: z.coerce.number().min(1, "Durée min. 1.").optional(),
   uniteDuree: z.enum(["jour", "heure", "mois"]).optional(),
-  inclureDuree: z.boolean().default(false),
+  includeduree: z.boolean().default(false),
 });
 
 const schema = z.object({
@@ -66,6 +66,7 @@ const schema = z.object({
   objet: z.string().min(1, "L'objet de la facture est requis."),
   produits: z.array(productSchema).min(1, "Au moins un produit est requis."),
   gestionnaireId: z.string().optional(),
+  devise: z.enum(["XOF", "EUR", "USD"]).default("XOF"),
 });
 
 type FactureFormType = z.infer<typeof schema>;
@@ -76,7 +77,7 @@ const defaultProduct = {
   prixUnitaire: 0,
   duree: 1,
   uniteDuree: "jour" as const,
-  inclureDuree: false,
+  includeduree: false,
 };
 
 export default function FactureForm() {
@@ -144,6 +145,7 @@ export default function FactureForm() {
       objet: "",
       produits: [defaultProduct],
       gestionnaireId: "", // Ajout du champ gestionnaire
+      devise: "XOF",
     },
   });
 
@@ -152,13 +154,14 @@ export default function FactureForm() {
     name: "produits",
   });
   const watchedProduits = watch("produits");
+  const watchedDevise = watch("devise");
 
   // --- Calculs des totaux ---
   const totalHT = watchedProduits.reduce((acc, p) => {
     const quantite = p.quantite || 0;
     const prix = p.prixUnitaire || 0;
     const duree = p.duree || 1;
-    const inclureDuree = p.inclureDuree;
+    const inclureDuree = p.includeduree;
 
     let totalLigne = quantite * prix;
     if (inclureDuree) {
@@ -278,6 +281,28 @@ export default function FactureForm() {
               )}
             />
           </div>
+          <div>
+            <label htmlFor="devise">Devise</label>
+            <Controller
+              name="devise"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner une devise" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="XOF">XOF (Franc CFA)</SelectItem>
+                    <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                    <SelectItem value="USD">USD (Dollar)</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -378,7 +403,7 @@ export default function FactureForm() {
                   {/* Inclure Durée */}
                   <TableCell>
                     <Controller
-                      name={`produits.${index}.inclureDuree`}
+                      name={`produits.${index}.includeduree`}
                       control={control}
                       render={({ field }) => (
                         <Switch
@@ -395,13 +420,13 @@ export default function FactureForm() {
                         quantite = 0,
                         prixUnitaire = 0,
                         duree = 1,
-                        inclureDuree = false,
+                        includeduree = false,
                       } = watchedProduits[index] || {};
                       let total = (quantite || 0) * (prixUnitaire || 0);
-                      if (inclureDuree) {
+                      if (includeduree) {
                         total *= duree || 1;
                       }
-                      return total.toFixed(2) + " XOF";
+                      return total.toFixed(2) + " " + watchedDevise;
                     })()}
                   </TableCell>
                   {/* Bouton Supprimer */}
@@ -444,15 +469,30 @@ export default function FactureForm() {
         <CardContent className="space-y-2">
           <div className="flex justify-between">
             <span>Total HT</span>
-            <span>{totalHT.toFixed(2)} XOF</span>
+            <span>
+              {Number(totalHT).toLocaleString("fr-FR", {
+                style: "currency",
+                currency: watchedDevise,
+              })}
+            </span>
           </div>
           <div className="flex justify-between">
             <span>TVA (18%)</span>
-            <span>{tva.toFixed(2)} XOF</span>
+            <span>
+              {Number(tva).toLocaleString("fr-FR", {
+                style: "currency",
+                currency: watchedDevise,
+              })}
+            </span>
           </div>
           <div className="flex justify-between font-bold">
             <span>Total TTC</span>
-            <span>{totalTTC.toFixed(2)} XOF</span>
+            <span>
+              {Number(totalTTC).toLocaleString("fr-FR", {
+                style: "currency",
+                currency: watchedDevise,
+              })}
+            </span>
           </div>
         </CardContent>
       </Card>

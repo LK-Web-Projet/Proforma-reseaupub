@@ -21,10 +21,10 @@ function formatDateFR(dateStr: string) {
   });
 }
 
-function formatMoney(amount: number) {
+function formatMoney(amount: number, currency: string) {
   return Number(amount).toLocaleString("fr-FR", {
     style: "currency",
-    currency: "XOF",
+    currency: currency,
     minimumFractionDigits: 2,
   });
 }
@@ -168,7 +168,7 @@ export default function Home() {
                       : "-"}
                   </TableCell>
                   <TableCell className="text-right font-semibold">
-                    {formatMoney(facture.totalTTC)}
+                    {formatMoney(facture.totalTTC, facture.devise)}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge

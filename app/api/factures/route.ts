@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 // POST /api/factures
 export async function POST(request: Request) {
   try {
-    const { clientNom, objet, produits, gestionnaireId } = await request.json();
+    const { clientNom, objet, produits, gestionnaireId, devise } = await request.json();
 
     if (!clientNom || !objet || !produits || !produits.length) {
       return NextResponse.json(
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         const quantite = Number(prod.quantite) || 1;
         const prixUnitaire = Number(prod.prixUnitaire) || 0;
         const duree = Number(prod.duree) || 1;
-        const inclureDuree = prod.inclureDuree ?? false;
+        const inclureDuree = prod.includeduree ?? false;
         let montantTotalLigne = quantite * prixUnitaire;
         if (inclureDuree) {
           montantTotalLigne *= duree;
@@ -103,16 +103,17 @@ export async function POST(request: Request) {
           totalTTC,
           societeNom: Entreprise.nom,
           societeIFU: Entreprise.IFU,
+          devise: devise || "XOF",
         },
       });
 
       // 4. Création des lignes de produits
       await Promise.all(
-        produits.map(async (p: { quantite: number; prixUnitaire: number; duree: number; inclureDuree: boolean; designation: string; uniteDuree: "jour" | "heure" | "mois"; }) => {
+        produits.map(async (p: { quantite: number; prixUnitaire: number; duree: number; includeduree: boolean; designation: string; uniteDuree: "jour" | "heure" | "mois"; }) => {
           const quantite = Number(p.quantite) || 1;
           const prixUnitaire = Number(p.prixUnitaire) || 0;
           const duree = Number(p.duree) || 1;
-          const inclureDuree = p.inclureDuree ?? false;
+          const inclureDuree = p.includeduree ?? false;
           let montantTotal = quantite * prixUnitaire;
           if (inclureDuree) {
             montantTotal *= duree;
@@ -141,6 +142,7 @@ export async function POST(request: Request) {
               duree,
               uniteDuree: p.uniteDuree || "jour",
               montantTotal,
+              includeduree: inclureDuree,
             },
           });
         })

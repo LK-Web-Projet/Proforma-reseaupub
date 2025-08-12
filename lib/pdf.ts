@@ -1,5 +1,5 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import { Invoice, InvoiceProduit, Client } from "@prisma/client";
+import { Invoice, InvoiceProduit, Client, Devise } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { Entreprise } from "@/components/Data";
@@ -7,6 +7,7 @@ import { Entreprise } from "@/components/Data";
 type InvoiceWithDetails = Invoice & {
   client: Client;
   produits: InvoiceProduit[];
+  devise: Devise;
 };
 
 export async function generateInvoicePdf(
@@ -133,8 +134,8 @@ export async function generateInvoicePdf(
       [
         `${p.quantite}`,
         p.designation,
-        `${p.prixUnitaire.toString()} XOF`,
-        `${p.montantTotal.toString()} XOF`,
+        `${p.prixUnitaire.toString()} ${facture.devise}`,
+        `${p.montantTotal.toString()} ${facture.devise}`,
       ],
       y
     );
@@ -146,15 +147,15 @@ export async function generateInvoicePdf(
   const totalHT = Number(facture.totalHT ?? 0);
   const tva = Number(facture.tva ?? 0);
   const totalTTC = Number(facture.totalTTC ?? 0);
-  drawText(`Total HT :     ${totalHT.toString()} XOF`, 360, y);
+  drawText(`Total HT :     ${totalHT.toString()} ${facture.devise}`, 360, y);
   y -= 20;
-  drawText(`TVA 18 % :     ${tva.toString()} XOF`, 360, y);
+  drawText(`TVA 18 % :     ${tva.toString()} ${facture.devise}`, 360, y);
   y -= 20;
-  drawText(`Total :        ${totalTTC.toString()} XOF`, 360, y);
+  drawText(`Total :        ${totalTTC.toString()} ${facture.devise}`, 360, y);
   y -= 40;
   // Conditions de paiement
   drawText(
-    `Arreté la présente facture Proforma à la somme de   ${totalTTC.toString()} XOF  francs FCFA (XOF) TTC`,
+    `Arreté la présente facture Proforma à la somme de   ${totalTTC.toString()} ${facture.devise} TTC`,
     40,
     y
   );
