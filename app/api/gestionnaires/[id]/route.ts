@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { StatusFacture } from "@prisma/client";
 
 // GET /api/gestionnaires/[id] - Récupérer un gestionnaire et ses factures
 export async function GET(
@@ -21,9 +22,9 @@ export async function GET(
           },
           orderBy: {
             invoice: {
-              dateCreation: 'desc'
-            }
-          }
+              dateCreation: "desc",
+            },
+          },
         },
       },
     });
@@ -35,9 +36,45 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(gestionnaire);
+    const invoices = gestionnaire.factures.map((f) => f.invoice);
+
+    const stats = {
+      validated: { count: 0, total: 0 },
+      sent: { count: 0, total: 0 },
+      cancelled: { count: 0, total: 0 },
+      totalInvoices: invoices.length,
+      totalAmount: 0,
+    };
+
+    for (const invoice of invoices) {
+      stats.totalAmount += invoice.totalTTC.toNumber();
+      switch (invoice.statut) {
+        case StatusFacture.Valider:
+          stats.validated.count++;
+          stats.validated.total += invoice.totalTTC.toNumber();
+          break;
+        case StatusFacture.Envoyer:
+          stats.sent.count++;
+          stats.sent.total += invoice.totalTTC.toNumber();
+          break;
+        case StatusFacture.Annuler:
+          stats.cancelled.count++;
+          stats.cancelled.total += invoice.totalTTC.toNumber();
+          break;
+      }
+    }
+
+    const response = {
+      ...gestionnaire,
+      stats,
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
-    console.error(`Erreur lors de la récupération du gestionnaire ${params.id} :`, error);
+    console.error(
+      `Erreur lors de la récupération du gestionnaire ${params.id} :`,
+      error
+    );
     return NextResponse.json(
       { error: "Erreur Interne du Serveur" },
       { status: 500 }

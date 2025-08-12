@@ -1,20 +1,34 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
- BarChart,
- Bar,
- XAxis,
- YAxis,
- CartesianGrid,
- Tooltip,
- Legend,
- ResponsiveContainer,
-} from 'recharts';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Combobox } from '@/components/ui/combobox';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 type StatData = {
- count: number;
- sum: number;
+  count: number;
+  sum: number;
+};
+
+type Stats = {
+  brouillon: StatData;
+  totalInvoices: number;
+  validated: StatData;
+  sent: StatData;
+  cancelled: StatData;
+  archived: StatData;
+};
+
+type Client = {
+  id: string;
+  nom: string;
+};
+
+type Gestionnaire = {
+  id: string;
+  nom: string;
+  prenom: string;
 };
 
 const StatCard = ({ title, value, subValue }: { title: string; value: number; subValue?: string }) => (
@@ -26,85 +40,200 @@ const StatCard = ({ title, value, subValue }: { title: string; value: number; su
 );
 
 export default function StatistiquesPage() {
-  const [data, setData] = useState<{
-    validatedInvoices: StatData;
-    sentInvoices: StatData;
-    validatedInvoicesThisMonth: StatData;
-    monthlyChartData: Array<{
-      month: string;
-      Envoyer: number;
-      Valider: number;
-    }>;
-  } | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [gestionnaires, setGestionnaires] = useState<Gestionnaire[]>([]);
+  const [filters, setFilters] = useState({
+    clientId: '',
+    gestionnaireId: '',
+    startDate: '',
+    endDate: '',
+    year: '',
+  });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      const res = await fetch("/api/statistiques");
-      const data = await res.json();
-      setData(data.error ? null : data);
-      setLoading(false);
+  const fetchClients = async () => {
+    const res = await fetch('/api/clients');
+    const data = await res.json();
+    if (!data.error) {
+      setClients(data);
     }
-    fetchData();
+  };
+
+  const fetchGestionnaires = async () => {
+    const res = await fetch('/api/gestionnaires');
+    const data = await res.json();
+    if (!data.error) {
+      setGestionnaires(data);
+    }
+  };
+
+  const fetchStats = async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (filters.clientId) params.append('clientId', filters.clientId);
+    if (filters.gestionnaireId) params.append('gestionnaireId', filters.gestionnaireId);
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+    if (filters.year) params.append('year', filters.year);
+
+    const res = await fetch(`/api/statistiques?${params.toString()}`);
+    const data = await res.json();
+    setStats(data.error ? null : data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchClients();
+    fetchGestionnaires();
+    fetchStats();
   }, []);
 
-  if (loading)
-    return (
-      <div className="flex justify-center items-center h-96">Chargement...</div>
-    );
-  if (!data)
-    return (
-      <div className="text-center text-red-500 mt-10">
-        Erreur lors du chargement des données.
-      </div>
-    );
+  const handleFilterChange = (name: string, value: string) => {
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
 
-  const { validatedInvoices, sentInvoices, validatedInvoicesThisMonth, monthlyChartData } = data;
+  const handleApplyFilters = () => {
+    fetchStats();
+  };
+  // variable pour enregistrer l'année actuel
+ const currentYear = new Date().getFullYear();
+ const startYear = 2016;
+
+ // Génère un tableau [2016, 2017, ..., currentYear]
+ const years = [];
+ for (let y = startYear; y <= currentYear; y++) {
+   years.push(y);
+ }
+  const handleResetFilters = () => {
+    setFilters({
+      clientId: '',
+      gestionnaireId: '',
+      startDate: '',
+      endDate: '',
+      year: currentYear.toString(),
+    });
+    fetchStats();
+  };
+  const clientOptions = clients.map(c => ({ value: c.id, label: c.nom }));
+  const gestionnaireOptions = gestionnaires.map(g => ({ value: g.id, label: `${g.prenom} ${g.nom}` }));
 
   return (
     <div className="container mx-auto py-10">
-      <h1 className="text-3xl font-bold mb-10">Statistiques</h1>
+      <h1 className="text-3xl font-bold mb-6">Statistiques</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <StatCard
-          title="Factures Validées (Total)"
-          value={validatedInvoices.count}
-          subValue={`Total: ${Number(validatedInvoices.sum).toLocaleString(
-            "fr-FR"
-          )} FCFA`}
-        />
-        <StatCard
-          title="Factures Envoyées (Sans réponse)"
-          value={sentInvoices.count}
-          subValue={`Total: ${Number(sentInvoices.sum).toLocaleString("fr-FR")} FCFA`}
-        />
- 
-        <StatCard
-          title="Factures Validées (Ce mois)"
-          value={validatedInvoicesThisMonth.count}
-          subValue={`Total: ${Number(
-            validatedInvoicesThisMonth.sum
-          ).toLocaleString("fr-FR")} FCFA`}
-        />
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Filtres</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+          <Combobox
+            options={clientOptions}
+            value={filters.clientId}
+            onChange={(value) =>
+              handleFilterChange(
+                "clientId",
+                value === filters.clientId ? "" : value
+              )
+            }
+            placeholder="Sélectionner un client"
+          />
+          <Combobox 
+            options={gestionnaireOptions}
+            value={filters.gestionnaireId}
+            onChange={(value) =>
+              handleFilterChange(
+                "gestionnaireId",
+                value === filters.gestionnaireId ? "" : value
+              )
+            }
+            placeholder="Sélectionner un commercial"
+          />
+          <Input
+            type="date"
+            value={filters.startDate}
+            onChange={(e) => handleFilterChange("startDate", e.target.value)}
+          />
+          <Input
+            type="date"
+            value={filters.endDate}
+            onChange={(e) => handleFilterChange("endDate", e.target.value)}
+          />
+          <select
+            aria-label="Sélectionner une année"
+            value={filters.year}
+            onChange={(e) => handleFilterChange("year", e.target.value)}
+            className="border rounded p-2"
+          >
+            <option value="">-- Sélectionner une année --</option>
+            {years.map((year) => (
+              <option key={year} value={year.toString()}>
+                {year}
+              </option>
+            ))}
+          </select>
+          <div className="flex space-x-2">
+            <Button onClick={handleApplyFilters}>Appliquer</Button>
+            <Button onClick={handleResetFilters} variant="outline">
+              Réinitialiser
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div>
-        <h2 className="text-xl font-semibold mb-4">
-          Montant Total par Mois (Envoyé vs Validé)
-        </h2>
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={monthlyChartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="Envoyer" stackId="b" fill="#8884d8" />
-            <Bar dataKey="Valider" stackId="a" fill="#82ca9d" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {loading ? (
+        <div className="flex justify-center items-center h-48">
+          Chargement...
+        </div>
+      ) : stats ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <StatCard title="Total Factures" value={stats.totalInvoices} />
+          <StatCard
+            title="Factures Validées"
+            value={stats.validated.count}
+            subValue={`${Number(stats.validated.sum).toLocaleString("fr-FR", {
+              style: "currency",
+              currency: "XOF",
+            })} `}
+          />
+          <StatCard
+            title="Factures Envoyées"
+            value={stats.sent.count}
+            subValue={`${Number(stats.sent.sum).toLocaleString("fr-FR", {
+              style: "currency",
+              currency: "XOF",
+            })} `}
+          />
+          <StatCard
+            title="Factures Annulées"
+            value={stats.cancelled.count}
+            subValue={`${Number(stats.cancelled.sum).toLocaleString("fr-FR", {
+              style: "currency",
+              currency: "XOF",
+            })} `}
+          />
+          <StatCard
+            title="Factures Archivées"
+            value={stats.archived.count}
+            subValue={`${Number(stats.archived.sum).toLocaleString("fr-FR", {
+              style: "currency",
+              currency: "XOF",
+            })} `}
+          />
+          <StatCard
+            title="Factures Brouillon"
+            value={stats.brouillon.count}
+            subValue={`${Number(stats.brouillon.sum).toLocaleString("fr-FR", {
+              style: "currency",
+              currency: "XOF",
+            })} `}
+          />
+        </div>
+      ) : (
+        <div className="text-center text-red-500 mt-10">
+          Erreur lors du chargement des données ou aucune donnée à afficher.
+        </div>
+      )}
     </div>
   );
 }

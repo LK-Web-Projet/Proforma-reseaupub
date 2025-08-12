@@ -2,61 +2,87 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { StatusFacture } from '@prisma/client';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { searchParams } = new URL(request.url);
+    const clientId = searchParams.get('clientId');
+    const gestionnaireId = searchParams.get('gestionnaireId');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+    const year = searchParams.get('year');
 
-    // 1. Cartes de statistiques
-    const validatedInvoices = await prisma.invoice.aggregate({
-      where: { statut: StatusFacture.Valider },
-      _count: { id: true },
-      _sum: { totalTTC: true },
-    });
+    const where: { clientId?: string; gestionnaires?: { some: { gestionnaireId: string; }; }; dateCreation?: { gte: Date; lte: Date; }; } = {};
 
-    const sentInvoices = await prisma.invoice.count({
-      where: { statut: StatusFacture.Envoyer },
-    });
+    if (clientId) {
+      where.clientId = clientId;
+    }
+    if (gestionnaireId) {
+      where.gestionnaires = {
+        some: { gestionnaireId },
+      };
+    }
+    if (startDate && endDate) {
+      where.dateCreation = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    } else if (year) {
+      const parsedYear = parseInt(year);
+      const yearStartDate = new Date(parsedYear, 0, 1);
+      const yearEndDate = new Date(parsedYear, 11, 31, 23, 59, 59);
+      where.dateCreation = {
+        gte: yearStartDate,
+        lte: yearEndDate,
+      };
+    }
 
-    const validatedInvoicesThisMonth = await prisma.invoice.aggregate({
-      where: {
-        statut: StatusFacture.Valider,
-        dateCreation: { gte: startOfMonth },
-      },
-      _count: { id: true },
-      _sum: { totalTTC: true },
-    });
+    const invoices = await prisma.invoice.findMany({ where });
 
-    // 2. Données pour le graphique en barres empilées
-    const invoicesForChart = await prisma.invoice.findMany({
-        where: {
-            statut: { in: [StatusFacture.Envoyer, StatusFacture.Valider] },
-        },
-        select: { dateCreation: true, statut: true, totalTTC: true }
-    });
+    const exchangeRates = {
+      EUR: 655.957,
+      USD: 615, // Taux approximatif
+      XOF: 1,
+    };
 
-    const monthlyChartData = invoicesForChart.reduce((acc, invoice) => {
-        const month = invoice.dateCreation.toISOString().slice(0, 7); // Format YYYY-MM
-        if (!acc[month]) {
-            acc[month] = { month, Envoyer: 0, Valider: 0 };
-        }
-        acc[month][invoice.statut] += invoice.totalTTC;
-        return acc;
-    }, {});
+    const stats = {
+      totalInvoices: invoices.length,
+      validated: { count: 0, sum: 0 },
+      sent: { count: 0, sum: 0 },
+      cancelled: { count: 0, sum: 0 },
+      archived: { count: 0, sum: 0 },
+      brouillon: { count: 0, sum: 0 },
+    };
 
+    for (const invoice of invoices) {
+      const totalTTC = Number(invoice.totalTTC);
+      const exchangeRate = exchangeRates[invoice.devise] || 1;
+      const totalInXOF = totalTTC * exchangeRate;
 
-    return NextResponse.json({
-      validatedInvoices: {
-        count: validatedInvoices._count.id,
-        sum: validatedInvoices._sum.totalTTC,
-      },
-      sentInvoices,
-      validatedInvoicesThisMonth: {
-        count: validatedInvoicesThisMonth._count.id,
-        sum: validatedInvoicesThisMonth._sum.totalTTC,
-      },
-      monthlyChartData: Object.values(monthlyChartData),
-    });
+      switch (invoice.statut) {
+        case StatusFacture.Valider:
+          stats.validated.count++;
+          stats.validated.sum += totalInXOF;
+          break;
+        case StatusFacture.Envoyer:
+          stats.sent.count++;
+          stats.sent.sum += totalInXOF;
+          break;
+        case StatusFacture.Annuler:
+          stats.cancelled.count++;
+          stats.cancelled.sum += totalInXOF;
+          break;
+        case StatusFacture.Archiver:
+          stats.archived.count++;
+          stats.archived.sum += totalInXOF;
+          break;
+        case StatusFacture.Brouillon:
+          stats.brouillon.count++;
+          stats.brouillon.sum += totalInXOF;
+          break;
+      }
+    }
+
+    return NextResponse.json(stats);
   } catch (error) {
     console.error('Erreur lors de la récupération des statistiques :', error);
     return NextResponse.json({ error: 'Erreur Interne du Serveur' }, { status: 500 });

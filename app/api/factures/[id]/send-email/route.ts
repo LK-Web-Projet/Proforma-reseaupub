@@ -3,12 +3,23 @@ import prisma from "@/lib/prisma";
 import nodemailer from "nodemailer";
 import { generateInvoicePdf } from "@/lib/pdf";
 
+    function getSalutation() {
+  const currentHour = new Date().getHours();
+
+  if (currentHour < 12) {
+    return "Bonjour";
+  } else if (currentHour < 18) {
+    return "Bonsoir";
+  } else {
+    return "Bonsoir";
+  }
+} 
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> } // params est un Promise dans App Router
 ) {
   const { id } = await context.params; // ✅ On attend params pour éviter le warning Next.js
-
+  
   try {
     console.log(`📨 Envoi de l'email pour la facture ID: ${id}`);
 
@@ -65,6 +76,8 @@ export async function POST(
       }
     }
 
+
+    const salutation = getSalutation();
     // 📧 Options d'email
     const mailOptions = {
       from: process.env.EMAIL_FROM,
@@ -73,8 +86,8 @@ export async function POST(
       cc: "karamatouagbetou@reseaupub.com",
       bcc: bccList.join(", "),
       html: `
-        <p>Bonjour ${facture.client.nom},</p>
-        <p>Veuillez trouver ci-joint notre facture proforma n°<strong>${facture.numero}</strong> concernant <strong>${facture.objet}</strong>.</p>
+        <p>${salutation} ${facture.client.nom},</p>
+        <p>Nous vous prions de recevoir ci-joint la proforma n°<strong>${facture.numero}</strong>  liée à votre demande <strong>${facture.objet}</strong>.</p>
         <p>N'hésitez pas à nous contacter pour toute question.</p>
         <p>Cordialement,</p>
         <p>L'équipe de ${facture.societeNom}</p>
