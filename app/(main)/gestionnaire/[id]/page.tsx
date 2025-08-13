@@ -41,6 +41,7 @@ interface GestionnaireDetails {
     validated: { count: number; total: number };
     sent: { count: number; total: number };
     cancelled: { count: number; total: number };
+    payer: { count: number; total: number };
     totalInvoices: number;
     totalAmount: number;
   };
@@ -138,6 +139,11 @@ export default function GestionnaireDetailPage() {
             <p className="text-gray-500">
               {stats.cancelled.total.toFixed(2)} XOF
             </p>
+          </div>
+          <div className="p-4 border rounded-lg">
+            <h3 className="text-lg font-semibold">Factures Payées</h3>
+            <p className="text-2xl">{stats.payer.count}</p>
+            <p className="text-gray-500">{stats.payer.total.toFixed(2)} XOF</p>
           </div>
         </CardContent>
       </Card>

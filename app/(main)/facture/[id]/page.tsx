@@ -108,6 +108,7 @@ export default function FactureDetailPage() {
 
   useEffect(() => {
     fetchFacture();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleSendEmail = async () => {

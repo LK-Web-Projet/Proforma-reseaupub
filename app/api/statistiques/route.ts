@@ -51,6 +51,7 @@ export async function GET(request: Request) {
       cancelled: { count: 0, sum: 0 },
       archived: { count: 0, sum: 0 },
       brouillon: { count: 0, sum: 0 },
+      payer: { count: 0, sum: 0 },
     };
 
     for (const invoice of invoices) {
@@ -78,6 +79,10 @@ export async function GET(request: Request) {
         case StatusFacture.Brouillon:
           stats.brouillon.count++;
           stats.brouillon.sum += totalInXOF;
+          break;
+        case StatusFacture.Payer:
+          stats.payer.count++;
+          stats.payer.sum += totalInXOF;
           break;
       }
     }

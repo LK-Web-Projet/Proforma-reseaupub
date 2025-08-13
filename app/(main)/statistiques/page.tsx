@@ -18,6 +18,7 @@ type Stats = {
   sent: StatData;
   cancelled: StatData;
   archived: StatData;
+  payer: StatData;
 };
 
 type Client = {
@@ -32,7 +33,7 @@ type Gestionnaire = {
 };
 
 const StatCard = ({ title, value, subValue }: { title: string; value: number; subValue?: string }) => (
-  <div className="bg-white p-6 rounded-lg shadow-md">
+  <div className="bg-white p-4 rounded-lg shadow-md">
     <h3 className="text-lg font-semibold text-gray-600">{title}</h3>
     <p className="text-3xl font-bold text-gray-900">{value}</p>
     {subValue && <p className="text-sm text-gray-500">{subValue}</p>}
@@ -87,6 +88,7 @@ export default function StatistiquesPage() {
     fetchClients();
     fetchGestionnaires();
     fetchStats();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleFilterChange = (name: string, value: string) => {
@@ -186,8 +188,8 @@ export default function StatistiquesPage() {
           Chargement...
         </div>
       ) : stats ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <StatCard title="Total Factures" value={stats.totalInvoices} />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatCard title="Total Factures" value={stats.totalInvoices}  />
           <StatCard
             title="Factures Validées"
             value={stats.validated.count}
@@ -208,6 +210,14 @@ export default function StatistiquesPage() {
             title="Factures Annulées"
             value={stats.cancelled.count}
             subValue={`${Number(stats.cancelled.sum).toLocaleString("fr-FR", {
+              style: "currency",
+              currency: "XOF",
+            })} `}
+            />
+          <StatCard
+            title="Factures Payées"
+            value={stats.payer.count}
+            subValue={`${Number(stats.payer.sum).toLocaleString("fr-FR", {
               style: "currency",
               currency: "XOF",
             })} `}

@@ -3,10 +3,7 @@ import prisma from "@/lib/prisma";
 import { StatusFacture } from "@prisma/client";
 
 // GET /api/gestionnaires/[id] - Récupérer un gestionnaire et ses factures
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
     const gestionnaire = await prisma.gestionnaire.findUnique({
@@ -42,6 +39,7 @@ export async function GET(
       validated: { count: 0, total: 0 },
       sent: { count: 0, total: 0 },
       cancelled: { count: 0, total: 0 },
+      payer: { count: 0, total: 0 },
       totalInvoices: invoices.length,
       totalAmount: 0,
     };
@@ -60,6 +58,10 @@ export async function GET(
         case StatusFacture.Annuler:
           stats.cancelled.count++;
           stats.cancelled.total += invoice.totalTTC.toNumber();
+          break;
+        case StatusFacture.Payer:
+          stats.payer.count++;
+          stats.payer.total += invoice.totalTTC.toNumber();
           break;
       }
     }

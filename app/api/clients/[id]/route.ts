@@ -31,8 +31,9 @@ export async function PUT(
 ) {
   try {
     const data = await request.json();
+    const { id } = params; 
     const clientMisAJour = await prisma.client.update({
-      where: { id: params.id },
+      where: { id: id },
       data,
     });
     return NextResponse.json(clientMisAJour);
