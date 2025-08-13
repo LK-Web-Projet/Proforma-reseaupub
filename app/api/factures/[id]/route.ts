@@ -54,6 +54,8 @@ export async function GET(
         client: true,
         produits: { include: { produit: true } },
         gestionnaires: { include: { gestionnaire: true } },
+        bonCommande: true, // Added
+        factureNormaliser: true, // Added
       },
     });
 
@@ -164,6 +166,8 @@ async function updateFacture(id: string, body: unknown) {
           produits: { include: { produit: true } },
           client: true,
           gestionnaires: { include: { gestionnaire: true } },
+          bonCommande: true, // Added
+          factureNormaliser: true, // Added
         },
       });
 
@@ -211,6 +215,10 @@ export async function DELETE(
   try {
     await prisma.invoiceProduit.deleteMany({ where: { invoiceId: id } });
     await prisma.invoiceGestionnaire.deleteMany({ where: { invoiceId: id } });
+    // Also delete bonCommande and factureNormaliser if they exist
+    await prisma.bonCommande.deleteMany({ where: { invoiceId: id } });
+    await prisma.factureNormaliser.deleteMany({ where: { invoiceId: id } });
+
     await prisma.invoice.delete({ where: { id } });
     return new NextResponse(null, { status: 204 });
   } catch (error) {

@@ -18,6 +18,8 @@ const badgeVariants = cva(
         outline:
           "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         valider:
+          "bg-green-100 text-green-500 [a&]:hover:bg-green-200 [a&]:hover:text-accent-foreground",
+        payer :
           "bg-green-100 text-green-700 [a&]:hover:bg-green-500 [a&]:hover:text-accent-foreground",
         envoyer:
           "bg-blue-100 text-blue-700 [a&]:hover:bg-blue-500 [a&]:hover:text-accent-foreground",
