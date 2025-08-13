@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,7 +52,6 @@ type Facture = {
     montantTotal: number;
     includeduree?: boolean;
   }>;
-
   gestionnaires: Array<{
     gestionnaire: { prenom: string; nom: string };
   }>;
@@ -62,13 +61,13 @@ type Facture = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const computeLineTotal = (p: any) => {
-    const quantite = Number(p.quantite) || 0;
-    const prixUnitaire = Number(p.prixUnitaire) || 0;
-    const duree = Number(p.duree) || 1;
-    const inclureDuree = p.includeduree ?? false;
-    return inclureDuree
-        ? quantite * prixUnitaire * duree
-        : quantite * prixUnitaire;
+  const quantite = Number(p.quantite) || 0;
+  const prixUnitaire = Number(p.prixUnitaire) || 0;
+  const duree = Number(p.duree) || 1;
+  const inclureDuree = p.includeduree ?? false;
+  return inclureDuree
+    ? quantite * prixUnitaire * duree
+    : quantite * prixUnitaire;
 };
 
 
@@ -94,22 +93,22 @@ export default function FactureDetailPage() {
   const [isDeletingBon, setIsDeletingBon] = useState(false);
   const [isDeletingFacture, setIsDeletingFacture] = useState(false);
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false); // Added
-  const [fileToDeleteType, setFileToDeleteType] = useState<'bon' | 'facture' | null>(null); // Added
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [fileToDeleteType, setFileToDeleteType] = useState<'bon' | 'facture' | null>(null);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  async function fetchFacture() {
+  const fetchFacture = useCallback(async () => {
+    if (!id) return;
     setLoading(true);
     const res = await fetch(`/api/factures/${id}`);
     const data = await res.json();
     setFacture(data.error ? null : data);
     setFormData(data.error ? {} : data);
     setLoading(false);
-  }
+  }, [id]);
 
   useEffect(() => {
-    if (id) fetchFacture();
-  }, [fetchFacture, id]);
+    fetchFacture();
+  }, [id]);
 
   const handleSendEmail = async () => {
     setIsSending(true);
@@ -139,11 +138,11 @@ export default function FactureDetailPage() {
     const totalTTC = totalHT + tva;
 
     const updatedData = {
-        ...formData,
-        totalHT,
-        tva,
-        totalTTC,
-        produits: formData.produits?.map(p => ({...p, montantTotal: computeLineTotal(p)}))
+      ...formData,
+      totalHT,
+      tva,
+      totalTTC,
+      produits: formData.produits?.map(p => ({...p, montantTotal: computeLineTotal(p)}))
     }
 
     try {

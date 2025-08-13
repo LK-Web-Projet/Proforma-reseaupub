@@ -14,16 +14,6 @@ datasource db {
         
 
 // --- MODELS ---
-//USER MODEL
-model User {
-  id       String @id @default(uuid())
-  email    String @unique
-  password String
-  name     String?
-  role     String @default("user") // Possible values: 'user', 'admin'
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
 
 // --- ENUMS ---
 enum StatusFacture {
@@ -73,7 +63,6 @@ model Invoice {
   tva                     Decimal
   totalTTC                Decimal
   statut                  StatusFacture @default(Brouillon)
-  pdfUrl                  String?
   produits                InvoiceProduit[]
   historiqueModifications Json?
   societeNom              String
