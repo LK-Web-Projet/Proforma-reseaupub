@@ -35,6 +35,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
+import { ClientCombobox } from "./ClientCombobox";
+import { DEVISE, DEVISE_OPTIONS, UNITE_DUREE, UNITE_DUREE_OPTIONS } from "@/lib/constants";
 
 // --- Définition des types pour les données ---
 interface Client {
@@ -49,6 +51,9 @@ interface Produit {
 }
 
 // --- Schéma de validation ---
+const uniteDureeKeys = Object.keys(UNITE_DUREE) as [string, ...string[]];
+const deviseKeys = Object.keys(DEVISE) as [string, ...string[]];
+
 const productSchema = z.object({
   designation: z.string().min(1, "La désignation est requise.").default(""),
   quantite: z.coerce.number().min(1, "Qté. min. 1.").default(1),
@@ -57,7 +62,7 @@ const productSchema = z.object({
     .min(0, "Le prix ne peut être négatif.")
     .default(0),
   duree: z.coerce.number().min(1, "Durée min. 1.").optional(),
-  uniteDuree: z.enum(["jour", "heure", "mois"]).optional(),
+  uniteDuree: z.enum(uniteDureeKeys).optional(),
   includeduree: z.boolean().default(false),
 });
 
@@ -66,7 +71,7 @@ const schema = z.object({
   objet: z.string().min(1, "L'objet de la facture est requis."),
   produits: z.array(productSchema).min(1, "Au moins un produit est requis."),
   gestionnaireId: z.string().optional(),
-  devise: z.enum(["XOF", "EUR", "USD"]).default("XOF"),
+  devise: z.enum(deviseKeys).default("XOF"),
 });
 
 type FactureFormType = z.infer<typeof schema>;
@@ -156,6 +161,11 @@ export default function FactureForm() {
   const watchedProduits = watch("produits");
   const watchedDevise = watch("devise");
 
+  const handleClientCreated = (newClient: Client) => {
+    setClients((prevClients) => [...prevClients, newClient]);
+    setValue("clientNom", newClient.nom, { shouldValidate: true });
+  };
+
   // --- Calculs des totaux ---
   const totalHT = watchedProduits.reduce((acc, p) => {
     const quantite = p.quantite || 0;
@@ -224,18 +234,18 @@ export default function FactureForm() {
         <CardContent className="space-y-4">
           <div>
             <label htmlFor="clientNom">Client</label>
-            <Input
-              id="clientNom"
-              list="clients-list"
-              {...register("clientNom")}
-              placeholder="Saisir ou sélectionner un client"
-              autoComplete="off"
+            <Controller
+              name="clientNom"
+              control={control}
+              render={({ field }) => (
+                <ClientCombobox
+                  clients={clients}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onClientCreated={handleClientCreated}
+                />
+              )}
             />
-            <datalist id="clients-list">
-              {clients.map((client) => (
-                <option key={client.id} value={client.nom} />
-              ))}
-            </datalist>
             {errors.clientNom && (
               <p className="text-red-500 text-xs mt-1">
                 {errors.clientNom.message}
@@ -295,9 +305,11 @@ export default function FactureForm() {
                     <SelectValue placeholder="Sélectionner une devise" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="XOF">XOF (Franc CFA)</SelectItem>
-                    <SelectItem value="EUR">EUR (Euro)</SelectItem>
-                    <SelectItem value="USD">USD (Dollar)</SelectItem>
+                    {DEVISE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
@@ -392,9 +404,11 @@ export default function FactureForm() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="jour">Jour</SelectItem>
-                            <SelectItem value="heure">Heure</SelectItem>
-                            <SelectItem value="mois">Mois</SelectItem>
+                           {UNITE_DUREE_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       )}

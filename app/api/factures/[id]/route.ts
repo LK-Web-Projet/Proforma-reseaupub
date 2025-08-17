@@ -94,89 +94,84 @@ async function updateFacture(id: string, body: unknown) {
   const { statut, produits, tva, devise } = validation.data;
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const updatedFactureData: any = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updatedFactureData: any = {};
 
-      // 1) statut
-      if (statut) {
-        updatedFactureData.statut = statut;
-        console.log(`Mise à jour du statut: ${statut}`);
-      }
+    if (statut) {
+      updatedFactureData.statut = statut;
+      console.log(`Mise à jour du statut: ${statut}`);
+    }
 
-      if (devise) {
-        updatedFactureData.devise = devise;
-      }
+    if (devise) {
+      updatedFactureData.devise = devise;
+    }
 
-      // 2) produits + tva (on exige tva si on met à jour les produits pour recalculer)
-      if (produits && tva !== undefined) {
-        console.log("Mise à jour des produits et calcul des totaux.");
+    if (produits && tva !== undefined) {
+      console.log("Mise à jour des produits et calcul des totaux.");
 
-        // calcul total HT (somme des lignes)
-        const totalHT = produits.reduce(
-          (acc, p) => acc + computeLineTotal(p),
-          0
-        );
-        const montantTVA = totalHT * 0.18;
-        const totalTTC = totalHT + montantTVA;
+      const totalHT = produits.reduce(
+        (acc, p) => acc + computeLineTotal(p),
+        0
+      );
+      const montantTVA = totalHT * 0.18;
+      const totalTTC = totalHT + montantTVA;
 
-        console.log(
-          `Nouveaux totaux calculés: HT=${totalHT}, TVA_amount=${montantTVA}, TTC=${totalTTC}`
-        );
+      console.log(
+        `Nouveaux totaux calculés: HT=${totalHT}, TVA_amount=${montantTVA}, TTC=${totalTTC}`
+      );
 
-        // suppression des anciens produits liés
-        await tx.invoiceProduit.deleteMany({ where: { invoiceId: id } });
-
-        // création des nouveaux produits avec montantTotal correct
-        const createManyData = produits.map((p) => {
-          const montant = Math.round(computeLineTotal(p));
-          return {
-            invoiceId: id,
-            productId: p.productId,
-            designation: p.designation,
-            quantite: toNumber(p.quantite),
-            prixUnitaire: toNumber(p.prixUnitaire),
-            duree:
-              p.duree === undefined || p.duree === null ? 0 : toNumber(p.duree),
-            uniteDuree: p.uniteDuree ?? undefined,
-            montantTotal: montant,
-            includeduree: p.includeduree ?? false,
-          };
-        });
-
-        // si createManyData est vide (peu probable), skip createMany
-        if (createManyData.length > 0) {
-          await tx.invoiceProduit.createMany({ data: createManyData });
-        }
-
-        // update des totaux dans la facture
-        updatedFactureData.totalHT = totalHT;
-        updatedFactureData.tva = montantTVA; // stocke le montant de la TVA
-        updatedFactureData.totalTTC = totalTTC;
-
-        // optionnel : si tu as un champ montantTVA dans la table invoice, tu peux le mettre aussi
-        // updatedFactureData.montantTVA = montantTVA;
-      }
-
-      // 3) update final
-      const finalUpdate = await tx.invoice.update({
-        where: { id },
-        data: updatedFactureData,
-        include: {
-          produits: { include: { produit: true } },
-          client: true,
-          gestionnaires: { include: { gestionnaire: true } },
-          bonCommande: true, // Added
-          factureNormaliser: true, // Added
-        },
+      const createManyData = produits.map((p) => {
+        const montant = Math.round(computeLineTotal(p));
+        return {
+          invoiceId: id,
+          productId: p.productId,
+          designation: p.designation,
+          quantite: toNumber(p.quantite),
+          prixUnitaire: toNumber(p.prixUnitaire),
+          duree:
+            p.duree === undefined || p.duree === null ? 0 : toNumber(p.duree),
+          uniteDuree: p.uniteDuree ?? undefined,
+          montantTotal: montant,
+          includeduree: p.includeduree ?? false,
+        };
       });
 
-      console.log("Transaction Prisma terminée avec succès.");
-      return finalUpdate;
+      // Transaction pour la mise à jour des produits uniquement
+      // Cela découpe la grosse transaction en morceaux plus petits pour éviter les timeouts
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const productUpdateOperations: any[] = [
+        prisma.invoiceProduit.deleteMany({ where: { invoiceId: id } }),
+      ];
+      if (createManyData.length > 0) {
+        productUpdateOperations.push(
+          prisma.invoiceProduit.createMany({ data: createManyData })
+        );
+      }
+      await prisma.$transaction(productUpdateOperations);
+
+      console.log("Produits de la facture mis à jour.");
+
+
+      updatedFactureData.totalHT = totalHT;
+      updatedFactureData.tva = montantTVA;
+      updatedFactureData.totalTTC = totalTTC;
+    }
+
+    // Update final de la facture
+    const finalUpdate = await prisma.invoice.update({
+      where: { id },
+      data: updatedFactureData,
+      include: {
+        produits: { include: { produit: true } },
+        client: true,
+        gestionnaires: { include: { gestionnaire: true } },
+        bonCommande: true,
+        factureNormaliser: true,
+      },
     });
 
     console.log("Mise à jour de la facture réussie.");
-    return NextResponse.json(result);
+    return NextResponse.json(finalUpdate);
   } catch (error: any) {
     console.error("Erreur lors de la mise à jour de la facture :", error);
     return NextResponse.json(

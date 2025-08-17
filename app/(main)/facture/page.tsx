@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {Eye, Search} from "lucide-react"
+import {Eye} from "lucide-react"
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("fr-FR", {

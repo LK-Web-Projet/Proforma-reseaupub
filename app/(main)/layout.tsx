@@ -8,9 +8,10 @@ export const metadata: Metadata = {
 };
 
 
-import { SidebarProvider, SidebarTrigger } from "../../components/ui/sidebar";
-import { AppSidebar,  } from "@/components/app-sidebar";
+import { SidebarProvider } from "../../components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import { PositionedSidebarTrigger } from "@/components/positioned-sidebar-trigger";
 
 export default async function RootLayout({
   children,
@@ -20,8 +21,8 @@ export default async function RootLayout({
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarTrigger />
-      <main className="w-full h-full flex-1 p-4">
+      <PositionedSidebarTrigger  />
+      <main className="w-full h-full flex-1 p-8 md:p-4">
         {children}
       </main>
       <Toaster />

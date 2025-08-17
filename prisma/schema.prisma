@@ -29,6 +29,7 @@ enum UniteDuree {
   jour
   heure
   mois
+  semaine
 }
 enum Devise {
   XOF   // Franc CFA

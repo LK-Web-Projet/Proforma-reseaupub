@@ -5,7 +5,13 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,22 +24,23 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose
+  DialogClose,
 } from "@/components/ui/dialog";
+import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 
 type Facture = {
   id: string;
   numero: string;
   dateCreation: string;
   objet: string;
-  statut: "Brouillon" | "Envoyer" | "Valider" | "Annuler" | "Archiver" | "Payer";
+  statut: StatutFacture;
   totalHT: number;
   tva: number;
   totalTTC: number;
   societeNom: string;
   societeIFU: string;
   societeAdresse?: string;
-  devise: "XOF" | "EUR" | "USD";
+  devise: Devise;
   client: {
     nom: string;
     email?: string;
@@ -48,7 +55,7 @@ type Facture = {
     quantite: number;
     prixUnitaire: number;
     duree?: number;
-    uniteDuree?: "jour" | "heure" | "mois";
+    uniteDuree?: UniteDuree;
     montantTotal: number;
     includeduree?: boolean;
   }>;
@@ -269,7 +276,7 @@ export default function FactureDetailPage() {
   const displayDevise = isEditing ? formData.devise : facture.devise;
 
   return (
-    <div className="max-w-3xl mx-auto bg-white shadow-lg rounded-lg p-8 my-10">
+    <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-8 my-10">
       {/* En-tête facture */}
       <div className="flex justify-between items-center mb-8 border-b pb-4">
         <div>
@@ -286,26 +293,27 @@ export default function FactureDetailPage() {
         <div className="text-right">
           {isEditing ? (
             <div className="flex gap-2">
-              <Select
-                name="statut"
-                value={formData.statut}
-                onValueChange={(value) =>
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  setFormData((prev) => ({ ...prev, statut: value as any }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Statut" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Brouillon">Brouillon</SelectItem>
-                  <SelectItem value="Envoyer">Envoyer</SelectItem>
-                  <SelectItem value="Valider">Valider</SelectItem>
-                  <SelectItem value="Annuler">Annuler</SelectItem>
-                  <SelectItem value="Archiver">Archiver</SelectItem>
-                  <SelectItem value="Payer">Payer</SelectItem>
-                </SelectContent>
-              </Select>
+              {!facture.bonCommande && (
+                <Select
+                  name="statut"
+                  value={formData.statut}
+                  onValueChange={(value) =>
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    setFormData((prev) => ({ ...prev, statut: value as any }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Statut" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUT_FACTURE_OPTIONS.filter(option => ["Envoyer", "Annuler"].includes(option.value)).map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select
                 name="devise"
                 value={formData.devise}
@@ -318,9 +326,11 @@ export default function FactureDetailPage() {
                   <SelectValue placeholder="Devise" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="XOF">XOF (Franc CFA)</SelectItem>
-                  <SelectItem value="EUR">EUR (Euro)</SelectItem>
-                  <SelectItem value="USD">USD (Dollar)</SelectItem>
+                  {DEVISE_OPTIONS.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -346,9 +356,11 @@ export default function FactureDetailPage() {
           )}
         </div>
         <div className="text-right">
-          <Button onClick={() => setIsEditing(!isEditing)} variant="outline">
-            {isEditing ? "Annuler" : "Modifier"}
-          </Button>
+          {!facture.bonCommande && !facture.factureNormaliser && (
+            <Button onClick={() => setIsEditing(!isEditing)} variant="outline">
+              {isEditing ? "Annuler" : "Modifier"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -370,7 +382,7 @@ export default function FactureDetailPage() {
           {facture.client?.email ? (
             <div className="font-medium">Email : {facture.client.email}</div>
           ) : (
-            <div className="font-medium">Email : email non défini</div>
+            <div className="font-medium text-red-500">Email : email non défini</div>
           )}
           <div className="commercial items-center flex flex-wrap gap-2">
             <h2 className="font-bold underline text-lg text-primary">
@@ -479,9 +491,11 @@ export default function FactureDetailPage() {
                           <SelectValue placeholder="Unité" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="jour">Jour</SelectItem>
-                          <SelectItem value="heure">Heure</SelectItem>
-                          <SelectItem value="mois">Mois</SelectItem>
+                          {UNITE_DUREE_OPTIONS.map(option => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (
