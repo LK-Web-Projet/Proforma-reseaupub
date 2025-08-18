@@ -91,10 +91,36 @@ export async function POST(request: Request) {
       const tva = totalHT * 0.18;
       const totalTTC = totalHT + tva;
 
-      // 3. Création de la facture
+      // 3. Génération du numéro de facture
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const shortYear = year.toString().slice(-2);
+      const lastInvoiceOfTheYear = await tx.invoice.findFirst({
+        where: {
+          numero: {
+            startsWith: `RP-PRO-${shortYear}/`,
+          },
+        },
+        orderBy: {
+          numero: 'desc',
+        },
+      });
+
+      let nextSequence = 1;
+      if (lastInvoiceOfTheYear) {
+        const lastSequence = parseInt(lastInvoiceOfTheYear.numero.split('-').pop() || '0', 10);
+        nextSequence = lastSequence + 1;
+      }
+
+      const formattedMonth = month.toString().padStart(2, '0');
+      const formattedSequence = nextSequence.toString().padStart(4, '0');
+      const newNumero = `RP-PRO-${shortYear}/${formattedMonth}-${formattedSequence}`;
+
+      // 4. Création de la facture
       const facture = await tx.invoice.create({
         data: {
-          numero: "PRO-" + Date.now(),
+          numero: newNumero,
           objet,
           clientId: client.id,
           statut: "Brouillon",
