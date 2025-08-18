@@ -204,7 +204,7 @@ export function AppSidebar() {
           </SignedIn>
         </div>
         <div className="p-4 text-sm text-gray-500">
-          © 2023 Proforma. All rights reserved.
+          © 2025 Proforma. All rights reserved.
         </div>
       </SidebarFooter>
     </Sidebar>

@@ -672,7 +672,7 @@ export default function FactureDetailPage() {
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-lg font-medium flex items-center gap-2">
                 <Receipt className="h-5 w-5 text-green-500" /> Facture
-                Normalisée
+                (Normalisée , Chèque ,etc)
               </CardTitle>
             </CardHeader>
             <CardContent>
