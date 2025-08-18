@@ -3,9 +3,9 @@ import prisma from "@/lib/prisma";
 import { StatusFacture } from "@prisma/client";
 
 // GET /api/gestionnaires/[id] - Récupérer un gestionnaire et ses factures
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, context: { params: { id: string } }) {
   try {
-    const { id } = params;
+    const { id } = await context.params; // <- utilise context.params
     const gestionnaire = await prisma.gestionnaire.findUnique({
       where: { id },
       include: {
@@ -74,7 +74,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     return NextResponse.json(response);
   } catch (error) {
     console.error(
-      `Erreur lors de la récupération du gestionnaire ${params.id} :`,
+      `Erreur lors de la récupération du gestionnaire ${context.params.id} :`,
       error
     );
     return NextResponse.json(
