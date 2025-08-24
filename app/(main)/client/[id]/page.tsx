@@ -1,4 +1,5 @@
 "use client";
+// Client details page
 
 import { useEffect, useState, FormEvent } from "react";
 import { useParams } from "next/navigation";

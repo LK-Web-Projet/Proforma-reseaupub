@@ -12,10 +12,10 @@ export const STATUT_FACTURE_OPTIONS = Object.entries(STATUT_FACTURE).map(
 );
 
 export const UNITE_DUREE = {
-  jour: "Jour",
   heure: "Heure",
-  mois: "Mois",
+  jour: "Jour",
   semaine: "Semaine",
+  mois: "Mois",
 } as const;
 
 export const UNITE_DUREE_OPTIONS = Object.entries(UNITE_DUREE).map(

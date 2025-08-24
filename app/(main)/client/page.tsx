@@ -1,3 +1,4 @@
+// Page: app/(main)/client/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { ClientTableSkeleton } from "@/components/ClientTableSkeleton";
 
 type Client = {
   id: string;
@@ -64,11 +66,7 @@ export default function ClientsPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center h-24">
-                  Chargement...
-                </TableCell>
-              </TableRow>
+              <ClientTableSkeleton />
             ) : clients.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center h-24">

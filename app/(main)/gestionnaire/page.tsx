@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { GestionnaireCardSkeleton } from "@/components/GestionnaireCardSkeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Gestionnaire {
   id: string;
@@ -39,7 +41,20 @@ export default function GestionnairesPage() {
   }, []);
 
   if (loading) {
-    return <div>Chargement...</div>;
+    return (
+      <div className="container mx-auto p-4">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">Liste des Commerciaux</h1>
+          {/* Vous pouvez ajouter un bouton pour créer un nouveau commercial ici si nécessaire */}
+          <Button onClick={() => router.push("/gestionnaire/new")}>
+            Ajouter un commercial
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <GestionnaireCardSkeleton />
+        </div>
+      </div>
+    );
   }
 
   return (

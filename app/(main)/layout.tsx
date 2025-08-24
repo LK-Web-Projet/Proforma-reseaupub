@@ -1,3 +1,4 @@
+// Page: app/(main)/layout.tsx
 import type { Metadata } from "next";
 
 
@@ -21,7 +22,8 @@ export default async function RootLayout({
   return (
     <SidebarProvider>
       <AppSidebar />
-      <PositionedSidebarTrigger  />
+      <PositionedSidebarTrigger />
+      
       <main className="w-full h-full flex-1 p-8 md:p-4 lg:p-4 lg:ml-6">
         {children}
       </main>

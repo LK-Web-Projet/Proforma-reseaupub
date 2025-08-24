@@ -1,4 +1,5 @@
 "use client";
+// New client creation page
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -50,7 +51,7 @@ export default function NewClientPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="nom">Nom de l'entreprise</label>
+              <label htmlFor="nom">Nom de l&apos;entreprise</label>
               <Input
                 id="nom"
                 value={nom}

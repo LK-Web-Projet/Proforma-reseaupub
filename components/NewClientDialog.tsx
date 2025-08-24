@@ -58,7 +58,7 @@ export function NewClientDialog({ onClientCreated, setIsOpen }: NewClientDialogP
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="nom-dialog">Nom de l'entreprise</label>
+          <label htmlFor="nom-dialog">Nom de l&apos;entreprise</label>
           <Input
             id="nom-dialog"
             value={nom}
@@ -73,6 +73,7 @@ export function NewClientDialog({ onClientCreated, setIsOpen }: NewClientDialogP
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
           />
         </div>
         <div>

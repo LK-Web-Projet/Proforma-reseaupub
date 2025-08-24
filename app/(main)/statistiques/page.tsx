@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatistiquesPageSkeleton } from '@/components/StatistiquesPageSkeleton';
 
 type StatData = {
   count: number;
@@ -120,6 +121,10 @@ export default function StatistiquesPage() {
   const clientOptions = clients.map(c => ({ value: c.id, label: c.nom }));
   const gestionnaireOptions = gestionnaires.map(g => ({ value: g.id, label: `${g.prenom} ${g.nom}` }));
 
+  if (loading) {
+    return <StatistiquesPageSkeleton />;
+  }
+
   return (
     <div className="container mx-auto py-10">
       <h1 className="text-3xl font-bold mb-6">Statistiques</h1>
@@ -183,11 +188,7 @@ export default function StatistiquesPage() {
         </CardContent>
       </Card>
 
-      {loading ? (
-        <div className="flex justify-center items-center h-48">
-          Chargement...
-        </div>
-      ) : stats ? (
+      {stats ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard title="Total Factures" value={stats.totalInvoices}  />
           <StatCard

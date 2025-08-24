@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Eye, Filter } from 'lucide-react';
+import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -41,7 +42,7 @@ export default function Home() {
   const [dateMax, setDateMax] = useState('');
   const [objet, setObjet] = useState('');
   const [statut, setStatut] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
 
   // Charger la liste des clients pour le filtre
@@ -176,11 +177,7 @@ export default function Home() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center h-24">
-                  Chargement...
-                </TableCell>
-              </TableRow>
+              <FactureTableSkeleton />
             ) : factures.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center h-24">
