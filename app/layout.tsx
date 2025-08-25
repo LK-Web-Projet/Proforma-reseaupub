@@ -30,7 +30,10 @@ export default async function RootLayout({
 }>) {
   const { userId } = await auth();
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      afterSignOutUrl="/sign-in"
+      
+    >
       <html lang="fr">
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
