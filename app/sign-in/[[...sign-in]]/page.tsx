@@ -3,7 +3,14 @@ import { SignIn } from "@clerk/nextjs";
 export default function App() {
   return (
     <div className="w-full h-[100vh] flex flex-wrap  items-center justify-center bg-gray-100">
-      <div className="h-full w-1/2 flex flex-col items-center justify-center gap-8 p-5 bg-black text-pink-600">
+      <div className="h-full w-1/2 flex flex-col items-center justify-center gap-12 p-5 bg-black text-center">
+        <img
+          src="/LOGO ROSE@300xcoupé.png"
+          alt="Logo"
+          className="w-auto h-32"
+        />
+        <div className="flex flex-col gap-5 text-white text-center">
+
         <h1 className="text-4xl font-bold">
           Bienvenue sur votre plateforme de generation des facture Proforma
         </h1>
@@ -11,7 +18,8 @@ export default function App() {
           Générez vos factures proforma professionnelles en quelques clics, où
           que vous soyez. Connectez-vous pour créer, personnaliser et envoyer
           vos documents instantanément.
-          </p>
+        </p>
+        </div>
       </div>
       {/* Render the SignIn component from Clerk */}
       <div className="w-1/2 h-full flex items-center justify-center bg-white p-8">
