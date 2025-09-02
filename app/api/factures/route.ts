@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 // POST /api/factures
 export async function POST(request: Request) {
   try {
-    const { clientNom, objet, produits, gestionnaireId, devise } = await request.json();
+    const { clientNom, objet, produits, gestionnaireId, devise, paymentConditionPercentage } = await request.json();
 
     if (!clientNom || !objet || !produits || !produits.length) {
       return NextResponse.json(
@@ -142,6 +142,7 @@ export async function POST(request: Request) {
           societeNom: Entreprise.nom,
           societeIFU: Entreprise.IFU,
           devise: devise || "XOF",
+          paymentConditionPercentage: paymentConditionPercentage,
         },
       });
 

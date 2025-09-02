@@ -82,6 +82,7 @@ const schema = z.object({
     ),
   gestionnaireId: z.string().optional(),
   devise: z.enum(deviseKeys).default("XOF"),
+  paymentConditionPercentage: z.number().optional(),
 });
 
 type FactureFormType = z.infer<typeof schema>;
@@ -161,6 +162,7 @@ export default function FactureForm() {
       produits: [defaultProduct],
       gestionnaireId: "", // Ajout du champ gestionnaire
       devise: "XOF",
+      paymentConditionPercentage: 50,
     },
   });
 
@@ -320,6 +322,29 @@ export default function FactureForm() {
                         {option.label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+          <div>
+            <label htmlFor="paymentConditionPercentage">Acompte</label>
+            <Controller
+              name="paymentConditionPercentage"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  onValueChange={(value) => field.onChange(Number(value))}
+                  defaultValue={String(field.value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner un acompte" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Aucun acompte</SelectItem>
+                    <SelectItem value="50">50%</SelectItem>
+                    <SelectItem value="70">70%</SelectItem>
+                    <SelectItem value="100">100%</SelectItem>
                   </SelectContent>
                 </Select>
               )}

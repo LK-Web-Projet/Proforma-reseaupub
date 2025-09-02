@@ -157,8 +157,18 @@ export async function generateInvoicePdf(
     pageMargin,
     y.value
   );
-  y.value -= 50;
-
+  y.value -= 40;
+  
+  if (facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0) {
+    y.value -= 20;
+    const conditionText = `NB : Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation`;
+    const conditionLines = getLines(conditionText, font, 10, width - pageMargin * 2);
+    await checkNewPage(conditionLines.length * 15);
+    for (const line of conditionLines) {
+        drawText(page, font, line, pageMargin, y.value, 10);
+        y.value -= 30;
+    }
+  }
   // Explications abréviations
   await checkNewPage(40);
   drawText(page, font, "HT : Hors Taxes", pageMargin, y.value, 8);
@@ -166,6 +176,10 @@ export async function generateInvoicePdf(
   drawText(page, font, "TTC : Toutes Taxes Comprises", pageMargin, y.value, 8);
   y.value -= 12;
   drawText(page, font, "TVA : Taxe sur la Valeur Ajoutée", pageMargin, y.value, 8);
+  y.value -= 12;
+  drawText(page, font, "NB : Note Bien", pageMargin, y.value, 8);
+
+
 
   drawFooter(page, pageCount, font, width);
 

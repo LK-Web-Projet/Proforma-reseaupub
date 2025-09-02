@@ -64,6 +64,7 @@ type Facture = {
   }>;
   bonCommande: { url: string } | null;
   factureNormaliser: { url: string } | null;
+  paymentConditionPercentage?: number | null;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -333,6 +334,23 @@ export default function FactureDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                name="paymentConditionPercentage"
+                value={String(formData.paymentConditionPercentage ?? 0)}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, paymentConditionPercentage: Number(value) }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Acompte" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Aucun acompte</SelectItem>
+                  <SelectItem value="50">50%</SelectItem>
+                  <SelectItem value="70">70%</SelectItem>
+                  <SelectItem value="100">100%</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           ) : (
             <Badge
@@ -406,6 +424,13 @@ export default function FactureDetailPage() {
         <span className="font-semibold text-primary">Objet :</span>{" "}
         {facture.objet}
       </div>
+
+      {facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0 && !isEditing && (
+        <div className="mb-6">
+          <span className="font-semibold text-primary">Condition de paiement :</span>{" "}
+          {`Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation`}
+        </div>
+      )}
 
       {/* Tableau des produits/services */}
       <div className="overflow-x-auto mb-8">
