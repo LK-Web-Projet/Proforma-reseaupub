@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from "pdf-lib";
 import { Invoice, InvoiceProduit, Client, Devise } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
@@ -10,173 +10,283 @@ type InvoiceWithDetails = Invoice & {
   devise: Devise;
 };
 
+const formatNumber = (num: number) => {
+  return new Intl.NumberFormat("fr-FR").format(num).replace(/\s/g, ' ');
+};
+
+function getLines(text: string, font: PDFFont, fontSize: number, maxWidth: number) {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const prospectiveLine = currentLine + (currentLine === '' ? '' : ' ') + word;
+    const width = font.widthOfTextAtSize(prospectiveLine, fontSize);
+
+    if (width > maxWidth) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = prospectiveLine;
+    }
+  }
+  lines.push(currentLine);
+  return lines;
+}
+
 export async function generateInvoicePdf(
   facture: InvoiceWithDetails
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([600, 800]);
+  let page = pdfDoc.addPage([600, 800]);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const { width } = page.getSize();
-  let y = 750;
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const { width, height } = page.getSize();
+  const y = { value: height - 50 };
+  const pageMargin = 40;
+  const footerHeight = 50;
 
-  const drawText = (text: string, x: number, y: number, size = 12) => {
-    page.drawText(text, { x, y, size, font });
+  let pageCount = 1;
+
+  const checkNewPage = async (heightNeeded: number) => {
+    if (y.value - heightNeeded < footerHeight) {
+      drawFooter(page, pageCount, font, width);
+      page = pdfDoc.addPage([600, 800]);
+      pageCount++;
+      y.value = height - 50;
+      await drawSubsequentPageHeader(pdfDoc, page);
+    }
   };
 
-  const centerText = (text: string, y: number, size = 14) => {
-    const textWidth = font.widthOfTextAtSize(text, size);
-    drawText(text, (width - textWidth) / 2, y, size);
-  };
+  await drawHeader(pdfDoc, page, boldFont, width, facture);
+  y.value -= 40;
 
+  // Infos facture
+  drawText(page, font, `Facture n° ${facture.numero ?? "001"}`, 370, y.value);
+  y.value -= 15;
+  drawText(page, font, `Objet : ${facture.objet ?? "Objet"}`, 370, y.value);
+  y.value -= 15;
+  drawText(
+    page,
+    font,
+    `Date : ${new Date(facture.dateCreation).toLocaleDateString("fr-FR")}`,
+    370,
+    y.value
+  );
+  y.value -= 50;
+
+  // Ligne de séparation
+  page.drawLine({
+    start: { x: pageMargin, y: y.value },
+    end: { x: width - pageMargin, y: y.value },
+    thickness: 1,
+    color: rgb(0.8, 0.8, 0.8),
+  });
+  y.value -= 20;
+
+  // Facturé à
+  drawText(page, boldFont, `Facturé à : ${facture.client?.nom ?? "Nom Client"}`, pageMargin, y.value);
+  y.value -= 15;
+
+  drawText(page, font, `Adresse : ${facture.client?.adresse ?? "Adresse Client"}`, pageMargin, y.value);
+  y.value -= 15;
+  drawText(page, font, `Email : ${facture.client?.email ?? "destinataire@mail.com"}`, pageMargin, y.value);
+  y.value -= 15;
+  drawText(page, font, `Téléphone : ${facture.client?.telephone ?? "+229 01 XX XX XX XX"}`, pageMargin, y.value);
+  y.value -= 25;
+
+  // Tableau des produits
+  const headers = ["Qte", "Désignation", "Durée", "Prix unitaire HT", "Montant HT"];
+  const columnWidths = [30, 200, 50, 100, 150];
+  const tableX = 40;
+  const lineHeight = 30;
+
+  // Header du tableau
+  await checkNewPage(lineHeight);
+  drawTableRow(page, headers, y.value, true, boldFont, columnWidths, tableX, lineHeight);
+  y.value -= lineHeight;
+
+  for (const p of facture.produits) {
+    const designationLines = getLines(p.designation, font, 11, columnWidths[1] - 10);
+    const rowHeight = Math.max(lineHeight, designationLines.length * lineHeight);
+
+    await checkNewPage(rowHeight);
+    drawTableRow(
+      page,
+      [
+        p.quantite.toString(),
+        p.designation,
+        `${formatNumber(Number(p.duree))} ${p.uniteDuree}`,
+        `${formatNumber(Number(p.prixUnitaire))} ${facture.devise}`,
+        `${formatNumber(Number(p.montantTotal))} ${facture.devise}`,
+      ],
+      y.value,
+      false,
+      font,
+      columnWidths,
+      tableX,
+      rowHeight,
+      designationLines
+    );
+    y.value -= rowHeight;
+  }
+
+  // Totaux
+  await checkNewPage(100);
+  y.value -= 20;
+  const totalHT = Number(facture.totalHT ?? 0);
+  const tva = Number(facture.tva ?? 0);
+  const totalTTC = Number(facture.totalTTC ?? 0);
+  const totalsX = 360;
+  drawText(page, font, `Total HT :`, totalsX, y.value);
+  drawText(page, font, `${formatNumber(totalHT)} ${facture.devise}`, totalsX + 120, y.value, 12, 'right');
+  y.value -= 20;
+  drawText(page, font, `TVA 18 % :`, totalsX, y.value);
+  drawText(page, font, `${formatNumber(tva)} ${facture.devise}`, totalsX + 125, y.value, 12, 'right');
+  y.value -= 20;
+  drawText(page, boldFont, `Total TTC :`, totalsX, y.value);
+  drawText(page, boldFont, `${formatNumber(totalTTC)} ${facture.devise}`, totalsX + 130, y.value, 12, 'right');
+  y.value -= 30;
+
+  // Conditions de paiement
+  await checkNewPage(50);
+  drawText(
+    page,
+    font,
+    `Arrêté la présente facture Proforma à la somme de : ${formatNumber(totalTTC)} ${facture.devise} TTC`,
+    pageMargin,
+    y.value
+  );
+  y.value -= 50;
+
+  // Explications abréviations
+  await checkNewPage(40);
+  drawText(page, font, "HT : Hors Taxes", pageMargin, y.value, 8);
+  y.value -= 12;
+  drawText(page, font, "TTC : Toutes Taxes Comprises", pageMargin, y.value, 8);
+  y.value -= 12;
+  drawText(page, font, "TVA : Taxe sur la Valeur Ajoutée", pageMargin, y.value, 8);
+
+  drawFooter(page, pageCount, font, width);
+
+  return await pdfDoc.save();
+}
+
+async function drawHeader(
+  pdfDoc: PDFDocument,
+  page: PDFPage,
+  font: PDFFont,
+  pageWidth: number,
+  facture: InvoiceWithDetails
+) {
   const logoPath = path.join(process.cwd(), "public", "rplogo.png");
   const logoImageBytes = fs.readFileSync(logoPath);
   const logoImage = await pdfDoc.embedPng(logoImageBytes);
-  const logoWidth = 150;
+  const logoWidth = 120;
   const logoHeight = logoImage.height * (logoWidth / logoImage.width);
-
   page.drawImage(logoImage, {
     x: 40,
-    y: 700,
+    y: 720,
     width: logoWidth,
     height: logoHeight,
   });
 
-  // ESPACE EN HAUT
-  y -= 30;
-  // Titre
-  centerText("FACTURE PROFORMA", y, 16);
-  y -= 50;
+  centerText(page, font, "FACTURE PROFORMA", 760, 18, pageWidth);
 
-  // Coordonnées entreprise
-  drawText(`Delivrer par : ${facture.societeNom ?? Entreprise.nom}`, 40, y);
-  y -= 16;
-  drawText(`Adresse : ${facture.societeAdresse ?? Entreprise.adresse}`, 40, y);
-  y -= 16;
-  drawText(`IFU : ${facture.societeIFU ?? Entreprise.IFU}`, 40, y);
-  y -= 16;
-  drawText("Email : finance@reseaupub.com", 40, y);
-  y -= 16;
-  drawText("Téléphone : +229 01 69 81 30 30", 40, y);
-  y = 670;
-
-  // Partie droite : infos facture
-  //ESPACE AU DESSUS
-  y -= 10;
-  drawText(`Facture n° ${facture.numero ?? "001"}`, 370, y);
-  y -= 16;
-  drawText(`Objet : ${facture.objet ?? "Objet"}`, 370, y);
-  y -= 16;
-  drawText(
-    `Date : ${new Date(facture.dateCreation).toLocaleDateString("fr-FR")}`,
-    370,
-    y
-  );
-  y -= 50;
-
-  //ESPACE ENTRE LES DEUX PARTIES
-
-  // Ligne de séparation
-  page.drawLine({
-    start: { x: 40, y },
-    end: { x: 560, y },
-    thickness: 1,
-    color: rgb(0, 0, 0),
-  });
-  y -= 27;
-
-  // Facturé à & Envoyé à
-
-  drawText(`Facturé à : ${facture.client?.nom ?? "Nom Client"}`, 40, y);
-  y -= 20;
-  drawText(`Adresse : ${facture.client?.adresse ?? "Adresse Client"}`, 40, y);
-  y -= 20;
-  drawText(`Mail : ${facture.client?.email ?? "destinataire@mail.com"}`, 40, y);
-  y -= 20;
-  drawText(
-    `Téléphone : ${facture.client?.telephone ?? "+229 01 XX XX XX XX"}`,
-    40,
-    y
-  );
-  y -= 25;
-
-  // Tableau des produits
-  // Définition des en-têtes, largeurs de colonnes et hauteur de ligne
-  const headers = ["Quantité", "Désignation", "Prix unitaire HT", "Montant HT"];
-  const columnWidths = [60, 200, 130, 130];
-  const rowHeight = 25;
-  const tableX = 40;
-
-  const drawTableRow = (cols: string[], y: number, isHeader = false) => {
-    let x = tableX;
-    cols.forEach((text, i) => {
-      page.drawRectangle({
-        x,
-        y: y - rowHeight,
-        width: columnWidths[i],
-        height: rowHeight,
-        borderWidth: 1,
-        borderColor: rgb(0, 0, 0),
-        color: rgb(1, 1, 1),
-        opacity: isHeader ? 0.5 : 1,
-      });
-      drawText(text, x + 5, y - 18, isHeader ? 12 : 11);
-      x += columnWidths[i];
-    });
-  };
-
-  // Entête tableau
-  drawTableRow(headers, y, true);
-  y -= rowHeight;
-
-  // Lignes des produits
-  facture.produits.forEach((p) => {
-    drawTableRow(
-      [
-        `${p.quantite}`,
-        p.designation,
-        `${p.prixUnitaire.toString()} ${facture.devise}`,
-        `${p.montantTotal.toString()} ${facture.devise}`,
-      ],
-      y
-    );
-    y -= rowHeight;
-  });
-
-  // Totaux
-  y -= 30;
-  const totalHT = Number(facture.totalHT ?? 0);
-  const tva = Number(facture.tva ?? 0);
-  const totalTTC = Number(facture.totalTTC ?? 0);
-  drawText(`Total HT :     ${totalHT.toString()} ${facture.devise}`, 360, y);
-  y -= 20;
-  drawText(`TVA 18 % :     ${tva.toString()} ${facture.devise}`, 360, y);
-  y -= 20;
-  drawText(`Total :        ${totalTTC.toString()} ${facture.devise}`, 360, y);
-  y -= 40;
-  // Conditions de paiement
-  drawText(
-    `Arreté la présente facture Proforma à la somme de   ${totalTTC.toString()} ${facture.devise} TTC`,
-    40,
-    y
-  );
-  y -= 20;
-  //espace entre les conditions et la signature
-  y -= 50;
-
-  // Signature
-  // mettre a droite la signature
-  // drawText("Directrice Générale", 400, y, 14); // mettre en gras et souligné
-  // y -= 50;
-  // drawText("Karamatou AGBETOU", 400, y);
-
-  // Ajouter une ligne pour expliquer les abbréviations
-  y -= 0;
-  drawText("HT : Hors Taxes", 40, y, 10);
-  y -= 15;
-  drawText("TTC : Toutes Taxes Comprises", 40, y, 10);
-  y -= 15;
-  drawText("TVA : Taxe sur la Valeur Ajoutée", 40, y, 10);
-  y -= 15;
-
-  return await pdfDoc.save();
+  const companyX = 40;
+  let companyY = 700;
+  drawText(page, font, `Delivrer par : ${facture.societeNom ?? Entreprise.nom}`, companyX, companyY, 10);
+  companyY -= 15;
+  drawText(page, font, `Adresse : ${facture.societeAdresse ?? Entreprise.adresse}`, companyX, companyY, 10);
+  companyY -= 15;
+  drawText(page, font, `IFU : ${facture.societeIFU ?? Entreprise.IFU}`, companyX, companyY, 10);
+  companyY -= 15;
+  drawText(page, font, "Email : finance@reseaupub.com", companyX, companyY, 10);
+  companyY -= 15;
+  drawText(page, font, "Téléphone : +229 01 69 81 30 30", companyX, companyY, 10);
 }
+
+async function drawSubsequentPageHeader(pdfDoc: PDFDocument, page: PDFPage) {
+  const logoPath = path.join(process.cwd(), "public", "rplogo.png");
+  const logoImageBytes = fs.readFileSync(logoPath);
+  const logoImage = await pdfDoc.embedPng(logoImageBytes);
+  const logoWidth = 50;
+  const logoHeight = logoImage.height * (logoWidth / logoImage.width);
+  page.drawImage(logoImage, {
+    x: 40,
+    y: 740,
+    width: logoWidth,
+    height: logoHeight,
+  });
+}
+
+function drawTableRow(
+  page: PDFPage,
+  cols: string[],
+  y: number,
+  isHeader: boolean,
+  font: PDFFont,
+  columnWidths: number[],
+  tableX: number,
+  rowHeight: number,
+  designationLines?: string[]
+) {
+  let x = tableX;
+  cols.forEach((text, i) => {
+    page.drawRectangle({
+      x,
+      y: y - rowHeight,
+      width: columnWidths[i],
+      height: rowHeight,
+      borderWidth: 1,
+      borderColor: rgb(0.8, 0.8, 0.8),
+      color: isHeader ? rgb(0.95, 0.95, 0.95) : rgb(1, 1, 1),
+    });
+
+    if (i === 1 && designationLines) { // Designation column
+      let lineY = y - 12;
+      for (const line of designationLines) {
+        drawText(page, font, line, x + 5, lineY, 11);
+        lineY -= 15;
+      }
+    } else {
+      drawText(page, font, text, x + 5, y - (rowHeight / 2) - 4, 11);
+    }
+    x += columnWidths[i];
+  });
+}
+
+function drawText(
+  page: PDFPage,
+  font: PDFFont,
+  text: string,
+  x: number,
+  y: number,
+  size = 12,
+  align: 'left' | 'right' = 'left'
+) {
+    let textX = x;
+    if (align === 'right') {
+        const textWidth = font.widthOfTextAtSize(text, size);
+        textX = x - textWidth;
+    }
+  page.drawText(text, { x: textX, y, size, font });
+}
+
+function centerText(
+  page: PDFPage,
+  font: PDFFont,
+  text: string,
+  y: number,
+  size: number,
+  pageWidth: number
+) {
+  const textWidth = font.widthOfTextAtSize(text, size);
+  drawText(page, font, text, (pageWidth - textWidth) / 2, y, size);
+}
+
+function drawFooter(page: PDFPage, pageNum: number, font: PDFFont, pageWidth: number) {
+    const footerText = `Page ${pageNum}`;
+    centerText(page, font, footerText, 30, 10, pageWidth);
+}
+
