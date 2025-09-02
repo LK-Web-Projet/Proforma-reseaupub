@@ -69,7 +69,17 @@ const productSchema = z.object({
 const schema = z.object({
   clientNom: z.string().min(1, "Le nom du client est requis."),
   objet: z.string().min(1, "L'objet de la facture est requis."),
-  produits: z.array(productSchema).min(1, "Au moins un produit est requis."),
+  produits: z.array(productSchema)
+    .min(1, "Au moins un produit est requis.")
+    .refine(
+      (items) => {
+        const designations = items.map((item) => item.designation);
+        return new Set(designations).size === designations.length;
+      },
+      {
+        message: "Chaque produit ne peut être ajouté qu'une seule fois.",
+      }
+    ),
   gestionnaireId: z.string().optional(),
   devise: z.enum(deviseKeys).default("XOF"),
 });

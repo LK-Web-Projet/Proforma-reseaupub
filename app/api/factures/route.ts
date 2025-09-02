@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 // Importation de la configuration de l'entreprise 
 import {Entreprise} from "@/components/Data";
 
@@ -61,6 +62,17 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    
+    // Vérification des doublons de produits
+    const productDesignations = produits.map((p: { designation: string }) => p.designation);
+    const uniqueProductDesignations = new Set(productDesignations);
+    if (uniqueProductDesignations.size !== productDesignations.length) {
+      return NextResponse.json(
+        { error: "Impossible d'ajouter le même produit plusieurs fois." },
+        { status: 400 }
+      );
+    }
+
 
     // Utilisation d'une transaction pour garantir l'intégrité des données
     const newInvoice = await prisma.$transaction(async (tx) => {
@@ -190,6 +202,15 @@ export async function POST(request: Request) {
     return NextResponse.json(newInvoice, { status: 201 });
   } catch (error) {
     console.error("Erreur lors de la création de la facture :", error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        const target = (error.meta?.target as string[])?.join(', ');
+        return NextResponse.json(
+          { error: `Unicité violée: le champ '${target}' existe déjà.` },
+          { status: 409 }
+        );
+      }
+    }
     return NextResponse.json(
       { error: "Erreur Interne du Serveur" },
       { status: 500 }
