@@ -63,7 +63,10 @@ export async function POST(
     });
 
     // 📩 Destinataires BCC
-    const bccList: string[] = ["informatique@reseaupub.com"];
+    const bccList: string[] = [
+      "informatique@reseaupub.com",
+      "alimatou.akadiri@reseaupub.com"
+    ];
 
     // ✅ Ajout uniquement des emails valides des gestionnaires (si présents)
     if (facture.gestionnaires?.length) {
