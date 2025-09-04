@@ -304,7 +304,7 @@ export default function FactureDetailPage() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Statut" />
+                    <SelectValue placeholder="Statut"   />
                   </SelectTrigger>
                   <SelectContent>
                     {STATUT_FACTURE_OPTIONS.filter(option => ["Envoyer", "Annuler"].includes(option.value)).map(option => (

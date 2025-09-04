@@ -1,12 +1,16 @@
-import { SignIn } from "@clerk/nextjs";
+"use client";
 
+import { SignIn } from "@clerk/nextjs";
+import Image from "next/image";
 export default function App() {
   return (
     <div className="w-full h-[100vh] flex flex-wrap  items-center justify-center bg-gray-100">
       <div className="h-full w-1/2 flex flex-col items-center justify-center gap-12 p-5 bg-black text-center">
-        <img
+        <Image
           src="/LOGO ROSE@300xcoupé.png"
           alt="Logo"
+          width={200}
+          height={200}
           className="w-auto h-32"
         />
         <div className="flex flex-col gap-5 text-white text-center">
