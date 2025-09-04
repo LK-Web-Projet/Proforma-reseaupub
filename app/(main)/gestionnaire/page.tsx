@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { GestionnaireCardSkeleton } from "@/components/GestionnaireCardSkeleton";
-import { Skeleton } from "@/components/ui/skeleton";
 
 interface Gestionnaire {
   id: string;

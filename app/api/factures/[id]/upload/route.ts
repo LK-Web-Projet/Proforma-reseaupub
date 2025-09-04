@@ -17,7 +17,7 @@ async function updateInvoiceStatus(invoiceId: string) {
   const hasBonCommande = !!invoice.bonCommande;
   const hasFactureNormaliser = !!invoice.factureNormaliser;
 
-  let newStatus: "Valider" | "Payer" | "Envoyer" = invoice.statut as any; // Allow more types
+  let newStatus: "Valider" | "Payer" | "Envoyer" = invoice.statut as "Valider" | "Payer" | "Envoyer";
 
   if (hasFactureNormaliser) {
     newStatus = 'Payer';

@@ -113,8 +113,7 @@ export default function FactureForm() {
         if (!res.ok) throw new Error("Erreur chargement clients");
         const data = await res.json();
         setClients(data);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (error) {
+      } catch {
         toast.error("Impossible de charger les clients.");
       }
     };
@@ -125,8 +124,7 @@ export default function FactureForm() {
         if (!res.ok) throw new Error("Erreur chargement produits");
         const data = await res.json();
         setProduits(data);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (error) {
+      } catch {
         toast.error("Impossible de charger les produits.");
       }
     };
@@ -137,7 +135,7 @@ export default function FactureForm() {
         if (!res.ok) throw new Error("Erreur chargement gestionnaires");
         const data = await res.json();
         setGestionnaires(data);
-      } catch (error) {
+      } catch {
         toast.error("Impossible de charger les gestionnaires.");
       }
     };

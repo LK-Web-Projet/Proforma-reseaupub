@@ -31,7 +31,6 @@ export default function NewClientPage() {
         throw new Error("La création du client a échoué");
       }
 
-      const newClient = await res.json();
       toast.success("Client créé avec succès!");
       router.push(`/client`); // Redirect to the clients list page
     } catch (error) {

@@ -177,10 +177,10 @@ async function updateFacture(id: string, body: unknown) {
 
     console.log("Mise à jour de la facture réussie.");
     return NextResponse.json(finalUpdate);
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Erreur lors de la mise à jour de la facture :", error);
     return NextResponse.json(
-      { error: "Erreur Interne du Serveur", details: error.message || error },
+      { error: "Erreur Interne du Serveur", details: (error as Error).message || error },
       { status: 500 }
     );
   }
