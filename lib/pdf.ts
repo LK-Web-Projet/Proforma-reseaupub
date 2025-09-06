@@ -3,6 +3,7 @@ import { Invoice, InvoiceProduit, Client, Devise } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { Entreprise } from "@/components/Data";
+import writtenNumber from "written-number";
 
 type InvoiceWithDetails = Invoice & {
   client: Client;
@@ -150,14 +151,19 @@ export async function generateInvoicePdf(
 
   // Conditions de paiement
   await checkNewPage(50);
-  drawText(
-    page,
-    font,
-    `Arrêté la présente facture Proforma à la somme de : ${formatNumber(totalTTC)} ${facture.devise} TTC`,
-    pageMargin,
-    y.value
-  );
-  y.value -= 40;
+  const totalTTCInWords = writtenNumber(totalTTC, { lang: 'fr' });
+  const fullText = `Arrêté la présente facture Proforma à la somme de : ${formatNumber(
+    totalTTC
+  )} ${
+    facture.devise
+  } TTC (${totalTTCInWords} ${facture.devise.toLocaleLowerCase()})`;
+  const textLines = getLines(fullText, font, 12, width - pageMargin * 2);
+
+  for (const line of textLines) {
+    drawText(page, font, line, pageMargin, y.value);
+    y.value -= 15; // space between lines
+  }
+  y.value -= 25; // space after the block
   
   if (facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0) {
     y.value -= 20;
