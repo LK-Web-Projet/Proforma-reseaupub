@@ -138,15 +138,16 @@ export async function generateInvoicePdf(
   const totalHT = Number(facture.totalHT ?? 0);
   const tva = Number(facture.tva ?? 0);
   const totalTTC = Number(facture.totalTTC ?? 0);
-  const totalsX = 360;
+  const totalsX = 350;
+  const valuesX = width - pageMargin;
   drawText(page, font, `Total HT :`, totalsX, y.value);
-  drawText(page, font, `${formatNumber(totalHT)} ${facture.devise}`, totalsX + 120, y.value, 12, 'right');
-  y.value -= 20;
+  drawText(page, font, `${formatNumber(totalHT)} ${facture.devise}`, valuesX, y.value, 12, 'right');
+  y.value -= 25;
   drawText(page, font, `TVA 18 % :`, totalsX, y.value);
-  drawText(page, font, `${formatNumber(tva)} ${facture.devise}`, totalsX + 125, y.value, 12, 'right');
-  y.value -= 20;
+  drawText(page, font, `${formatNumber(tva)} ${facture.devise}`, valuesX, y.value, 12, 'right');
+  y.value -= 25;
   drawText(page, boldFont, `Total TTC :`, totalsX, y.value);
-  drawText(page, boldFont, `${formatNumber(totalTTC)} ${facture.devise}`, totalsX + 130, y.value, 12, 'right');
+  drawText(page, boldFont, `${formatNumber(totalTTC)} ${facture.devise}`, valuesX, y.value, 12, 'right');
   y.value -= 30;
 
   // Conditions de paiement
