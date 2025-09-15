@@ -117,3 +117,18 @@ enum Devise {
   EUR
   USD
 }
+
+model CashJournal {
+  id                  Int           @id @default(autoincrement())
+  date_operation      DateTime
+  date_enregistrement DateTime      @default(now())
+  libelle             String
+  type                OperationType
+  montant             Float
+  solde               Float
+}
+
+enum OperationType {
+  RECETTE
+  DEPENSE
+}

@@ -18,6 +18,7 @@ import {
   FileText,
   Users,
   Briefcase,
+  Landmark,
 } from "lucide-react";
 import {
   Collapsible,
@@ -79,6 +80,14 @@ const Commercial = [
   },
 ];
 
+const finance = [
+  {
+    title: "Journal de Caisse",
+    url: "/journal-caisse",
+    icon: Landmark,
+  },
+];
+
 export function AppSidebar() {
   const pathname = usePathname();
   const { user, isLoaded, isSignedIn } = useUser();
@@ -86,6 +95,7 @@ export function AppSidebar() {
   const [isFactureOpen, setIsFactureOpen] = useState(true);
   const [isClientOpen, setIsClientOpen] = useState(false);
   const [isCommercialOpen, setIsCommercialOpen] = useState(false);
+  const [isFinanceOpen, setIsFinanceOpen] = useState(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -201,6 +211,43 @@ export function AppSidebar() {
           <CollapsibleContent>
             <SidebarMenu className="space-y-1 pl-2">
               {Commercial.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <Link
+                      key={item.title}
+                      href={item.url}
+                      className={cn(
+                        "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
+                        pathname === item.url
+                          ? "bg-gray-900 text-white"
+                          : "text-gray-600"
+                      )}
+                    >
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </CollapsibleContent>
+        </Collapsible>
+        <Collapsible open={isFinanceOpen} onOpenChange={setIsFinanceOpen}>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <Landmark className="w-5 h-5" />
+              <span className="font-bold">Finance</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 transition-transform",
+                  isFinanceOpen && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenu className="space-y-1 pl-2">
+              {finance.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <Link
