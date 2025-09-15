@@ -14,11 +14,16 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
   const [libelle, setLibelle] = useState('');
   const [type, setType] = useState('RECETTE');
   const [montant, setMontant] = useState('');
-  const [dateOperation, setDateOperation] = useState(new Date().toISOString().split('T')[0]);
+  const [dateOperation, setDateOperation] = useState(new Date().toISOString().slice(0, 16));
   const [isSubmitDisabled, setIsSubmitDisabled] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (type === 'DEPENSE' && parseFloat(montant) > soldeFinal) {
+    const montantValue = parseFloat(montant);
+    if (montant && montantValue === 0) {
+      toast.error('Le montant ne peut pas être zéro');
+      setIsSubmitDisabled(true);
+    } else if (type === 'DEPENSE' && montant && montantValue > soldeFinal) {
       toast.error('Les fonds disponibles ne sont pas suffisants');
       setIsSubmitDisabled(true);
     } else {
@@ -32,6 +37,8 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
     if (isSubmitDisabled) {
       return;
     }
+
+    setIsSubmitting(true);
 
     try {
       const res = await fetch('/api/cash-journal', {
@@ -53,10 +60,12 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
         setLibelle('');
         setType('RECETTE');
         setMontant('');
-        setDateOperation(new Date().toISOString().split('T')[0]);
+        setDateOperation(new Date().toISOString().slice(0, 16));
       }
     } catch (error) {
       console.error('Failed to add cash journal entry:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -74,10 +83,10 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="date_operation">Date de l'opération</label>
+            <label htmlFor="date_operation">Date de l&apos;opération</label>
             <Input
               id="date_operation"
-              type="date"
+              type="datetime-local"
               value={dateOperation}
               onChange={(e) => setDateOperation(e.target.value)}
               required
@@ -114,9 +123,12 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
               required
             />
           </div>
-          <Button type="submit" disabled={isSubmitDisabled}>Ajouter</Button>
+          <Button type="submit" disabled={isSubmitDisabled || isSubmitting}>
+            {isSubmitting ? "Enregistrement..." : "Ajouter"}
+          </Button>
         </form>
       </DialogContent>
     </Dialog>
   );
 }
+

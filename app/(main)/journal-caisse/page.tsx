@@ -2,10 +2,20 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddEntryModal } from '@/components/AddEntryModal';
+
+interface CashJournalEntry {
+  id: string;
+  date_operation: string;
+  libelle: string;
+  montant: number;
+  type: 'RECETTE' | 'DEPENSE';
+  solde: number;
+}
+
+
 
 // This will be the new page for the cash journal
 export default function CashJournalPage() {
@@ -16,7 +26,7 @@ export default function CashJournalPage() {
     try {
       const res = await fetch('/api/cash-journal');
       const data = await res.json();
-      setEntries(data);
+      setEntries(data as CashJournalEntry[]);
     } catch (error) {
       console.error('Failed to fetch cash journal entries:', error);
     }
@@ -27,8 +37,8 @@ export default function CashJournalPage() {
     fetchData();
   }, []);
 
-  const totalRecettes = entries.filter(e => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
-  const totalDepenses = entries.filter(e => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
+  const totalRecettes = entries.filter((e: CashJournalEntry) => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
+  const totalDepenses = entries.filter((e: CashJournalEntry) => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
   const soldeFinal = totalRecettes - totalDepenses;
 
   return (
@@ -82,7 +92,7 @@ export default function CashJournalPage() {
                 <TableCell colSpan={5} className="text-center">Chargement...</TableCell>
               </TableRow>
             ) : (
-              entries.map(entry => (
+              entries.map((entry: CashJournalEntry) => (
                 <TableRow key={entry.id}>
                   <TableCell>{new Date(entry.date_operation).toLocaleDateString('fr-FR')}</TableCell>
                   <TableCell>{entry.libelle}</TableCell>
@@ -98,4 +108,3 @@ export default function CashJournalPage() {
     </div>
   );
 }
-
