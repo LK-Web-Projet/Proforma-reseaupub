@@ -5,6 +5,9 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddEntryModal } from '@/components/AddEntryModal';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { ArrowUpDown } from 'lucide-react';
 
 interface CashJournalEntry {
   id: string;
@@ -15,12 +18,11 @@ interface CashJournalEntry {
   solde: number;
 }
 
-
-
 // This will be the new page for the cash journal
 export default function CashJournalPage() {
-  const [entries, setEntries] = useState([]);
+  const [entries, setEntries] = useState<CashJournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortOrder, setSortOrder] = useState('desc');
 
   async function fetchData() {
     try {
@@ -40,6 +42,12 @@ export default function CashJournalPage() {
   const totalRecettes = entries.filter((e: CashJournalEntry) => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
   const totalDepenses = entries.filter((e: CashJournalEntry) => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
   const soldeFinal = totalRecettes - totalDepenses;
+
+  const sortedEntries = [...entries].sort((a, b) => {
+    const dateA = new Date(a.date_operation).getTime();
+    const dateB = new Date(b.date_operation).getTime();
+    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+  });
 
   return (
     <div className="p-4 md:p-8">
@@ -79,7 +87,20 @@ export default function CashJournalPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
+              <TableHead>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost">
+                      Date
+                      <ArrowUpDown className="ml-2 h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => setSortOrder('asc')}>Croissant</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortOrder('desc')}>Décroissant</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableHead>
               <TableHead>Libellé</TableHead>
               <TableHead className="text-right">Recette</TableHead>
               <TableHead className="text-right">Dépense</TableHead>
@@ -92,9 +113,9 @@ export default function CashJournalPage() {
                 <TableCell colSpan={5} className="text-center">Chargement...</TableCell>
               </TableRow>
             ) : (
-              entries.map((entry: CashJournalEntry) => (
+              sortedEntries.map((entry: CashJournalEntry) => (
                 <TableRow key={entry.id}>
-                  <TableCell>{new Date(entry.date_operation).toLocaleDateString('fr-FR')}</TableCell>
+                  <TableCell>{new Date(entry.date_operation).toLocaleString('fr-FR')}</TableCell>
                   <TableCell>{entry.libelle}</TableCell>
                   <TableCell className="text-right text-green-600">{entry.type === 'RECETTE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>
                   <TableCell className="text-right text-red-600">{entry.type === 'DEPENSE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>

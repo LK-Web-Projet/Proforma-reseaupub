@@ -10,11 +10,21 @@ import { Plus } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 
 export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () => void, soldeFinal: number }) {
+  const getLocalDatetime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
   const [open, setOpen] = useState(false);
   const [libelle, setLibelle] = useState('');
   const [type, setType] = useState('RECETTE');
   const [montant, setMontant] = useState('');
-  const [dateOperation, setDateOperation] = useState(new Date().toISOString().slice(0, 16));
+  const [dateOperation, setDateOperation] = useState(getLocalDatetime());
   const [isSubmitDisabled, setIsSubmitDisabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -60,7 +70,7 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
         setLibelle('');
         setType('RECETTE');
         setMontant('');
-        setDateOperation(new Date().toISOString().slice(0, 16));
+        setDateOperation(getLocalDatetime());
       }
     } catch (error) {
       console.error('Failed to add cash journal entry:', error);
@@ -69,8 +79,15 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
     }
   };
 
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (isOpen) {
+      setDateOperation(getLocalDatetime());
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <Toaster richColors />
       <DialogTrigger asChild>
         <Button>
