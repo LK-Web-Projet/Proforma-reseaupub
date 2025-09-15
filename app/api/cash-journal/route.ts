@@ -6,9 +6,14 @@ const prisma = new PrismaClient();
 export async function GET() {
   try {
     const cashJournalEntries = await prisma.cashJournal.findMany({
-      orderBy: {
-        date_operation: 'asc',
-      },
+      orderBy: [
+        {
+          date_operation: 'asc',
+        },
+        {
+          createdAt: 'asc',
+        },
+      ],
     });
     return NextResponse.json(cashJournalEntries);
   } catch (error) {
@@ -26,9 +31,7 @@ export async function POST(request: Request) {
     }
 
     const lastEntry = await prisma.cashJournal.findFirst({
-      orderBy: {
-        date_operation: 'desc',
-      },
+      orderBy: [{ date_operation: "desc" }, { createdAt: "desc" }],
     });
 
     const previousSolde = lastEntry ? lastEntry.solde : 0;

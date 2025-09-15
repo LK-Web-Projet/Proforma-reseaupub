@@ -121,7 +121,7 @@ enum Devise {
 model CashJournal {
   id                  Int           @id @default(autoincrement())
   date_operation      DateTime
-  date_enregistrement DateTime      @default(now())
+  createdAt      DateTime @default(now())
   libelle             String
   type                OperationType
   montant             Float
