@@ -1,7 +1,7 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SignedIn, UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -13,23 +13,26 @@ import {
   Plus,
   UserPlus,
   UserRoundPlus,
-  BarChart
+  BarChart,
+  ChevronRight,
+  FileText,
+  Users,
+  Briefcase,
 } from "lucide-react";
-// Search,
-// Settings,
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarHeader,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-
 
 // Menu facture.
 const facture = [
@@ -43,16 +46,6 @@ const facture = [
     url: "/facture/new",
     icon: Plus,
   },
-  // {
-  //   title: "Search",
-  //   url: "#",
-  //   icon: Search,
-  // },
-  // {
-  //   title: "Settings",
-  //   url: "#",
-  //   icon: Settings,
-  // },
   {
     title: "Statistiques",
     url: "/statistiques",
@@ -90,29 +83,48 @@ export function AppSidebar() {
   const pathname = usePathname();
   const { user, isLoaded, isSignedIn } = useUser();
   const router = useRouter();
+  const [isFactureOpen, setIsFactureOpen] = useState(true);
+  const [isClientOpen, setIsClientOpen] = useState(false);
+  const [isCommercialOpen, setIsCommercialOpen] = useState(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       router.push("/sign-in"); // Redirige si l'utilisateur n'est pas connecté
     }
-  }, [isLoaded, isSignedIn , router]);
-  if (!isLoaded) {
-    return null; // Affiche un chargement ou rien pendant le chargement des données utilisateur
+  }, [isLoaded, isSignedIn, router]);
+
+  if (!isLoaded || !isSignedIn) {
+    return null;
   }
-  if (!isSignedIn) {
-    return null; // Ne pas afficher la sidebar si l'utilisateur n'est pas connecté
-  }
+
   return (
-    <Sidebar>
-      <SidebarHeader className="flex flex-col items-start justify-between ">
+    <Sidebar className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between p-2">
+      <SidebarHeader className="flex flex-col items-start justify-between mb-4 gap-2">
         <div className="relative"></div>
-        <h1 className="text-lg font-bold">Proforma</h1>
-        <p className="text-sm text-gray-500">Gestion de factures proforma</p>
+        <h1 className="text-lg font-bold">Finance reseaupub</h1>
+        <p className="text-sm text-gray-500">
+          Gestion de factures proforma & Finance
+        </p>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Facture</SidebarGroupLabel>
-          <SidebarGroupContent>
+        <Collapsible
+          open={isFactureOpen}
+          onOpenChange={setIsFactureOpen}
+          defaultOpen
+        >
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <FileText className="w-5 h-5" />
+              <span className="font-bold">Proforma</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 font-bold transition-transform",
+                  isFactureOpen && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
             <SidebarMenu className="space-y-1 pl-2">
               {facture.map((item) => (
                 <SidebarMenuItem key={item.title}>
@@ -134,11 +146,22 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Client</SidebarGroupLabel>
-          <SidebarGroupContent>
+          </CollapsibleContent>
+        </Collapsible>
+        <Collapsible open={isClientOpen} onOpenChange={setIsClientOpen}>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <Users className="w-5 h-5" />
+              <span className="font-bold">Client</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 transition-transform",
+                  isClientOpen && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
             <SidebarMenu className="space-y-1 pl-2">
               {client.map((item) => (
                 <SidebarMenuItem key={item.title}>
@@ -160,11 +183,22 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Commercial</SidebarGroupLabel>
-          <SidebarGroupContent>
+          </CollapsibleContent>
+        </Collapsible>
+        <Collapsible open={isCommercialOpen} onOpenChange={setIsCommercialOpen}>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <Briefcase className="w-5 h-5" />
+              <span className="font-bold">Commercial</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 transition-transform",
+                  isCommercialOpen && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
             <SidebarMenu className="space-y-1 pl-2">
               {Commercial.map((item) => (
                 <SidebarMenuItem key={item.title}>
@@ -186,8 +220,8 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+          </CollapsibleContent>
+        </Collapsible>
       </SidebarContent>
       <SidebarFooter>
         <div className="flex facture-center gap-2 pl-4">
