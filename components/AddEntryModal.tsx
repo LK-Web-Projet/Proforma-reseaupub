@@ -1,22 +1,37 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus } from 'lucide-react';
+import { toast, Toaster } from 'sonner';
 
-export function AddEntryModal({ onEntryAdded }: { onEntryAdded: () => void }) {
+export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () => void, soldeFinal: number }) {
   const [open, setOpen] = useState(false);
   const [libelle, setLibelle] = useState('');
   const [type, setType] = useState('RECETTE');
   const [montant, setMontant] = useState('');
   const [dateOperation, setDateOperation] = useState(new Date().toISOString().split('T')[0]);
+  const [isSubmitDisabled, setIsSubmitDisabled] = useState(false);
+
+  useEffect(() => {
+    if (type === 'DEPENSE' && parseFloat(montant) > soldeFinal) {
+      toast.error('Les fonds disponibles ne sont pas suffisants');
+      setIsSubmitDisabled(true);
+    } else {
+      setIsSubmitDisabled(false);
+    }
+  }, [montant, type, soldeFinal]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isSubmitDisabled) {
+      return;
+    }
 
     try {
       const res = await fetch('/api/cash-journal', {
@@ -47,6 +62,7 @@ export function AddEntryModal({ onEntryAdded }: { onEntryAdded: () => void }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      <Toaster richColors />
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-2 h-4 w-4" /> Ajouter une opération
@@ -98,7 +114,7 @@ export function AddEntryModal({ onEntryAdded }: { onEntryAdded: () => void }) {
               required
             />
           </div>
-          <Button type="submit">Ajouter</Button>
+          <Button type="submit" disabled={isSubmitDisabled}>Ajouter</Button>
         </form>
       </DialogContent>
     </Dialog>

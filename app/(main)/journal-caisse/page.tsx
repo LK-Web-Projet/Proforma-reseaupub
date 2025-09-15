@@ -35,7 +35,7 @@ export default function CashJournalPage() {
     <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Journal de Caisse</h1>
-        <AddEntryModal onEntryAdded={fetchData} />
+        <AddEntryModal onEntryAdded={fetchData} soldeFinal={soldeFinal} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3 mb-4">
