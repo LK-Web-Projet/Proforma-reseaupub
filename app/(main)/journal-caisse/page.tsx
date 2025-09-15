@@ -22,7 +22,7 @@ interface CashJournalEntry {
 export default function CashJournalPage() {
   const [entries, setEntries] = useState<CashJournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortOrder, setSortOrder] = useState('asc');
 
   async function fetchData() {
     try {
@@ -84,47 +84,49 @@ export default function CashJournalPage() {
       </div>
 
       <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost">
-                      Date
-                      <ArrowUpDown className="ml-2 h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => setSortOrder('asc')}>Croissant</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortOrder('desc')}>Décroissant</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableHead>
-              <TableHead>Libellé</TableHead>
-              <TableHead className="text-right">Recette</TableHead>
-              <TableHead className="text-right">Dépense</TableHead>
-              <TableHead className="text-right">Solde</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
+        <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
+          <Table>
+            <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
-                <TableCell colSpan={5} className="text-center">Chargement...</TableCell>
+                <TableHead>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost">
+                        Date
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => setSortOrder('asc')}>Croissant</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortOrder('desc')}>Décroissant</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableHead>
+                <TableHead>Libellé</TableHead>
+                <TableHead className="text-right">Recette</TableHead>
+                <TableHead className="text-right">Dépense</TableHead>
+                <TableHead className="text-right">Solde</TableHead>
               </TableRow>
-            ) : (
-              sortedEntries.map((entry: CashJournalEntry) => (
-                <TableRow key={entry.id}>
-                  <TableCell>{new Date(entry.date_operation).toLocaleString('fr-FR')}</TableCell>
-                  <TableCell>{entry.libelle}</TableCell>
-                  <TableCell className="text-right text-green-600">{entry.type === 'RECETTE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>
-                  <TableCell className="text-right text-red-600">{entry.type === 'DEPENSE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>
-                  <TableCell className="text-right font-medium">{entry.solde.toLocaleString('fr-FR')} FCFA</TableCell>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center">Chargement...</TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                sortedEntries.map((entry: CashJournalEntry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell>{new Date(entry.date_operation).toLocaleString('fr-FR')}</TableCell>
+                    <TableCell>{entry.libelle}</TableCell>
+                    <TableCell className="text-right text-green-600">{entry.type === 'RECETTE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>
+                    <TableCell className="text-right text-red-600">{entry.type === 'DEPENSE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>
+                    <TableCell className="text-right font-medium">{entry.solde.toLocaleString('fr-FR')} FCFA</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
     </div>
   );
