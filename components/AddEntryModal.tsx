@@ -125,8 +125,8 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="RECETTE">Recette</SelectItem>
-                <SelectItem value="DEPENSE">Dépense</SelectItem>
+                <SelectItem value="RECETTE"  className='text-green-700 font-bold'>Recette</SelectItem>
+                <SelectItem value="DEPENSE" className='text-red-600 font-bold'>Dépense</SelectItem>
               </SelectContent>
             </Select>
           </div>

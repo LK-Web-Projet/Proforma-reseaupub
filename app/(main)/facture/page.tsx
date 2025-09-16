@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Eye, Filter } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -190,7 +191,20 @@ export default function Home() {
                   <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
                   <TableCell className="font-mono">{facture.numero}</TableCell>
                   <TableCell>{facture.client?.nom || '-'}</TableCell>
-                  <TableCell>{facture.objet}</TableCell>
+                  <TableCell>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="truncate max-w-[150px] inline-block">
+                            {facture.objet}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{facture.objet}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </TableCell>
                   <TableCell className="text-center">
                     {facture.gestionnaires?.length > 0
                       ? facture.gestionnaires
@@ -219,7 +233,7 @@ export default function Home() {
                           ? 'annuler'
                           : facture.statut === 'Archiver'
                           ? 'archiver'
-                          : 'default' // Fallback to "default" if no match
+                          : 'brouillon' // Fallback to "brouillon" if no match
                       }
                     >
                       {facture.statut}

@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FileText, Receipt, Upload, Trash2 } from "lucide-react";
 import {
   Dialog,
@@ -430,7 +431,18 @@ export default function FactureDetailPage() {
             placeholder="Ex: Prestation de services"
           />
         ) : (
-          facture.objet
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="truncate max-w-xs inline-block align-bottom">
+                  {facture.objet}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{facture.objet}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
 
