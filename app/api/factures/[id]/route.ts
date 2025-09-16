@@ -21,6 +21,7 @@ const updateInvoiceSchema = z.object({
   tva: z.coerce.number().min(0).optional(), // pourcentage attendu (ex: 18)
   devise: z.enum(["XOF", "EUR", "USD"]).optional(),
   paymentConditionPercentage: z.number().optional().nullable(),
+  objet: z.string().min(1, "L'objet de la facture est requis.").optional(),
 });
 
 // ---------- Helpers ----------
@@ -92,7 +93,7 @@ async function updateFacture(id: string, body: unknown) {
   }
 
   console.log("Validation réussie. Données validées:", validation.data);
-  const { statut, produits, tva, devise, paymentConditionPercentage } = validation.data;
+  const { statut, produits, tva, devise, paymentConditionPercentage, objet } = validation.data;
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,6 +110,11 @@ async function updateFacture(id: string, body: unknown) {
 
     if (paymentConditionPercentage !== undefined) {
       updatedFactureData.paymentConditionPercentage = paymentConditionPercentage;
+    }
+
+    if (objet) {
+      updatedFactureData.objet = objet;
+      console.log(`Mise à jour de l'objet: ${objet}`);
     }
 
     if (produits && tva !== undefined) {

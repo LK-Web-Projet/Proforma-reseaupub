@@ -422,7 +422,16 @@ export default function FactureDetailPage() {
       {/* Objet */}
       <div className="mb-6">
         <span className="font-semibold text-primary">Objet :</span>{" "}
-        {facture.objet}
+        {isEditing ? (
+          <Input
+            name="objet"
+            value={formData.objet}
+            onChange={handleInputChange}
+            placeholder="Ex: Prestation de services"
+          />
+        ) : (
+          facture.objet
+        )}
       </div>
 
       {facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0 && !isEditing && (
