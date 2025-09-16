@@ -82,9 +82,12 @@ export default function Home() {
         {/* Filtres et Recherche */}
         <div className="w-full">
           <div className="flex gap-4 mb-4">
-            <Button onClick={() => setFiltersVisible(!filtersVisible)} variant="outline">
+            <Button
+              onClick={() => setFiltersVisible(!filtersVisible)}
+              variant="outline"
+            >
               <Filter className="mr-2 h-4 w-4" />
-              {filtersVisible ? 'Masquer les filtres' : 'Afficher les filtres'}
+              {filtersVisible ? "Masquer les filtres" : "Afficher les filtres"}
             </Button>
           </div>
 
@@ -93,7 +96,9 @@ export default function Home() {
               <h2 className="text-lg font-semibold mb-2">Filtres</h2>
               <div className="flex gap-4 flex-wrap items-end">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Client</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Client
+                  </label>
                   <select
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value)}
@@ -109,7 +114,9 @@ export default function Home() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Date min</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Date min
+                  </label>
                   <Input
                     type="date"
                     value={dateMin}
@@ -119,7 +126,9 @@ export default function Home() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Date max</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Date max
+                  </label>
                   <Input
                     type="date"
                     value={dateMax}
@@ -129,7 +138,9 @@ export default function Home() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Statut</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Statut
+                  </label>
                   <select
                     value={statut}
                     onChange={(e) => setStatut(e.target.value)}
@@ -147,9 +158,11 @@ export default function Home() {
               </div>
             </div>
           )}
-          
+
           <div className="w-full">
-            <label htmlFor="search-objet" className="sr-only">Rechercher par objet</label>
+            <label htmlFor="search-objet" className="sr-only">
+              Rechercher par objet
+            </label>
             <Input
               id="search-objet"
               type="text"
@@ -164,7 +177,7 @@ export default function Home() {
 
       <div className="rounded-md   bg-white">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
               <TableHead>Date</TableHead>
               <TableHead>Numéro</TableHead>
@@ -190,7 +203,7 @@ export default function Home() {
                 <TableRow key={facture.id}>
                   <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
                   <TableCell className="font-mono">{facture.numero}</TableCell>
-                  <TableCell>{facture.client?.nom || '-'}</TableCell>
+                  <TableCell>{facture.client?.nom || "-"}</TableCell>
                   <TableCell>
                     <TooltipProvider>
                       <Tooltip>
@@ -214,8 +227,8 @@ export default function Home() {
                             }) =>
                               `${g.gestionnaire.prenom} ${g.gestionnaire.nom}`
                           )
-                          .join(', ')
-                      : '-'}
+                          .join(", ")
+                      : "-"}
                   </TableCell>
                   <TableCell className="text-right font-semibold">
                     {formatMoney(facture.totalTTC, facture.devise)}
@@ -223,17 +236,17 @@ export default function Home() {
                   <TableCell className="text-center">
                     <Badge
                       variant={
-                        facture.statut === 'Envoyer'
-                          ? 'envoyer'
-                          : facture.statut === 'Valider'
-                          ? 'valider'
-                          : facture.statut === 'Payer'
-                          ? 'payer'
-                          : facture.statut === 'Annuler'
-                          ? 'annuler'
-                          : facture.statut === 'Archiver'
-                          ? 'archiver'
-                          : 'brouillon' // Fallback to "brouillon" if no match
+                        facture.statut === "Envoyer"
+                          ? "envoyer"
+                          : facture.statut === "Valider"
+                          ? "valider"
+                          : facture.statut === "Payer"
+                          ? "payer"
+                          : facture.statut === "Annuler"
+                          ? "annuler"
+                          : facture.statut === "Archiver"
+                          ? "archiver"
+                          : "brouillon" // Fallback to "brouillon" if no match
                       }
                     >
                       {facture.statut}
