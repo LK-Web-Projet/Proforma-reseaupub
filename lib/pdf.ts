@@ -63,15 +63,25 @@ export async function generateInvoicePdf(
   y.value -= 40;
 
   // Infos facture
-  drawText(page, font, `Facture n° ${facture.numero ?? "001"}`, 370, y.value);
+  drawText(page, font, `Facture n° ${facture.numero ?? "001"}`, 300, y.value);
   y.value -= 15;
-  drawText(page, font, `Objet : ${facture.objet ?? "Objet"}`, 370, y.value);
+  const objetText = `Objet : ${facture.objet ?? "Objet"}`;
+  const objetFontSize = 10; // Smaller font size
+  const objetX = 300; // Shifted to the left
+  const objetMaxWidth = width - objetX - pageMargin; // Max width for the text
+  const objetLines = getLines(objetText, font, objetFontSize, objetMaxWidth);
+
+  for (const line of objetLines) {
+    drawText(page, font, line, objetX, y.value, objetFontSize);
+    y.value -= 12; // Adjust line spacing
+  }
+  y.value += 12; // Adjust back for the next element
   y.value -= 15;
   drawText(
     page,
     font,
     `Date : ${new Date(facture.dateCreation).toLocaleDateString("fr-FR")}`,
-    370,
+    300,
     y.value
   );
   y.value -= 50;
