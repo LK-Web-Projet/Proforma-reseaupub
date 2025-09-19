@@ -79,6 +79,8 @@ Pour assurer une bonne organisation et éviter les conflits, veuillez suivre cet
 -   **`develop`**: C'est la branche de développement principale. Toutes les nouvelles fonctionnalités doivent être fusionnées ici avant de passer sur `main`.
 -   **`feature/...`**: Pour chaque nouvelle fonctionnalité, créez une branche à partir de `develop`.
     -   Exemple : `feature/gestion-clients` ou `feature/export-pdf`
+-   **`security/...`**: Pour chaque test de securité lier a l'app, créez une branche à partir de `develop`.
+    -   Exemple : `security//scan/api-payments` ou `security/fix/`
 
 **Flux de travail :**
 1.  Assurez-vous que votre branche `develop` est à jour : `git pull origin develop`.
