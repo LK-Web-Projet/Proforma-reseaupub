@@ -11,7 +11,7 @@ const productSchema = z.object({
   quantite: z.coerce.number().min(1, "quantité min 1"),
   prixUnitaire: z.coerce.number().min(0, "prix unitaire >= 0"),
   duree: z.coerce.number().min(0).optional(),
-  uniteDuree: z.enum(["jour", "heure", "mois"]).optional(),
+  uniteDuree: z.enum(["jour", "heure", "mois" , "semaine"]).optional(),
   includeduree: z.boolean().optional(),
 });
 
