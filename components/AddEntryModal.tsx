@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -8,8 +7,22 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
+import { Switch } from '@/components/ui/switch'; // Import Switch component
 
-export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () => void, soldeFinal: number }) {
+interface CashRegister {
+  id: number;
+  name: string;
+  balance: number;
+  createdAt: string;
+}
+
+interface AddEntryModalProps {
+  onEntryAdded: () => void;
+  cashRegisters: CashRegister[];
+  selectedCashRegisterId: number | null;
+}
+
+export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegisterId }: AddEntryModalProps) {
   const getLocalDatetime = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -25,21 +38,58 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
   const [type, setType] = useState('RECETTE');
   const [montant, setMontant] = useState('');
   const [dateOperation, setDateOperation] = useState(getLocalDatetime());
+  const [cashRegisterId, setCashRegisterId] = useState<string>('');
+  const [destinationCashRegisterId, setDestinationCashRegisterId] = useState<string>('');
+  const [isApportDeCaisse, setIsApportDeCaisse] = useState(false); // New state for apport de caisse
   const [isSubmitDisabled, setIsSubmitDisabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const montantValue = parseFloat(montant);
-    if (montant && montantValue === 0) {
-      toast.error('Le montant ne peut pas être zéro');
-      setIsSubmitDisabled(true);
-    } else if (type === 'DEPENSE' && montant && montantValue > soldeFinal) {
-      toast.error('Les fonds disponibles ne sont pas suffisants');
-      setIsSubmitDisabled(true);
-    } else {
-      setIsSubmitDisabled(false);
+    if (selectedCashRegisterId !== null) {
+      setCashRegisterId(selectedCashRegisterId.toString());
+    } else if (cashRegisters.length > 0) {
+      // Default to the first register if none is selected
+      setCashRegisterId(cashRegisters[0].id.toString());
     }
-  }, [montant, type, soldeFinal]);
+  }, [selectedCashRegisterId, cashRegisters]);
+
+  useEffect(() => {
+    const montantValue = parseFloat(montant);
+    let disable = false;
+    let errorMessage = '';
+
+    if (!libelle.trim() || !montant || montantValue <= 0 || !dateOperation || !cashRegisterId) {
+      disable = true;
+      errorMessage = 'Veuillez remplir tous les champs requis et s\'assurer que le montant est positif.';
+    }
+
+    const currentCashRegister = cashRegisters.find(reg => reg.id.toString() === cashRegisterId);
+
+    if (currentCashRegister && (type === 'DEPENSE' || type === 'TRANSFERT')) {
+      if (montantValue > currentCashRegister.balance) {
+        disable = true;
+        errorMessage = `Fonds insuffisants dans la caisse ${currentCashRegister.name}. Solde actuel: ${currentCashRegister.balance.toLocaleString('fr-FR')} FCFA`;
+      }
+    }
+
+    if (type === 'TRANSFERT') {
+      if (!destinationCashRegisterId || cashRegisterId === destinationCashRegisterId) {
+        disable = true;
+        if (!errorMessage) errorMessage = 'Veuillez sélectionner une caisse de destination différente de la source.';
+      }
+    }
+
+    setIsSubmitDisabled(disable);
+    if (disable && errorMessage) {
+      const timer = setTimeout(() => {
+        if (isSubmitDisabled && errorMessage) {
+          toast.error(errorMessage);
+        }
+      }, 500); 
+      return () => clearTimeout(timer);
+    }
+
+  }, [libelle, montant, dateOperation, type, cashRegisterId, destinationCashRegisterId, cashRegisters, isApportDeCaisse]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,29 +101,45 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
     setIsSubmitting(true);
 
     try {
+      const payload: any = {
+        libelle,
+        type,
+        montant: parseFloat(montant),
+        date_operation: dateOperation,
+        cashRegisterId: parseInt(cashRegisterId),
+      };
+
+      if (type === 'TRANSFERT') {
+        payload.destinationCashRegisterId = parseInt(destinationCashRegisterId);
+      } else if (type === 'RECETTE') {
+        payload.isApportDeCaisse = isApportDeCaisse;
+      }
+
       const res = await fetch('/api/cash-journal', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          libelle,
-          type,
-          montant: parseFloat(montant),
-          date_operation: dateOperation,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
+        toast.success('Opération ajoutée avec succès.');
         onEntryAdded();
         setOpen(false);
         setLibelle('');
         setType('RECETTE');
         setMontant('');
         setDateOperation(getLocalDatetime());
+        setDestinationCashRegisterId(''); 
+        setIsApportDeCaisse(false); // Reset apport de caisse
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.error || 'Échec de l\'ajout de l\'opération.');
       }
     } catch (error) {
       console.error('Failed to add cash journal entry:', error);
+      toast.error('Une erreur est survenue lors de l\'ajout de l\'opération.');
     } finally {
       setIsSubmitting(false);
     }
@@ -83,8 +149,21 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
     setOpen(isOpen);
     if (isOpen) {
       setDateOperation(getLocalDatetime());
+      // Reset form fields when opening
+      setLibelle('');
+      setType('RECETTE');
+      setMontant('');
+      setDestinationCashRegisterId('');
+      setIsApportDeCaisse(false); // Reset apport de caisse
+      if (selectedCashRegisterId !== null) {
+        setCashRegisterId(selectedCashRegisterId.toString());
+      } else if (cashRegisters.length > 0) {
+        setCashRegisterId(cashRegisters[0].id.toString());
+      }
     }
   };
+
+  const availableDestinationRegisters = cashRegisters.filter(reg => reg.id.toString() !== cashRegisterId);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -119,17 +198,60 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
             />
           </div>
           <div>
+            <label htmlFor="cashRegister">Caisse</label>
+            <Select value={cashRegisterId} onValueChange={setCashRegisterId} disabled={cashRegisters.length === 0}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner une caisse" />
+              </SelectTrigger>
+              <SelectContent>
+                {cashRegisters.map((register) => (
+                  <SelectItem key={register.id} value={register.id.toString()}>
+                    {register.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <label htmlFor="type">Type</label>
             <Select value={type} onValueChange={setType}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="RECETTE"  className='text-green-700 font-bold'>Recette</SelectItem>
+                <SelectItem value="RECETTE" className='text-green-700 font-bold'>Recette</SelectItem>
                 <SelectItem value="DEPENSE" className='text-red-600 font-bold'>Dépense</SelectItem>
+                <SelectItem value="TRANSFERT" className='text-blue-600 font-bold'>Transfert</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {type === 'TRANSFERT' && (
+            <div>
+              <label htmlFor="destinationCashRegister">Caisse de destination</label>
+              <Select value={destinationCashRegisterId} onValueChange={setDestinationCashRegisterId} disabled={availableDestinationRegisters.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner une caisse de destination" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableDestinationRegisters.map((register) => (
+                    <SelectItem key={register.id} value={register.id.toString()}>
+                      {register.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {type === 'RECETTE' && (
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="isApportDeCaisse"
+                checked={isApportDeCaisse}
+                onCheckedChange={setIsApportDeCaisse}
+              />
+              <label htmlFor="isApportDeCaisse">Est un apport de caisse ?</label>
+            </div>
+          )}
           <div>
             <label htmlFor="montant">Montant</label>
             <Input
@@ -148,4 +270,3 @@ export function AddEntryModal({ onEntryAdded, soldeFinal }: { onEntryAdded: () =
     </Dialog>
   );
 }
-

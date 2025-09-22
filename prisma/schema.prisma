@@ -118,17 +118,30 @@ enum Devise {
   USD
 }
 
+model CashRegister {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  balance   Float         @default(0)
+  createdAt DateTime      @default(now())
+  journals  CashJournal[]
+}
+
 model CashJournal {
-  id                  Int           @id @default(autoincrement())
-  date_operation      DateTime
-  createdAt      DateTime @default(now())
-  libelle             String
-  type                OperationType
-  montant             Float
-  solde               Float
+  id               Int           @id @default(autoincrement())
+  date_operation   DateTime
+  createdAt        DateTime      @default(now())
+  libelle          String
+  type             OperationType
+  montant          Float
+  solde            Float
+  isApportDeCaisse Boolean?       @default(false)
+
+  cashRegisterId Int
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
 }
 
 enum OperationType {
   RECETTE
   DEPENSE
+  TRANSFERT
 }

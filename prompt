@@ -1,1 +1,135 @@
 Je souhaite permettre l’upload, la consultation et le remplacement d’un bon de commande et d’une facture normalisée (au format PDF) associés à une facture proforma, directement depuis la page facture/[id]/page.tsx, à l’aide de deux boutons distincts. Les fichiers doivent être stockés dans les dossiers Upload/Bon et Upload/Facture, chacun contenant un sous-dossier nommé selon le numéro de la proforma concernée. Lorsqu’un fichier est ajouté ou supprimé, l’état de la facture proforma doit être mis à jour automatiquement en fonction de la présence ou non des documents associés."
+
+
+Ok, je vois bien la logique actuelle 👌. Tu as un **journal de caisse unique** (`CashJournal`) qui gère tout, mais en réalité tu dois gérer **plusieurs caisses différentes** (Comptable, Mobile Money, Carte bancaire, etc.).
+
+Actuellement :
+
+* Tu enregistres une opération avec un `type` (RECETTE ou DEPENSE).
+* Le `solde` est calculé en fonction du `previousSolde`.
+* Mais ça suppose une seule caisse.
+
+👉 Ce qu’il te manque : une **table pour les caisses** et un lien avec les opérations.
+
+---
+
+### Proposition de schéma
+
+```prisma
+model CashRegister {
+  id          Int       @id @default(autoincrement())
+  name        String    // Exemple : "Caisse Comptable", "Mobile Money", "Carte bancaire"
+  createdAt   DateTime  @default(now())
+  journals    CashJournal[]
+}
+
+model CashJournal {
+  id             Int           @id @default(autoincrement())
+  cashRegisterId Int
+  cashRegister   CashRegister  @relation(fields: [cashRegisterId], references: [id])
+  date_operation DateTime
+  createdAt      DateTime @default(now())
+  libelle        String
+  type           OperationType
+  montant        Float
+  solde          Float
+}
+
+enum OperationType {
+  RECETTE
+  DEPENSE
+}
+```
+
+---
+
+### Avantages :
+
+1. Chaque opération est **rattachée à une caisse** (`cashRegisterId`).
+2. Tu peux garder un **suivi séparé des soldes par caisse**.
+3. Ta logique `newSolde = type === 'RECETTE' ? previousSolde + montant : previousSolde - montant;` reste valide, mais appliquée **par caisse**.
+
+---
+
+### Exemple de logique dans ton API
+
+```js
+async function addOperation(cashRegisterId, type, montant, libelle) {
+  // Récupérer le dernier solde de cette caisse
+  const lastOperation = await prisma.cashJournal.findFirst({
+    where: { cashRegisterId },
+    orderBy: { date_operation: 'desc' }
+  });
+
+  const previousSolde = lastOperation ? lastOperation.solde : 0;
+
+  const newSolde =
+    type === 'RECETTE'
+      ? previousSolde + montant
+      : previousSolde - montant;
+
+  // Créer l’opération
+  return prisma.cashJournal.create({
+    data: {
+      cashRegisterId,
+      type,
+      montant,
+      libelle,
+      date_operation: new Date(),
+      solde: newSolde,
+    }
+  });
+}
+```
+
+---
+
+👉 Question pour avancer :
+Veux-tu que **chaque caisse ait un champ `currentSolde` dans la table `CashRegister`** (pour éviter de recalculer à chaque fois), ou tu préfères toujours recalculer à partir du dernier journal ?
+
+
+Exactement 👍.
+Il faudra **créer tes caisses (`CashRegister`) une seule fois** dans la base de données, par exemple :
+
+* **Caisse comptable**
+* **Caisse Mobile Money**
+* **Caisse Carte bancaire**
+
+Ensuite, toutes les opérations (`CashJournal`) feront référence à l’une de ces caisses via `cashRegisterId`.
+
+---
+
+### Exemple : création des caisses (seed)
+
+Si tu veux les insérer au départ :
+
+```js
+await prisma.cashRegister.createMany({
+  data: [
+    { name: "Caisse comptable" },
+    { name: "Mobile Money" },
+    { name: "Carte bancaire" }
+  ]
+});
+```
+
+---
+
+### Ensuite, quand tu ajoutes une opération
+
+Tu passes **l’ID de la caisse** concernée :
+
+```js
+await addOperation(1, "RECETTE", 50000, "Versement client"); // Caisse comptable
+await addOperation(2, "DEPENSE", 10000, "Retrait agent");    // Mobile Money
+await addOperation(3, "RECETTE", 20000, "Paiement en ligne"); // Carte bancaire
+```
+
+---
+
+👉 Comme ça, tu as un suivi clair :
+
+* Chaque caisse garde son solde indépendant.
+* Tu peux sortir un état par caisse **ou global** (en faisant la somme des soldes).
+
+Veux-tu que je t’écrive aussi le **schema complet Prisma** avec la relation et un petit exemple de requête Prisma pour récupérer le solde actuel de toutes les caisses en une seule fois ?
