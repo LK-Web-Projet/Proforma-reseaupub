@@ -19,6 +19,8 @@ import {
   Users,
   Briefcase,
   Landmark,
+  Wallet,
+  FileDown,
 } from "lucide-react";
 import {
   Collapsible,
@@ -84,7 +86,12 @@ const finance = [
   {
     title: "Journal de Caisse",
     url: "/journal-caisse",
-    icon: Landmark,
+    icon: Wallet,
+  },
+  {
+    title: "Export journal de Caisse",
+    url: "/journal-caisse/export",
+    icon: FileDown,
   },
 ];
 
