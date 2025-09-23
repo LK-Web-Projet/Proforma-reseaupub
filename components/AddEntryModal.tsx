@@ -43,6 +43,7 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
   const [isApportDeCaisse, setIsApportDeCaisse] = useState(false); // New state for apport de caisse
   const [isSubmitDisabled, setIsSubmitDisabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (selectedCashRegisterId !== null) {
@@ -54,13 +55,15 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
   }, [selectedCashRegisterId, cashRegisters]);
 
   useEffect(() => {
+    if (!open) return;
+
     const montantValue = parseFloat(montant);
     let disable = false;
-    let errorMessage = '';
+    let msg = '';
 
     if (!libelle.trim() || !montant || montantValue <= 0 || !dateOperation || !cashRegisterId) {
       disable = true;
-      errorMessage = 'Veuillez remplir tous les champs requis et s\'assurer que le montant est positif.';
+      msg = 'Veuillez remplir tous les champs requis et s\'assurer que le montant est positif.';
     }
 
     const currentCashRegister = cashRegisters.find(reg => reg.id.toString() === cashRegisterId);
@@ -68,33 +71,29 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
     if (currentCashRegister && (type === 'DEPENSE' || type === 'TRANSFERT')) {
       if (montantValue > currentCashRegister.balance) {
         disable = true;
-        errorMessage = `Fonds insuffisants dans la caisse ${currentCashRegister.name}. Solde actuel: ${currentCashRegister.balance.toLocaleString('fr-FR')} FCFA`;
+        msg = `Fonds insuffisants dans la caisse ${currentCashRegister.name}. Solde actuel: ${currentCashRegister.balance.toLocaleString('fr-FR')} FCFA`;
       }
     }
 
     if (type === 'TRANSFERT') {
       if (!destinationCashRegisterId || cashRegisterId === destinationCashRegisterId) {
         disable = true;
-        if (!errorMessage) errorMessage = 'Veuillez sélectionner une caisse de destination différente de la source.';
+        if (!msg) msg = 'Veuillez sélectionner une caisse de destination différente de la source.';
       }
     }
 
     setIsSubmitDisabled(disable);
-    if (disable && errorMessage) {
-      const timer = setTimeout(() => {
-        if (isSubmitDisabled && errorMessage) {
-          toast.error(errorMessage);
-        }
-      }, 500); 
-      return () => clearTimeout(timer);
-    }
+    setErrorMessage(msg);
 
-  }, [libelle, montant, dateOperation, type, cashRegisterId, destinationCashRegisterId, cashRegisters, isApportDeCaisse]);
+  }, [open, libelle, montant, dateOperation, type, cashRegisterId, destinationCashRegisterId, cashRegisters, isApportDeCaisse]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (isSubmitDisabled) {
+      if (errorMessage) {
+        toast.error(errorMessage);
+      }
       return;
     }
 

@@ -140,11 +140,21 @@ export default function CashJournalPage() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Journal de Caisse</h1>
         <div className="flex gap-2">
-          <Button onClick={handleRecalculate} disabled={isRecalculating} variant="outline">
-            <RefreshCcw className={cn("mr-2 h-4 w-4", isRecalculating && "animate-spin")} />
+          <Button
+            onClick={handleRecalculate}
+            disabled={isRecalculating}
+            variant="outline"
+          >
+            <RefreshCcw
+              className={cn("mr-2 h-4 w-4", isRecalculating && "animate-spin")}
+            />
             {isRecalculating ? "Recalcul en cours..." : "Recalculer les soldes"}
           </Button>
-          <AddEntryModal onEntryAdded={fetchData} cashRegisters={cashRegisters} selectedCashRegisterId={selectedCashRegisterId} />
+          <AddEntryModal
+            onEntryAdded={fetchData}
+            cashRegisters={cashRegisters}
+            selectedCashRegisterId={selectedCashRegisterId}
+          />
         </div>
       </div>
 
@@ -161,15 +171,26 @@ export default function CashJournalPage() {
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{soldeFinalGlobal.toLocaleString('fr-FR')} FCFA</div>
+            <div className="text-2xl font-bold">
+              {soldeFinalGlobal.toLocaleString("fr-FR")} FCFA
+            </div>
             <p className="text-xs text-muted-foreground">
-              Recettes: {totalRecettesGlobal.toLocaleString('fr-FR')} | Dépenses: {totalDepensesGlobal.toLocaleString('fr-FR')}
+              Recettes: {totalRecettesGlobal.toLocaleString("fr-FR")} |
+              Dépenses: {totalDepensesGlobal.toLocaleString("fr-FR")}
             </p>
           </CardContent>
         </Card>
         {cashRegisters.map((register) => {
-          const registerRecettes = allEntries.filter(e => e.cashRegisterId === register.id && e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
-          const registerDepenses = allEntries.filter(e => e.cashRegisterId === register.id && e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
+          const registerRecettes = allEntries
+            .filter(
+              (e) => e.cashRegisterId === register.id && e.type === "RECETTE"
+            )
+            .reduce((acc, curr) => acc + curr.montant, 0);
+          const registerDepenses = allEntries
+            .filter(
+              (e) => e.cashRegisterId === register.id && e.type === "DEPENSE"
+            )
+            .reduce((acc, curr) => acc + curr.montant, 0);
           // const registerSolde = registerRecettes - registerDepenses; // This is not needed as register.balance is the source of truth
 
           return (
@@ -177,18 +198,24 @@ export default function CashJournalPage() {
               key={register.id}
               className={cn(
                 "cursor-pointer hover:shadow-lg transition-shadow",
-                selectedCashRegisterId === register.id && "border-2 border-primary"
+                selectedCashRegisterId === register.id &&
+                  "border-2 border-primary"
               )}
               onClick={() => setSelectedCashRegisterId(register.id)}
             >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{register.name}</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  {register.name}
+                </CardTitle>
                 <Wallet className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{register.balance.toLocaleString('fr-FR')} FCFA</div>
+                <div className="text-2xl font-bold">
+                  {register.balance.toLocaleString("fr-FR")} FCFA
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Recettes: {registerRecettes.toLocaleString('fr-FR')} | Dépenses: {registerDepenses.toLocaleString('fr-FR')}
+                  Recettes: {registerRecettes.toLocaleString("fr-FR")} |
+                  Dépenses: {registerDepenses.toLocaleString("fr-FR")}
                 </p>
               </CardContent>
             </Card>
@@ -210,28 +237,67 @@ export default function CashJournalPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
-                <TableHead><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost">Date<ArrowUpDown className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuItem onClick={() => setSortOrder('asc')}>Croissant</DropdownMenuItem><DropdownMenuItem onClick={() => setSortOrder('desc')}>Décroissant</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableHead>
+                <TableHead>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost">
+                        Date
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => setSortOrder("asc")}>
+                        Croissant
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortOrder("desc")}>
+                        Décroissant
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableHead>
                 <TableHead>Caisse</TableHead>
                 <TableHead>Libellé</TableHead>
-                <TableHead>Catégorie Recette</TableHead>
-                <TableHead className="text-right">Recette</TableHead>
+                <TableHead>Type d&apos;Entrée</TableHead>
+                <TableHead className="text-right">Entrée d’argent</TableHead>
                 <TableHead className="text-right">Dépense</TableHead>
                 <TableHead className="text-right">Solde</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center">Chargement...</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center">
+                    Chargement...
+                  </TableCell>
+                </TableRow>
               ) : (
                 sortedEntries.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell>{new Date(entry.date_operation).toLocaleString('fr-FR')}</TableCell>
+                    <TableCell>
+                      {new Date(entry.date_operation).toLocaleString("fr-FR")}
+                    </TableCell>
                     <TableCell>{entry.cashRegister.name}</TableCell>
                     <TableCell>{entry.libelle}</TableCell>
-                    <TableCell>{entry.type === 'RECETTE' ? (entry.isApportDeCaisse ? 'Apport de Caisse' : 'Recette') : ''}</TableCell>
-                    <TableCell className="text-right text-green-600">{entry.type === 'RECETTE' || entry.type === 'TRANSFERT' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>
-                    <TableCell className="text-right text-red-600">{entry.type === 'DEPENSE' || entry.type === 'TRANSFERT' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}</TableCell>
-                    <TableCell className="text-right font-medium">{entry.solde.toLocaleString('fr-FR')} FCFA</TableCell>
+                    <TableCell>
+                      {entry.type === "RECETTE"
+                        ? entry.isApportDeCaisse
+                          ? "Apport de Caisse"
+                          : "Recette"
+                        : ""}
+                    </TableCell>
+                    <TableCell className="text-right text-green-600">
+                      {entry.type === "RECETTE" || entry.type === "TRANSFERT"
+                        ? `${entry.montant.toLocaleString("fr-FR")} FCFA`
+                        : ""}
+                    </TableCell>
+                    <TableCell className="text-right text-red-600">
+                      {entry.type === "DEPENSE" || entry.type === "TRANSFERT"
+                        ? `${entry.montant.toLocaleString("fr-FR")} FCFA`
+                        : ""}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {entry.solde.toLocaleString("fr-FR")} FCFA
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -241,7 +307,10 @@ export default function CashJournalPage() {
       </Card>
 
       {/* Add New Cash Register Modal */}
-      <Dialog open={addRegisterModalOpen} onOpenChange={setAddRegisterModalOpen}>
+      <Dialog
+        open={addRegisterModalOpen}
+        onOpenChange={setAddRegisterModalOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Ajouter une nouvelle caisse</DialogTitle>
