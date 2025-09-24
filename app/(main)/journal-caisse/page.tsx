@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface CashJournalEntry {
   id: number;
@@ -277,7 +278,20 @@ export default function CashJournalPage() {
                       {new Date(entry.date_operation).toLocaleString("fr-FR")}
                     </TableCell>
                     <TableCell>{entry.cashRegister.name}</TableCell>
-                    <TableCell>{entry.libelle}</TableCell>
+                    <TableCell>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="truncate max-w-[250px] cursor-pointer">
+                              {entry.libelle}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{entry.libelle}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
                     <TableCell>
                       {entry.type === "RECETTE"
                         ? entry.isApportDeCaisse
