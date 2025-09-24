@@ -136,7 +136,7 @@ model CashJournal {
   solde            Float
   isApportDeCaisse Boolean?       @default(false)
 
-  cashRegisterId Int
+  cashRegisterId Int           @default(1)
   cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
 }
 
