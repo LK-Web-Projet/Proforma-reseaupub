@@ -160,7 +160,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(result, { status: 201 });
-  } catch (error: any) {
+  } catch (error: Error ) {
     console.error(error);
     return NextResponse.json({ error: error.message || 'An error occurred while creating the cash journal entry.' }, { status: 500 });
   }

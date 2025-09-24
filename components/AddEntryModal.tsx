@@ -100,7 +100,7 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
     setIsSubmitting(true);
 
     try {
-      const payload: any = {
+      const payload: { libelle: string; type: string; montant: number; date_operation: string; cashRegisterId: number; destinationCashRegisterId?: number; isApportDeCaisse?: boolean } = {
         libelle,
         type,
         montant: parseFloat(montant),

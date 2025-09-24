@@ -3,7 +3,7 @@ import { PrismaClient, OperationType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
     // Fetch all cash registers
     const cashRegisters = await prisma.cashRegister.findMany();
