@@ -38,6 +38,8 @@ export default function ExportCashJournalPage() {
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('all');
   const [dateRange, setDateRange] = useState<{ from: Date | undefined, to: Date | undefined }>({ from: undefined, to: undefined });
   const [loading, setLoading] = useState(true);
+  const [fromMonth, setFromMonth] = useState<Date>(new Date());
+  const [toMonth, setToMonth] = useState<Date>(new Date());
 
   // Fetch all data on mount
   useEffect(() => {
@@ -74,7 +76,7 @@ export default function ExportCashJournalPage() {
         toDate.setHours(23, 59, 59, 999);
         result = result.filter(e => new Date(e.date_operation) <= toDate);
     }
-    return result.sort((a, b) => new Date(a.date_operation).getTime() - new Date(b.date_operation).getTime());
+    return result.sort((a, b) => a.id - b.id);
   }, [allEntries, selectedCashRegisterId, dateRange]);
 
   const handleExport = () => {
@@ -85,35 +87,40 @@ export default function ExportCashJournalPage() {
 
     // Prepare data for worksheet
     const dataToExport = filteredEntries.map(entry => ({
+      'ID': entry.id,
       'Date': new Date(entry.date_operation).toLocaleDateString('fr-FR'),
       'Caisse': entry.cashRegister.name,
       'Libellé': entry.libelle,
       'Recettes (FCFA)': entry.type === 'RECETTE' ? entry.montant : '',
       'Dépenses (FCFA)': entry.type === 'DEPENSE' ? entry.montant : '',
+      'Solde (FCFA)': entry.solde,
     }));
 
     const totalRecettes = filteredEntries.filter(e => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
     const totalDepenses = filteredEntries.filter(e => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
-    const solde = totalRecettes - totalDepenses;
+    const soldeDeLaPeriode = filteredEntries.length > 0 ? filteredEntries[filteredEntries.length - 1].solde : 0;
+
 
     // Create worksheet
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
 
     // Add totals to the worksheet
     XLSX.utils.sheet_add_aoa(worksheet, [
-      ['' , '', '', '', ''], // Spacer row
-      ['Total Recettes', '', '', totalRecettes, ''],
-      ['Total Dépenses', '', '', '', totalDepenses],
-      ['Solde de la période', '', '', '', solde],
+      ['' , '', '', '', '', '', ''], // Spacer row
+      ['Total Recettes', '', '', '', totalRecettes, ''],
+      ['Total Dépenses', '', '', '', '', totalDepenses],
+      ['Solde de la période', '', '', '', '', '', soldeDeLaPeriode],
     ], { origin: -1 });
 
     // Set column widths
     worksheet['!cols'] = [
+      { wch: 10 }, // ID
       { wch: 12 }, // Date
       { wch: 20 }, // Caisse
       { wch: 40 }, // Libellé
       { wch: 15 }, // Recettes
       { wch: 15 }, // Dépenses
+      { wch: 15 }, // Solde
     ];
 
     // Create workbook and append worksheet
@@ -129,7 +136,12 @@ export default function ExportCashJournalPage() {
   
   const totalRecettes = useMemo(() => filteredEntries.filter(e => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0), [filteredEntries]);
   const totalDepenses = useMemo(() => filteredEntries.filter(e => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0), [filteredEntries]);
-  const solde = useMemo(() => totalRecettes - totalDepenses, [totalRecettes, totalDepenses]);
+  const solde = useMemo(() => {
+    if (filteredEntries.length > 0) {
+      return filteredEntries[filteredEntries.length - 1].solde;
+    }
+    return 0;
+  }, [filteredEntries]);
 
   return (
     <div className="p-4 md:p-8">
@@ -137,7 +149,7 @@ export default function ExportCashJournalPage() {
       
       <Card className="mb-4">
         <CardHeader>
-          <CardTitle>Filtres</CardTitle>
+          <CardTitle>Filtres</CardTitle> 
         </CardHeader>
         <CardContent className="grid md:grid-cols-3 gap-4">
           <div>
@@ -175,7 +187,14 @@ export default function ExportCashJournalPage() {
                 <Calendar
                   mode="single"
                   selected={dateRange.from}
-                  onSelect={(date) => setDateRange(prev => ({ ...prev, from: date }))}
+                  onSelect={(date) => {
+                    setDateRange(prev => ({ ...prev, from: date }));
+                    if (date) {
+                      setFromMonth(date);
+                    }
+                  }}
+                  month={fromMonth}
+                  onMonthChange={setFromMonth}
                   initialFocus
                 />
               </PopoverContent>
@@ -200,7 +219,14 @@ export default function ExportCashJournalPage() {
                 <Calendar
                   mode="single"
                   selected={dateRange.to}
-                  onSelect={(date) => setDateRange(prev => ({ ...prev, to: date }))}
+                  onSelect={(date) => {
+                    setDateRange(prev => ({ ...prev, to: date }));
+                    if (date) {
+                      setToMonth(date);
+                    }
+                  }}
+                  month={toMonth}
+                  onMonthChange={setToMonth}
                   initialFocus
                 />
               </PopoverContent>
@@ -221,19 +247,22 @@ export default function ExportCashJournalPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Caisse</TableHead>
                 <TableHead>Libellé</TableHead>
                 <TableHead className="text-right">Recettes</TableHead>
                 <TableHead className="text-right">Dépenses</TableHead>
+                <TableHead className="text-right">Solde</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="text-center h-24">Chargement des données...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center h-24">Chargement des données...</TableCell></TableRow>
               ) : filteredEntries.length > 0 ? (
                 filteredEntries.map(entry => (
                   <TableRow key={entry.id}>
+                    <TableCell>{entry.id}</TableCell>
                     <TableCell>{new Date(entry.date_operation).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell>{entry.cashRegister.name}</TableCell>
                     <TableCell>{entry.libelle}</TableCell>
@@ -243,24 +272,29 @@ export default function ExportCashJournalPage() {
                     <TableCell className="text-right text-red-600">
                       {entry.type === 'DEPENSE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}
                     </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {entry.solde.toLocaleString('fr-FR')} FCFA
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
-                <TableRow><TableCell colSpan={5} className="text-center h-24">Aucune écriture à afficher pour les filtres sélectionnés.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center h-24">Aucune écriture à afficher pour les filtres sélectionnés.</TableCell></TableRow>
               )}
             </TableBody>
             <TableFooter className="sticky bottom-0 bg-background z-10">
               <TableRow className="bg-secondary">
-                <TableCell colSpan={3} className="font-bold">Total Recettes</TableCell>
+                <TableCell colSpan={4} className="font-bold">Total Recettes</TableCell>
                 <TableCell className="text-right font-bold text-green-600">{totalRecettes.toLocaleString('fr-FR')} FCFA</TableCell>
+                <TableCell></TableCell>
                 <TableCell></TableCell>
               </TableRow>
               <TableRow className="bg-secondary">
-                <TableCell colSpan={4} className="font-bold">Total Dépenses</TableCell>
+                <TableCell colSpan={5} className="font-bold">Total Dépenses</TableCell>
                 <TableCell className="text-right font-bold text-red-600">{totalDepenses.toLocaleString('fr-FR')} FCFA</TableCell>
+                <TableCell></TableCell>
               </TableRow>
               <TableRow className="bg-primary-foreground">
-                <TableCell colSpan={4} className="font-bold text-lg">Solde de la période</TableCell>
+                <TableCell colSpan={6} className="font-bold text-lg">Solde de la période</TableCell>
                 <TableCell className="text-right font-bold text-lg">{solde.toLocaleString('fr-FR')} FCFA</TableCell>
               </TableRow>
             </TableFooter>

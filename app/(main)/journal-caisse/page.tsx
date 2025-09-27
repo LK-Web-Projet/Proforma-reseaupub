@@ -70,9 +70,11 @@ export default function CashJournalPage() {
 
   const sortedEntries = useMemo(() => {
     return [...filteredEntries].sort((a, b) => {
-      const dateA = new Date(a.date_operation).getTime();
-      const dateB = new Date(b.date_operation).getTime();
-      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+      if (sortOrder === 'asc') {
+        return a.id - b.id;
+      } else {
+        return b.id - a.id;
+      }
     });
   }, [filteredEntries, sortOrder]);
 
@@ -204,7 +206,7 @@ export default function CashJournalPage() {
               )}
               onClick={() => setSelectedCashRegisterId(register.id)}
             >
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 ">
                 <CardTitle className="text-sm font-medium">
                   {register.name}
                 </CardTitle>
@@ -239,23 +241,12 @@ export default function CashJournalPage() {
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost">
-                        Date
-                        <ArrowUpDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => setSortOrder("asc")}>
-                        Croissant
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setSortOrder("desc")}>
-                        Décroissant
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button variant="ghost" onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
+                    ID
+                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                  </Button>
                 </TableHead>
+                <TableHead>Date</TableHead>
                 <TableHead>Caisse</TableHead>
                 <TableHead>Libellé</TableHead>
                 <TableHead>Type d&apos;Entrée</TableHead>
@@ -267,13 +258,16 @@ export default function CashJournalPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center">
+                  <TableCell colSpan={8} className="text-center">
                     Chargement...
                   </TableCell>
                 </TableRow>
               ) : (
                 sortedEntries.map((entry) => (
                   <TableRow key={entry.id}>
+                    <TableCell>
+                      {entry.id}
+                    </TableCell>
                     <TableCell>
                       {new Date(entry.date_operation).toLocaleString("fr-FR")}
                     </TableCell>

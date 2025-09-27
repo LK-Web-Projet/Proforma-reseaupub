@@ -20,28 +20,18 @@ export async function GET(request: Request) {
         where: {
           cashRegisterId: parseInt(cashRegisterId),
         },
-        orderBy: [
-          {
-            date_operation: 'asc',
-          },
-          {
-            createdAt: 'asc',
-          },
-        ],
+        orderBy: {
+          id: 'asc',
+        },
         include: {
           cashRegister: { select: { name: true } },
         },
       });
     } else {
       cashJournalEntries = await prisma.cashJournal.findMany({
-        orderBy: [
-          {
-            date_operation: 'asc',
-          },
-          {
-            createdAt: 'asc',
-          },
-        ],
+        orderBy: {
+          id: 'asc',
+        },
         include: {
           cashRegister: { select: { name: true } },
         },
@@ -68,79 +58,73 @@ export async function POST(request: Request) {
     const parsedMontant = parseFloat(montant);
     const parsedDateOperation = new Date(date_operation);
 
-    // Fetch target register(s) outside the transaction to reduce transaction time
-    const sourceRegister = await prisma.cashRegister.findUnique({
-      where: { id: parsedCashRegisterId },
-    });
-
-    if (!sourceRegister) {
-      return NextResponse.json({ error: `Source cash register with ID ${parsedCashRegisterId} not found.` }, { status: 404 });
-    }
-
-    let destinationRegister = null;
-    if (type === OperationType.TRANSFERT) {
-      if (!destinationCashRegisterId || parsedCashRegisterId === parseInt(destinationCashRegisterId)) {
-        return NextResponse.json({ error: 'Destination cash register is required and must be different from source for transfers.' }, { status: 400 });
-      }
-      const parsedDestinationCashRegisterId = parseInt(destinationCashRegisterId);
-      destinationRegister = await prisma.cashRegister.findUnique({
-        where: { id: parsedDestinationCashRegisterId },
-      });
-
-      if (!destinationRegister) {
-        return NextResponse.json({ error: `Destination cash register with ID ${parsedDestinationCashRegisterId} not found.` }, { status: 404 });
-      }
-    }
-
-    // Use a single transaction for all related operations
     const result = await prisma.$transaction(async (tx) => {
       if (type === OperationType.TRANSFERT) {
-        // Deduct from source
-        const newSourceBalance = sourceRegister.balance - parsedMontant;
-        await tx.cashRegister.update({
-          where: { id: parsedCashRegisterId },
-          data: { balance: newSourceBalance },
+        if (!destinationCashRegisterId || parsedCashRegisterId === parseInt(destinationCashRegisterId)) {
+          throw new Error('Destination cash register is required and must be different from source for transfers.');
+        }
+        const parsedDestinationCashRegisterId = parseInt(destinationCashRegisterId);
+
+        // Handle source register
+        const lastSourceEntry = await tx.cashJournal.findFirst({
+          where: { cashRegisterId: parsedCashRegisterId },
+          orderBy: { id: 'desc' },
         });
+        const sourceBalance = lastSourceEntry ? lastSourceEntry.solde : 0;
+        const newSourceBalance = sourceBalance - parsedMontant;
+
         await tx.cashJournal.create({
           data: {
-            libelle: `Transfert vers ${destinationRegister?.name}: ${libelle}`,
+            libelle: `Transfert vers caisse ID ${parsedDestinationCashRegisterId}: ${libelle}`,
             type: OperationType.DEPENSE,
             montant: parsedMontant,
             date_operation: parsedDateOperation,
             solde: newSourceBalance,
-            cashRegister: { connect: { id: parsedCashRegisterId } }, // Use connect
-            isApportDeCaisse: false, // A DEPENSE from transfer is not an apport
+            cashRegisterId: parsedCashRegisterId,
+            isApportDeCaisse: false,
           },
         });
-
-        // Add to destination
-        const newDestinationBalance = destinationRegister!.balance + parsedMontant;
         await tx.cashRegister.update({
-          where: { id: destinationRegister!.id },
-          data: { balance: newDestinationBalance },
+          where: { id: parsedCashRegisterId },
+          data: { balance: newSourceBalance },
         });
+
+        // Handle destination register
+        const lastDestinationEntry = await tx.cashJournal.findFirst({
+          where: { cashRegisterId: parsedDestinationCashRegisterId },
+          orderBy: { id: 'desc' },
+        });
+        const destinationBalance = lastDestinationEntry ? lastDestinationEntry.solde : 0;
+        const newDestinationBalance = destinationBalance + parsedMontant;
+
         const newEntry = await tx.cashJournal.create({
           data: {
-            libelle: `Transfert depuis ${sourceRegister.name}: ${libelle}`,
+            libelle: `Transfert depuis caisse ID ${parsedCashRegisterId}: ${libelle}`,
             type: OperationType.RECETTE,
             montant: parsedMontant,
             date_operation: parsedDateOperation,
             solde: newDestinationBalance,
-            cashRegister: { connect: { id: destinationRegister!.id } }, // Use connect
-            isApportDeCaisse: true, // A RECETTE from transfer is an apport
+            cashRegisterId: parsedDestinationCashRegisterId,
+            isApportDeCaisse: true,
           },
         });
+        await tx.cashRegister.update({
+          where: { id: parsedDestinationCashRegisterId },
+          data: { balance: newDestinationBalance },
+        });
+
         return newEntry;
 
       } else if (type === OperationType.RECETTE || type === OperationType.DEPENSE) {
-        const newBalance = type === OperationType.RECETTE
-          ? sourceRegister.balance + parsedMontant
-          : sourceRegister.balance - parsedMontant;
-
-        await tx.cashRegister.update({
-          where: { id: parsedCashRegisterId },
-          data: { balance: newBalance },
+        const lastEntry = await tx.cashJournal.findFirst({
+          where: { cashRegisterId: parsedCashRegisterId },
+          orderBy: { id: 'desc' },
         });
+
+        const lastBalance = lastEntry ? lastEntry.solde : 0;
+        const newBalance = type === OperationType.RECETTE
+          ? lastBalance + parsedMontant
+          : lastBalance - parsedMontant;
 
         const newEntry = await tx.cashJournal.create({
           data: {
@@ -149,10 +133,16 @@ export async function POST(request: Request) {
             montant: parsedMontant,
             date_operation: parsedDateOperation,
             solde: newBalance,
-            cashRegister: { connect: { id: parsedCashRegisterId } }, // Use connect
-            isApportDeCaisse: type === OperationType.RECETTE ? (isApportDeCaisseFromFrontend || false) : false, // Only RECETTE can be an apport
+            cashRegisterId: parsedCashRegisterId,
+            isApportDeCaisse: type === OperationType.RECETTE ? (isApportDeCaisseFromFrontend || false) : false,
           },
         });
+
+        await tx.cashRegister.update({
+          where: { id: parsedCashRegisterId },
+          data: { balance: newBalance },
+        });
+
         return newEntry;
       } else {
         throw new Error('Invalid operation type.');
@@ -160,7 +150,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(result, { status: 201 });
-  } catch (error: Error ) {
+  } catch (error: any) {
     console.error(error);
     return NextResponse.json({ error: error.message || 'An error occurred while creating the cash journal entry.' }, { status: 500 });
   }
