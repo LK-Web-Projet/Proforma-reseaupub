@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileText, Receipt, Upload, Trash2 } from "lucide-react";
+import { FileText, Receipt, Upload, Trash2, PlusCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,16 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+type Paiement = {
+  id: string;
+  montant: number;
+  datePaiement: string;
+  methode?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+};
 
 type Facture = {
   id: string;
@@ -38,6 +48,8 @@ type Facture = {
   totalHT: number;
   tva: number;
   totalTTC: number;
+  resteAPayer: number;
+  paiements: Paiement[];
   societeNom: string;
   societeIFU: string;
   societeAdresse?: string;
@@ -104,6 +116,11 @@ export default function FactureDetailPage() {
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [fileToDeleteType, setFileToDeleteType] = useState<'bon' | 'facture' | null>(null);
+
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [newPayment, setNewPayment] = useState({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+  const [isAddingPayment, setIsAddingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const fetchFacture = useCallback(async () => {
     if (!id) return;
@@ -267,6 +284,45 @@ export default function FactureDetailPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     produits[index] = { ...produits[index], [name]: value } as any;
     setFormData((prev) => ({ ...prev, produits }));
+  };
+
+  const handleAddPayment = async () => {
+    if (!newPayment.montant || newPayment.montant <= 0) {
+      setPaymentError("Le montant doit être supérieur à zéro.");
+      return;
+    }
+    // Frontend validation: check if payment amount exceeds remaining amount
+    if (facture && newPayment.montant > facture.resteAPayer) {
+      setPaymentError(`Le montant du paiement (${newPayment.montant.toLocaleString('fr-FR', { style: 'currency', currency: facture.devise })}) ne peut pas dépasser le reste à payer (${facture.resteAPayer.toLocaleString('fr-FR', { style: 'currency', currency: facture.devise })}).`);
+      return;
+    }
+    setIsAddingPayment(true);
+    setPaymentError(null);
+    try {
+      const res = await fetch(`/api/factures/${id}/paiements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          montant: Number(newPayment.montant),
+          methode: newPayment.methode,
+          reference: newPayment.reference,
+          notes: newPayment.notes,
+          datePaiement: newPayment.datePaiement ? new Date(newPayment.datePaiement) : undefined,
+        }),
+      });
+      if (res.ok) {
+        setIsPaymentDialogOpen(false);
+        setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+        await fetchFacture();
+      } else {
+        const err = await res.json();
+        setPaymentError(err.error || "Une erreur est survenue.");
+      }
+    } catch (error) {
+      setPaymentError("Une erreur réseau est survenue.");
+    } finally {
+      setIsAddingPayment(false);
+    }
   };
 
   if (loading) return <div className="flex justify-center items-center h-96">Chargement...</div>;
@@ -657,7 +713,65 @@ export default function FactureDetailPage() {
             currency: displayDevise,
           })}
         </div>
+        <div className={`text-lg font-bold ${facture.resteAPayer > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+          Reste à Payer :{" "}
+          {Number(facture.resteAPayer).toLocaleString("fr-FR", {
+            style: "currency",
+            currency: displayDevise,
+          })}
+        </div>
       </div>
+
+      {/* Historique des Paiements */}
+      <div className="mt-8 border-t pt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-primary">Historique des Paiements</h2>
+          {facture.resteAPayer > 0 && (
+            <Button onClick={() => setIsPaymentDialogOpen(true)}>
+              <PlusCircle className="h-4 w-4 mr-2" />
+              Ajouter un paiement
+            </Button>
+          )}
+        </div>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Méthode</TableHead>
+                  <TableHead>Référence</TableHead>
+                  <TableHead className="text-right">Montant</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {facture.paiements && facture.paiements.length > 0 ? (
+                  facture.paiements.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell>{new Date(p.datePaiement).toLocaleDateString('fr-FR')}</TableCell>
+                      <TableCell>{p.methode || '-'}</TableCell>
+                      <TableCell>{p.reference || '-'}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {Number(p.montant).toLocaleString("fr-FR", {
+                          style: "currency",
+                          currency: displayDevise,
+                        })}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-gray-500 py-4">
+                      Aucun paiement enregistré.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Documents Associés */}
       <div className="mt-8 border-t pt-6">
         <h2 className="text-xl font-semibold text-primary mb-4">
@@ -772,6 +886,53 @@ export default function FactureDetailPage() {
         {new Date(facture.dateCreation).toLocaleDateString("fr-FR")} &mdash;
         Proforma Générateur
       </div>
+
+      {/* Add Payment Dialog */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ajouter un paiement</DialogTitle>
+            <DialogDescription>
+              Enregistrez un nouveau versement pour la facture {facture.numero}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="montant" className="text-right">Montant</label>
+              <Input id="montant" type="number" value={newPayment.montant} onChange={(e) => setNewPayment({...newPayment, montant: parseFloat(e.target.value)})} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="datePaiement" className="text-right">Date</label>
+              <Input id="datePaiement" type="date" value={newPayment.datePaiement} onChange={(e) => setNewPayment({...newPayment, datePaiement: e.target.value})} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="methode" className="text-right">Méthode</label>
+              <Select value={newPayment.methode} onValueChange={(value) => setNewPayment({...newPayment, methode: value})}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Méthode de paiement" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Virement">Virement</SelectItem>
+                  <SelectItem value="Espèces">Espèces</SelectItem>
+                  <SelectItem value="Chèque">Chèque</SelectItem>
+                  <SelectItem value="Autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="reference" className="text-right">Référence</label>
+              <Input id="reference" value={newPayment.reference} onChange={(e) => setNewPayment({...newPayment, reference: e.target.value})} className="col-span-3" />
+            </div>
+          </div>
+          {paymentError && <p className="text-red-500 text-sm text-center">{paymentError}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Annuler</Button>
+            <Button onClick={handleAddPayment} disabled={isAddingPayment}>
+              {isAddingPayment ? "Enregistrement..." : "Enregistrer le paiement"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmation Dialog for Deletion */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

@@ -139,6 +139,7 @@ export async function POST(request: Request) {
           totalHT,
           tva,
           totalTTC,
+          resteAPayer: totalTTC, // Initialiser le reste à payer avec le total TTC
           societeNom: Entreprise.nom,
           societeIFU: Entreprise.IFU,
           devise: devise || "XOF",
