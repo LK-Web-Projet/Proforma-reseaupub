@@ -142,14 +142,18 @@ export default function CashJournalPage() {
     <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Journal de Caisse</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 ">
           <Button
             onClick={handleRecalculate}
             disabled={isRecalculating}
             variant="outline"
+            className='hidden'
           >
             <RefreshCcw
-              className={cn("mr-2 h-4 w-4", isRecalculating && "animate-spin")}
+              className={cn(
+                "mr-2 h-4 w-4 hidden",
+                isRecalculating && "animate-spin"
+              )}
             />
             {isRecalculating ? "Recalcul en cours..." : "Recalculer les soldes"}
           </Button>
@@ -241,7 +245,12 @@ export default function CashJournalPage() {
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead>
-                  <Button variant="ghost" onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+                    }
+                  >
                     ID
                     <ArrowUpDown className="ml-2 h-4 w-4" />
                   </Button>
@@ -265,9 +274,7 @@ export default function CashJournalPage() {
               ) : (
                 sortedEntries.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell>
-                      {entry.id}
-                    </TableCell>
+                    <TableCell>{entry.id}</TableCell>
                     <TableCell>
                       {new Date(entry.date_operation).toLocaleString("fr-FR")}
                     </TableCell>
