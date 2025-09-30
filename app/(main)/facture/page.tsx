@@ -253,7 +253,7 @@ export default function Home() {
                           : "brouillon" // Fallback to "brouillon" if no match
                       }
                     >
-                      {facture.statut} }
+                      {facture.statut}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
