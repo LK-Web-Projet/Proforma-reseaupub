@@ -48,8 +48,8 @@ export default function CashJournalPage() {
     try {
       const res = await fetch('/api/cash-journal');
       const data = await res.json();
-      setCashRegisters(data.cashRegisters);
-      setAllEntries(data.cashJournalEntries);
+      setAllEntries(data.cashJournalEntries || []);
+      setCashRegisters(data.cashRegisters || []);
     } catch (error) {
       console.error('Failed to fetch cash journal data:', error);
       toast.error("Échec du chargement des données du journal de caisse.");
@@ -70,7 +70,7 @@ export default function CashJournalPage() {
 
   const sortedEntries = useMemo(() => {
     return [...filteredEntries].sort((a, b) => {
-      if (sortOrder === 'asc') {
+      if (sortOrder === "desc") {
         return a.id - b.id;
       } else {
         return b.id - a.id;
@@ -241,7 +241,12 @@ export default function CashJournalPage() {
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead>
-                  <Button variant="ghost" onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      setSortOrder(sortOrder === "desc" ? "asc" : "desc")
+                    }
+                  >
                     ID
                     <ArrowUpDown className="ml-2 h-4 w-4" />
                   </Button>
@@ -265,9 +270,7 @@ export default function CashJournalPage() {
               ) : (
                 sortedEntries.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell>
-                      {entry.id}
-                    </TableCell>
+                    <TableCell>{entry.id}</TableCell>
                     <TableCell>
                       {new Date(entry.date_operation).toLocaleString("fr-FR")}
                     </TableCell>

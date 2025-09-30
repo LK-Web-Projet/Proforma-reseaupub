@@ -921,7 +921,18 @@ export default function FactureDetailPage() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <label htmlFor="reference" className="text-right">Référence</label>
-              <Input id="reference" value={newPayment.reference} onChange={(e) => setNewPayment({...newPayment, reference: e.target.value})} className="col-span-3" />
+              <Select value={newPayment.reference} onValueChange={(value) => setNewPayment({...newPayment, reference: value})} >
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Sélectionner une référence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Paiement Total">Paiement Total</SelectItem>
+                  <SelectItem value="Avance">Avance</SelectItem>
+                  <SelectItem value="1er tranche">1er tranche</SelectItem>
+                  <SelectItem value="2eme Tranche">2eme Tranche</SelectItem>
+                  <SelectItem value="3e tranche">3e tranche</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           {paymentError && <p className="text-red-500 text-sm text-center">{paymentError}</p>}
