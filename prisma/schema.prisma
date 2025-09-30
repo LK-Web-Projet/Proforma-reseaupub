@@ -118,6 +118,7 @@ enum StatusFacture {
   Annuler
   Archiver
   Payer
+  Solde // NEW STATUS
 }
 
 enum UniteDuree {

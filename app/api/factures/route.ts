@@ -38,7 +38,6 @@ export async function GET(request: Request) {
             gestionnaire: true,
           },
         },
-        resteAPayer: true, // Added resteAPayer
       },
     });
 

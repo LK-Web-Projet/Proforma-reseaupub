@@ -153,6 +153,7 @@ export default function Home() {
                     <option value="Payer">Payer</option>
                     <option value="Annuler">Annuler</option>
                     <option value="Archiver">Archiver</option>
+                    <option value="Solde">Soldé</option> {/* NEW OPTION */}
                   </select>
                 </div>
               </div>
@@ -179,15 +180,7 @@ export default function Home() {
         <Table>
           <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Numéro</TableHead>
-              <TableHead>Client</TableHead>
-              <TableHead>Objet</TableHead>
-              <TableHead className="text-center">Gestionnaire</TableHead>
-              <TableHead className="text-right">Total TTC</TableHead>
-              <TableHead className="text-right">Reste à Payer</TableHead> {/* NEW COLUMN */}
-              <TableHead className="text-center">Statut</TableHead>
-              <TableHead className="text-center">Voir</TableHead>
+              <TableHead>Date</TableHead><TableHead>Numéro</TableHead><TableHead>Client</TableHead><TableHead>Objet</TableHead><TableHead className="text-center">Gestionnaire</TableHead><TableHead className="text-right">Total TTC</TableHead><TableHead className="text-right">Reste à Payer</TableHead> {/* NEW COLUMN */}<TableHead className="text-center">Statut</TableHead><TableHead className="text-center">Voir</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -204,7 +197,20 @@ export default function Home() {
                 <TableRow key={facture.id}>
                   <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
                   <TableCell className="font-mono">{facture.numero}</TableCell>
-                  <TableCell>{facture.client?.nom || "-"}</TableCell>
+                  <TableCell>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="truncate max-w-[150px] inline-block">
+                            {facture.client?.nom || "-"}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{facture.client?.nom || "-"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </TableCell>
                   <TableCell>
                     <TooltipProvider>
                       <Tooltip>
@@ -250,6 +256,8 @@ export default function Home() {
                           ? "annuler"
                           : facture.statut === "Archiver"
                           ? "archiver"
+                          : facture.statut === "Solde" // NEW STATUS
+                          ? "success" // Assuming 'success' variant for 'Solde'
                           : "brouillon" // Fallback to "brouillon" if no match
                       }
                     >

@@ -72,7 +72,7 @@ export async function POST(
         data: {
           resteAPayer: newResteAPayer,
           // Optionnel: Mettre à jour le statut si le paiement est complet
-          statut: newResteAPayer === 0 ? "Payer" : undefined,
+          statut: newResteAPayer === 0 ? "Solde" : undefined, // Set to "Solde" if fully paid
         },
       });
 
