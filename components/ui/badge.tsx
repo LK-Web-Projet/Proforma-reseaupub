@@ -20,7 +20,7 @@ const badgeVariants = cva(
         valider:
           "bg-green-100 text-green-500 [a&]:hover:bg-green-200 [a&]:hover:text-accent-foreground font-bold",
         payer :
-          "bg-green-100 text-green-700 [a&]:hover:bg-green-500 [a&]:hover:text-accent-foreground font-bold",
+          "bg-green-100/20 text-green-700 [a&]:hover:bg-green-500 [a&]:hover:text-accent-foreground font-bold",
         brouillon:
           "bg-yellow-100 text-yellow-700 [a&]:hover:bg-yellow-500 [a&]:hover:text-accent-foreground font-bold",
         envoyer:
@@ -29,6 +29,8 @@ const badgeVariants = cva(
           "bg-red-100 text-red-700 [a&]:hover:bg-red-500 [a&]:hover:text-accent-foreground font-bold",
         archiver:
           "bg-orange-100 text-orange-700 [a&]:hover:bg-orange-500 [a&]:hover:text-accent-foreground font-bold",
+        success:
+          "bg-green-100 text-green-700 [a&]:hover:bg-green-500 [a&]:hover:text-accent-foreground font-bold",
         
       },
     },
