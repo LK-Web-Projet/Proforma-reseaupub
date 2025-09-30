@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { toast } from "sonner"; // Import toast
 
 type Paiement = {
   id: string;
@@ -312,9 +313,9 @@ export default function FactureDetailPage() {
       });
       if (res.ok) {
         setIsPaymentDialogOpen(false);
-        setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
-        await fetchFacture();
-      } else {
+                    setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+                    await fetchFacture();
+                    toast.success("Paiement enregistré avec succès !");      } else {
         const err = await res.json();
         setPaymentError(err.error || "Une erreur est survenue.");
       }
@@ -915,6 +916,7 @@ export default function FactureDetailPage() {
                   <SelectItem value="Virement">Virement</SelectItem>
                   <SelectItem value="Espèces">Espèces</SelectItem>
                   <SelectItem value="Chèque">Chèque</SelectItem>
+                  <SelectItem value="MobileMoney">Mobile Money</SelectItem>
                   <SelectItem value="Autre">Autre</SelectItem>
                 </SelectContent>
               </Select>
