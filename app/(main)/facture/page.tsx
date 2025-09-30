@@ -185,6 +185,7 @@ export default function Home() {
               <TableHead>Objet</TableHead>
               <TableHead className="text-center">Gestionnaire</TableHead>
               <TableHead className="text-right">Total TTC</TableHead>
+              <TableHead className="text-right">Reste à Payer</TableHead> {/* NEW COLUMN */}
               <TableHead className="text-center">Statut</TableHead>
               <TableHead className="text-center">Voir</TableHead>
             </TableRow>
@@ -194,7 +195,7 @@ export default function Home() {
               <FactureTableSkeleton />
             ) : factures.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center h-24">
+                <TableCell colSpan={9} className="text-center h-24">
                   Aucune facture trouvée.
                 </TableCell>
               </TableRow>
@@ -233,6 +234,9 @@ export default function Home() {
                   <TableCell className="text-right font-semibold">
                     {formatMoney(facture.totalTTC, facture.devise)}
                   </TableCell>
+                  <TableCell className="text-right font-semibold"> {/* NEW CELL */}
+                    {formatMoney(facture.resteAPayer, facture.devise)}
+                  </TableCell>
                   <TableCell className="text-center">
                     <Badge
                       variant={
@@ -249,7 +253,7 @@ export default function Home() {
                           : "brouillon" // Fallback to "brouillon" if no match
                       }
                     >
-                      {facture.statut}
+                      {facture.statut} }
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
