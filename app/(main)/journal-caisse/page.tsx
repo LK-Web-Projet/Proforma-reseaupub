@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddEntryModal } from '@/components/AddEntryModal';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown, Wallet, Plus, RefreshCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -139,7 +138,7 @@ export default function CashJournalPage() {
   };
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="pt-8 ">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Journal de Caisse</h1>
         <div className="flex gap-2 ">
@@ -165,7 +164,7 @@ export default function CashJournalPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4 mb-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-4">
         <Card
           className={cn(
             "cursor-pointer hover:shadow-lg transition-shadow",
@@ -178,13 +177,13 @@ export default function CashJournalPage() {
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl font-bold">
               {soldeFinalGlobal.toLocaleString("fr-FR")} FCFA
             </div>
-            <p className="text-xs text-muted-foreground">
-              Recettes: {totalRecettesGlobal.toLocaleString("fr-FR")} |
-              Dépenses: {totalDepensesGlobal.toLocaleString("fr-FR")}
-            </p>
+            <div className="text-xs text-muted-foreground">
+              <p>Recettes: {totalRecettesGlobal.toLocaleString("fr-FR")}</p>
+              <p>Dépenses: {totalDepensesGlobal.toLocaleString("fr-FR")}</p>
+            </div>
           </CardContent>
         </Card>
         {cashRegisters.map((register) => {
@@ -210,20 +209,20 @@ export default function CashJournalPage() {
               )}
               onClick={() => setSelectedCashRegisterId(register.id)}
             >
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 ">
-                <CardTitle className="text-sm font-medium">
+              <CardHeader className="flex flex-row flex-wrap items-center justify-between space-y-0 ">
+                <CardTitle className="text-sm font-medium truncate max-w-[150px]">
                   {register.name}
                 </CardTitle>
                 <Wallet className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
+                <div className="text-xl font-bold">
                   {register.balance.toLocaleString("fr-FR")} FCFA
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Recettes: {registerRecettes.toLocaleString("fr-FR")} |
-                  Dépenses: {registerDepenses.toLocaleString("fr-FR")}
-                </p>
+                <div className="text-xs text-muted-foreground">
+                  <p>Recettes: {registerRecettes.toLocaleString("fr-FR")}</p>
+                  <p>Dépenses: {registerDepenses.toLocaleString("fr-FR")}</p>
+                </div>
               </CardContent>
             </Card>
           );
@@ -240,7 +239,7 @@ export default function CashJournalPage() {
       </div>
 
       <Card>
-        <div className="overflow-y-auto max-h-[calc(100vh-250px)]">
+        <div className="overflow-auto max-h-[calc(100vh-250px)]">
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>

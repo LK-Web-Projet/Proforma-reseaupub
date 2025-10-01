@@ -23,7 +23,6 @@ export default async function RootLayout({
     <SidebarProvider>
       <AppSidebar />
       <PositionedSidebarTrigger />
-      
       <main className="w-full h-full flex-1 p-8 md:p-4 lg:p-4 lg:ml-6">
         {children}
       </main>

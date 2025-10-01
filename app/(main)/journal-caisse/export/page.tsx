@@ -265,7 +265,7 @@ export default function ExportCashJournalPage() {
                     <TableCell>{entry.id}</TableCell>
                     <TableCell>{new Date(entry.date_operation).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell>{entry.cashRegister.name}</TableCell>
-                    <TableCell>{entry.libelle}</TableCell>
+                    <TableCell className="truncate max-w-sm" title={entry.libelle}>{entry.libelle}</TableCell>
                     <TableCell className="text-right text-green-600">
                       {entry.type === 'RECETTE' ? `${entry.montant.toLocaleString('fr-FR')} FCFA` : ''}
                     </TableCell>

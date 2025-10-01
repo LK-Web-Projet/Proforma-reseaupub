@@ -32,7 +32,6 @@ export default async function RootLayout({
   return (
     <ClerkProvider
       afterSignOutUrl="/sign-in"
-      
     >
       <html lang="fr">
         <body
