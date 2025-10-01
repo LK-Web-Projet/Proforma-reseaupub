@@ -150,8 +150,8 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(result, { status: 201 });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error(error);
-    return NextResponse.json({ error: error.message || 'An error occurred while creating the cash journal entry.' }, { status: 500 });
+    return NextResponse.json({ error: (error as Error).message || 'An error occurred while creating the cash journal entry.' }, { status: 500 });
   }
 }
