@@ -5,6 +5,7 @@ export const STATUT_FACTURE = {
   Annuler: "Annuler",
   Archiver: "Archiver",
   Payer: "Payer",
+  Solde: "Solde", // NEW STATUS
 } as const;
 
 export const STATUT_FACTURE_OPTIONS = Object.entries(STATUT_FACTURE).map(

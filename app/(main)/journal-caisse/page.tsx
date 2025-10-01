@@ -48,8 +48,8 @@ export default function CashJournalPage() {
     try {
       const res = await fetch('/api/cash-journal');
       const data = await res.json();
-      setCashRegisters(data.cashRegisters);
-      setAllEntries(data.cashJournalEntries);
+      setAllEntries(data.cashJournalEntries || []);
+      setCashRegisters(data.cashRegisters || []);
     } catch (error) {
       console.error('Failed to fetch cash journal data:', error);
       toast.error("Échec du chargement des données du journal de caisse.");
@@ -70,7 +70,7 @@ export default function CashJournalPage() {
 
   const sortedEntries = useMemo(() => {
     return [...filteredEntries].sort((a, b) => {
-      if (sortOrder === 'asc') {
+      if (sortOrder === "desc") {
         return a.id - b.id;
       } else {
         return b.id - a.id;
@@ -248,7 +248,7 @@ export default function CashJournalPage() {
                   <Button
                     variant="ghost"
                     onClick={() =>
-                      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+                      setSortOrder(sortOrder === "desc" ? "asc" : "desc")
                     }
                   >
                     ID

@@ -33,6 +33,7 @@ model Invoice {
   totalHT                    Decimal
   tva                        Decimal
   totalTTC                   Decimal
+  resteAPayer                Decimal               @default(0.00)
   historiqueModifications    Json?
   societeNom                 String
   societeIFU                 String
@@ -45,6 +46,7 @@ model Invoice {
   client                     Client                @relation(fields: [clientId], references: [id])
   gestionnaires              InvoiceGestionnaire[]
   produits                   InvoiceProduit[]
+  paiements                  Paiement[]
 }
 
 model BonCommande {
@@ -96,6 +98,19 @@ model InvoiceGestionnaire {
   @@id([invoiceId, gestionnaireId])
 }
 
+model Paiement {
+  id           String   @id @default(uuid())
+  montant      Decimal
+  datePaiement DateTime @default(now())
+  methode      String?
+  reference    String?
+  notes        String?  @db.Text
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId    String
+
+  @@map("paiements")
+}
+
 enum StatusFacture {
   Brouillon
   Envoyer
@@ -103,6 +118,7 @@ enum StatusFacture {
   Annuler
   Archiver
   Payer
+  Solde // NEW STATUS
 }
 
 enum UniteDuree {

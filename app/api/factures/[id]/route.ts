@@ -58,6 +58,7 @@ export async function GET(
         gestionnaires: { include: { gestionnaire: true } },
         bonCommande: true, // Added
         factureNormaliser: true, // Added
+        paiements: true, // Added to include payment history
       },
     });
 
