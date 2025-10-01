@@ -146,7 +146,7 @@ export default function CashJournalPage() {
             onClick={handleRecalculate}
             disabled={isRecalculating}
             variant="outline"
-            className='hidden'
+            className="hidden"
           >
             <RefreshCcw
               className={cn(
@@ -210,8 +210,19 @@ export default function CashJournalPage() {
               onClick={() => setSelectedCashRegisterId(register.id)}
             >
               <CardHeader className="flex flex-row flex-wrap items-center justify-between space-y-0 ">
-                <CardTitle className="text-sm font-medium truncate max-w-[150px]">
-                  {register.name}
+                <CardTitle className="text-sm font-medium">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <p className="truncate max-w-[250px] cursor-pointer">
+                          {register.name}
+                        </p>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p> {register.name}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </CardTitle>
                 <Wallet className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
@@ -277,7 +288,20 @@ export default function CashJournalPage() {
                     <TableCell>
                       {new Date(entry.date_operation).toLocaleString("fr-FR")}
                     </TableCell>
-                    <TableCell>{entry.cashRegister.name}</TableCell>
+                    <TableCell className="max-w-[250px]">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="truncate max-w-[150px] cursor-pointer">
+                              {entry.cashRegister.name}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{entry.cashRegister.name}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
                     <TableCell>
                       <TooltipProvider>
                         <Tooltip>
