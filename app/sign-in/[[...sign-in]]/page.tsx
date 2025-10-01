@@ -16,11 +16,10 @@ export default function App() {
         <div className="flex flex-col gap-5 text-white text-center">
 
         <h1 className="text-4xl font-bold">
-          Bienvenue sur votre plateforme de generation des facture Proforma
+          Bienvenue sur votre plateforme de Gestion des Finances a reseaupub
         </h1>
         <p>
-          Générez vos factures proforma professionnelles en quelques clics, où
-          que vous soyez. Connectez-vous pour créer, personnaliser et envoyer
+          Générez vos factures proforma professionnelles en quelques clics, Gérez la comptabilité, Connectez-vous pour créer, personnaliser et envoyer
           vos documents instantanément.
         </p>
         </div>
