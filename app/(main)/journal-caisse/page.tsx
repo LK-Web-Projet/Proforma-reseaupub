@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useTransition } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddEntryModal } from '@/components/AddEntryModal';
@@ -41,6 +41,7 @@ export default function CashJournalPage() {
   const [isAddingRegister, setIsAddingRegister] = useState(false);
   const [addRegisterModalOpen, setAddRegisterModalOpen] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   async function fetchData() {
     setLoading(true);
@@ -170,7 +171,7 @@ export default function CashJournalPage() {
             "cursor-pointer hover:shadow-lg transition-shadow",
             selectedCashRegisterId === null && "border-2 border-primary"
           )}
-          onClick={() => setSelectedCashRegisterId(null)}
+          onClick={() => startTransition(() => setSelectedCashRegisterId(null))}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Solde Global</CardTitle>
@@ -207,7 +208,7 @@ export default function CashJournalPage() {
                 selectedCashRegisterId === register.id &&
                   "border-2 border-primary"
               )}
-              onClick={() => setSelectedCashRegisterId(register.id)}
+              onClick={() => startTransition(() => setSelectedCashRegisterId(register.id))}
             >
               <CardHeader className="flex flex-row flex-wrap items-center justify-between space-y-0 ">
                 <CardTitle className="text-sm font-medium">
@@ -250,7 +251,13 @@ export default function CashJournalPage() {
       </div>
 
       <Card>
-        <div className="overflow-auto max-h-[calc(100vh-250px)]">
+        <div className="relative">
+          {isPending && (
+            <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-20">
+              <RefreshCcw className="h-10 w-10 animate-spin text-primary" />
+            </div>
+          )}
+          <div className="overflow-auto max-h-[calc(100vh-250px)]">
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
@@ -341,6 +348,7 @@ export default function CashJournalPage() {
               )}
             </TableBody>
           </Table>
+        </div>
         </div>
       </Card>
 
