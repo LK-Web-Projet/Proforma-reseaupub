@@ -815,7 +815,7 @@ export default function FactureDetailPage() {
                 <div className="flex flex-col gap-2">
                   <Input
                     type="file"
-                    accept=".pdf"
+                    accept=".pdf,.doc,.docx,image/*,.png,.jpeg,.jpg"
                     onChange={(e) => setBonCommandeFile(e.target.files?.[0])}
                   />
                   <Button
@@ -865,7 +865,7 @@ export default function FactureDetailPage() {
                 <div className="flex flex-col gap-2">
                   <Input
                     type="file"
-                    accept=".pdf"
+                    accept=".pdf,.doc,.docx,image/*,.png,.jpeg,.jpg"
                     onChange={(e) =>
                       setFactureNormaliseeFile(e.target.files?.[0])
                     }
