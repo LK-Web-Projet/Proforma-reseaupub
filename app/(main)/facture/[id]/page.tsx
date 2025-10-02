@@ -423,7 +423,7 @@ export default function FactureDetailPage() {
                   : facture.statut === "Archiver"
                   ? "archiver"
                   : facture.statut === "Payer"
-                  ? "valider" // Using 'valider' style for 'Payer'
+                  ? "payer" // Using 'valider' style for 'Payer'
                   : facture.statut === "Solde" // NEW STATUS
                   ? "success" // Assuming 'success' variant for 'Solde' or similar
                   : "default"

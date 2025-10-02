@@ -7,8 +7,10 @@ import { AddEntryModal } from '@/components/AddEntryModal';
 import { Button } from '@/components/ui/button';
 import { ArrowUpDown, Wallet, Plus, RefreshCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import { CashRegisterCard } from '@/components/CashRegisterCard';
+import { AddCashRegisterModal } from '@/components/AddCashRegisterModal';
+
+
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -37,8 +39,7 @@ export default function CashJournalPage() {
   const [loading, setLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<number | null>(null);
-  const [newRegisterName, setNewRegisterName] = useState('');
-  const [isAddingRegister, setIsAddingRegister] = useState(false);
+
   const [addRegisterModalOpen, setAddRegisterModalOpen] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -78,43 +79,14 @@ export default function CashJournalPage() {
     });
   }, [filteredEntries, sortOrder]);
 
-  const totalRecettesGlobal = allEntries.filter((e) => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
-  const totalDepensesGlobal = allEntries.filter((e) => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
-  const soldeFinalGlobal = totalRecettesGlobal - totalDepensesGlobal;
+  const { totalRecettesGlobal, totalDepensesGlobal, soldeFinalGlobal } = useMemo(() => {
+    const totalRecettesGlobal = allEntries.filter((e) => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
+    const totalDepensesGlobal = allEntries.filter((e) => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
+    const soldeFinalGlobal = totalRecettesGlobal - totalDepensesGlobal;
+    return { totalRecettesGlobal, totalDepensesGlobal, soldeFinalGlobal };
+  }, [allEntries]);
 
-  const handleAddRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newRegisterName.trim()) {
-      toast.error("Le nom de la caisse ne peut pas être vide.");
-      return;
-    }
 
-    setIsAddingRegister(true);
-    try {
-      const res = await fetch('/api/cash-registers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name: newRegisterName }),
-      });
-
-      if (res.ok) {
-        toast.success("Caisse ajoutée avec succès.");
-        setNewRegisterName('');
-        setAddRegisterModalOpen(false);
-        fetchData(); // Refresh data to show new register
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.error || "Échec de l'ajout de la caisse.");
-      }
-    } catch (error) {
-      console.error('Failed to add cash register:', error);
-      toast.error("Une erreur est survenue lors de l'ajout de la caisse.");
-    } finally {
-      setIsAddingRegister(false);
-    }
-  };
 
   const handleRecalculate = async () => {
     setIsRecalculating(true);
@@ -187,58 +159,15 @@ export default function CashJournalPage() {
             </div>
           </CardContent>
         </Card>
-        {cashRegisters.map((register) => {
-          const registerRecettes = allEntries
-            .filter(
-              (e) => e.cashRegisterId === register.id && e.type === "RECETTE"
-            )
-            .reduce((acc, curr) => acc + curr.montant, 0);
-          const registerDepenses = allEntries
-            .filter(
-              (e) => e.cashRegisterId === register.id && e.type === "DEPENSE"
-            )
-            .reduce((acc, curr) => acc + curr.montant, 0);
-          // const registerSolde = registerRecettes - registerDepenses; // This is not needed as register.balance is the source of truth
-
-          return (
-            <Card
-              key={register.id}
-              className={cn(
-                "cursor-pointer hover:shadow-lg transition-shadow",
-                selectedCashRegisterId === register.id &&
-                  "border-2 border-primary"
-              )}
-              onClick={() => startTransition(() => setSelectedCashRegisterId(register.id))}
-            >
-              <CardHeader className="flex flex-row flex-wrap items-center justify-between space-y-0 ">
-                <CardTitle className="text-sm font-medium">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <p className="truncate max-w-[250px] cursor-pointer">
-                          {register.name}
-                        </p>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p> {register.name}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </CardTitle>
-                <Wallet className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-xl font-bold">
-                  {register.balance.toLocaleString("fr-FR")} FCFA
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  <p>Recettes: {registerRecettes.toLocaleString("fr-FR")}</p>
-                  <p>Dépenses: {registerDepenses.toLocaleString("fr-FR")}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        {cashRegisters.map((register) => (
+          <CashRegisterCard
+            key={register.id}
+            register={register}
+            entries={allEntries}
+            isSelected={selectedCashRegisterId === register.id}
+            onClick={() => startTransition(() => setSelectedCashRegisterId(register.id))}
+          />
+        ))}
         <Card
           className="cursor-pointer hover:shadow-lg transition-shadow flex items-center justify-center"
           onClick={() => setAddRegisterModalOpen(true)}
@@ -352,31 +281,7 @@ export default function CashJournalPage() {
         </div>
       </Card>
 
-      {/* Add New Cash Register Modal */}
-      <Dialog
-        open={addRegisterModalOpen}
-        onOpenChange={setAddRegisterModalOpen}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ajouter une nouvelle caisse</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAddRegister} className="space-y-4">
-            <div>
-              <label htmlFor="newRegisterName">Nom de la caisse</label>
-              <Input
-                id="newRegisterName"
-                value={newRegisterName}
-                onChange={(e) => setNewRegisterName(e.target.value)}
-                required
-              />
-            </div>
-            <Button type="submit" disabled={isAddingRegister}>
-              {isAddingRegister ? "Ajout en cours..." : "Ajouter la caisse"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <AddCashRegisterModal open={addRegisterModalOpen} onOpenChange={setAddRegisterModalOpen} onRegisterAdded={fetchData} />
     </div>
   );
 }

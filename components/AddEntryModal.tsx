@@ -168,8 +168,8 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <Toaster richColors />
       <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" /> Ajouter une opération
+        <Button   className="md:w-auto">
+          <Plus className="mr-2 h-4 w-4 pointer" /> Ajouter une opération
         </Button>
       </DialogTrigger>
       <DialogContent>
