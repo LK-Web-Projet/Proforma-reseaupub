@@ -44,6 +44,7 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
   const [isSubmitDisabled, setIsSubmitDisabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (selectedCashRegisterId !== null) {
@@ -123,7 +124,25 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
       });
 
       if (res.ok) {
+        const newEntry = await res.json();
         toast.success('Opération ajoutée avec succès.');
+
+        if (file && newEntry.id) {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const uploadRes = await fetch(`/api/cash-journal/${newEntry.id}/upload`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (uploadRes.ok) {
+            toast.success('Pièce justificative uploadée avec succès.');
+          } else {
+            toast.error('Échec de l\'upload de la pièce justificative.');
+          }
+        }
+
         onEntryAdded();
         setOpen(false);
         setLibelle('');
@@ -131,7 +150,8 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
         setMontant('');
         setDateOperation(getLocalDatetime());
         setDestinationCashRegisterId(''); 
-        setIsApportDeCaisse(false); // Reset apport de caisse
+        setIsApportDeCaisse(false);
+        setFile(null); // Reset file state
       } else {
         const errorData = await res.json();
         toast.error(errorData.error || 'Échec de l\'ajout de l\'opération.');
@@ -259,6 +279,14 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
               value={montant}
               onChange={(e) => setMontant(e.target.value)}
               required
+            />
+          </div>
+          <div>
+            <label htmlFor="file">Pièce justificative (facultatif)</label>
+            <Input
+              id="file"
+              type="file"
+              onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
             />
           </div>
           <Button type="submit" disabled={isSubmitDisabled || isSubmitting}>

@@ -154,6 +154,17 @@ model CashJournal {
 
   cashRegisterId Int           @default(1)
   cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+  attachments    CashJournalAttachment[]
+}
+
+model CashJournalAttachment {
+  id            String      @id @default(uuid())
+  cashJournalId Int
+  url           String
+  fileName      String
+  fileType      String
+  createdAt     DateTime    @default(now())
+  cashJournal   CashJournal @relation(fields: [cashJournalId], references: [id], onDelete: Cascade)
 }
 
 enum OperationType {
