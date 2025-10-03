@@ -44,7 +44,7 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
   const [isSubmitDisabled, setIsSubmitDisabled] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<FileList | null>(null);
 
   useEffect(() => {
     if (selectedCashRegisterId !== null) {
@@ -127,9 +127,11 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
         const newEntry = await res.json();
         toast.success('Opération ajoutée avec succès.');
 
-        if (file && newEntry.id) {
+        if (files && files.length > 0 && newEntry.id) {
           const formData = new FormData();
-          formData.append('file', file);
+          Array.from(files).forEach(file => {
+            formData.append('files', file);
+          });
 
           const uploadRes = await fetch(`/api/cash-journal/${newEntry.id}/upload`, {
             method: 'POST',
@@ -137,9 +139,9 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
           });
 
           if (uploadRes.ok) {
-            toast.success('Pièce justificative uploadée avec succès.');
+            toast.success(`${files.length} pièce(s) justificative(s) uploadée(s).`);
           } else {
-            toast.error('Échec de l\'upload de la pièce justificative.');
+            toast.error('Échec de l upload des pièces justificatives.');
           }
         }
 
@@ -151,7 +153,7 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
         setDateOperation(getLocalDatetime());
         setDestinationCashRegisterId(''); 
         setIsApportDeCaisse(false);
-        setFile(null); // Reset file state
+        setFiles(null); // Reset files state
       } else {
         const errorData = await res.json();
         toast.error(errorData.error || 'Échec de l\'ajout de l\'opération.');
@@ -286,7 +288,8 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
             <Input
               id="file"
               type="file"
-              onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
+              multiple
+              onChange={(e) => setFiles(e.target.files)}
             />
           </div>
           <Button type="submit" disabled={isSubmitDisabled || isSubmitting}>

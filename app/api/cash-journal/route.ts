@@ -35,6 +35,7 @@ export async function GET(request: Request) {
         },
         include: {
           cashRegister: { select: { name: true } },
+          attachments: true,
         },
       });
     }

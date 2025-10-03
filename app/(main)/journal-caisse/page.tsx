@@ -13,6 +13,7 @@ import { AddCashRegisterModal } from '@/components/AddCashRegisterModal';
 
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { UploadAttachmentModal } from '@/components/UploadAttachmentModal';
 
 interface CashJournalEntry {
   id: number;
@@ -287,14 +288,14 @@ export default function CashJournalPage() {
                               href={att.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-500 hover:underline"
+                              className="text-blue-500 hover:underline truncate max-w-[55px]"
                             >
                               {att.fileName}
                             </a>
                           ))}
                         </div>
                       ) : (
-                        <span>N/A</span>
+                        <UploadAttachmentModal cashJournalId={entry.id} onUploadComplete={fetchData} />
                       )}
                     </TableCell>
                   </TableRow>

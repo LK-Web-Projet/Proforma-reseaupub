@@ -15,30 +15,27 @@ export async function POST(
   }
 
   const data = await request.formData();
-  const file: File | null = data.get("file") as unknown as File;
+  const files: File[] = data.getAll("files") as File[];
 
-  if (!file) {
-    return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+  if (!files || files.length === 0) {
+    return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
   }
 
-  const bytes = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
-
-  // Define the upload directory and create it if it doesn't exist
   const uploadDir = join(process.cwd(), "public", "Upload", "CashJournal", String(cashJournalId));
   if (!existsSync(uploadDir)) {
     mkdirSync(uploadDir, { recursive: true });
   }
 
-  // Define the file path
-  const path = join(uploadDir, file.name);
-  await writeFile(path, buffer);
-  console.log(`File uploaded to ${path}`);
+  const attachments = [];
 
-  // Create a corresponding entry in the database
-  const fileUrl = join("/", "Upload", "CashJournal", String(cashJournalId), file.name).replace(/\\/g, "/");
+  for (const file of files) {
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    const path = join(uploadDir, file.name);
+    await writeFile(path, buffer);
 
-  try {
+    const fileUrl = join("/", "Upload", "CashJournal", String(cashJournalId), file.name).replace(/\\/g, "/");
+
     const attachment = await prisma.cashJournalAttachment.create({
       data: {
         cashJournalId: cashJournalId,
@@ -47,9 +44,8 @@ export async function POST(
         fileType: file.type,
       },
     });
-    return NextResponse.json({ success: true, attachment });
-  } catch (error) {
-    console.error("Error creating attachment in DB:", error);
-    return NextResponse.json({ error: "Database error" }, { status: 500 });
+    attachments.push(attachment);
   }
+
+  return NextResponse.json({ success: true, attachments });
 }
