@@ -24,6 +24,11 @@ interface CashJournalEntry {
   cashRegisterId: number;
   cashRegister: { name: string };
   isApportDeCaisse?: boolean; // New field
+  attachments: {
+    id: string;
+    url: string;
+    fileName: string;
+  }[];
 }
 
 interface CashRegister {
@@ -208,6 +213,7 @@ export default function CashJournalPage() {
                 <TableHead className="text-right">Entrée d’argent</TableHead>
                 <TableHead className="text-right">Dépense</TableHead>
                 <TableHead className="text-right">Solde</TableHead>
+                <TableHead>Pièces jointes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -271,6 +277,25 @@ export default function CashJournalPage() {
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {entry.solde.toLocaleString("fr-FR")} FCFA
+                    </TableCell>
+                    <TableCell>
+                      {entry.attachments && entry.attachments.length > 0 ? (
+                        <div className="flex flex-col">
+                          {entry.attachments.map((att) => (
+                            <a
+                              key={att.id}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline"
+                            >
+                              {att.fileName}
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <span>N/A</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
