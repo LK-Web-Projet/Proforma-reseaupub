@@ -108,6 +108,9 @@ model Paiement {
   invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId    String
 
+  cashJournalEntryId Int?         @unique
+  cashJournalEntry   CashJournal? @relation(fields: [cashJournalEntryId], references: [id])
+
   @@map("paiements")
 }
 
@@ -155,6 +158,7 @@ model CashJournal {
   cashRegisterId Int           @default(1)
   cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
   attachments    CashJournalAttachment[]
+  paiement       Paiement?    
 }
 
 model CashJournalAttachment {

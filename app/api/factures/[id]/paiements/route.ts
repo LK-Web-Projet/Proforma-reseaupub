@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { join } from "path";
+import { mkdirSync, existsSync } from "fs";
+import { writeFile } from "fs/promises";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
@@ -12,18 +15,26 @@ const paiementSchema = z.object({
     (arg) => (typeof arg === "string" || arg instanceof Date ? new Date(arg) : undefined),
     z.date().optional()
   ),
+  cashRegisterId: z.number().optional(),
 });
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id: invoiceId } = await context.params;
-    const body = await request.json();
+    const { id: invoiceId } = context.params;
+    const formData = await request.formData();
 
-    // ✅ Validation avec Zod
-    const validation = paiementSchema.safeParse(body);
+    const paymentDataString = formData.get('paymentData') as string;
+    if (!paymentDataString) {
+      return NextResponse.json({ error: "Payment data is missing" }, { status: 400 });
+    }
+    const paymentData = JSON.parse(paymentDataString);
+    const files = formData.getAll('files') as File[];
+
+    // Validation with Zod
+    const validation = paiementSchema.safeParse(paymentData);
     if (!validation.success) {
       return NextResponse.json(
         { error: "Données invalides", details: validation.error.formErrors },
@@ -31,18 +42,17 @@ export async function POST(
       );
     }
 
-    const { montant, ...rest } = validation.data;
+    const { montant, methode, cashRegisterId, ...rest } = validation.data;
     const montantDecimal = parseFloat(montant.toFixed(2));
 
-    // ✅ Récupérer la facture avant transaction
+    const finalCashRegisterId = methode === 'Espèces' ? 1 : cashRegisterId;
+    if (!finalCashRegisterId) {
+      return NextResponse.json({ error: "Cash register ID is required for this payment method." }, { status: 400 });
+    }
+
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
-      select: {
-        resteAPayer: true,
-        numero: true,
-        objet: true,
-        client: { select: { nom: true } },
-      },
+      select: { resteAPayer: true, numero: true, objet: true, client: { select: { nom: true } } },
     });
 
     if (!invoice) {
@@ -56,70 +66,89 @@ export async function POST(
       );
     }
 
-    // ✅ Préparer libellé et date avant transaction
-    const libelle =
-      rest.methode === "Espèces"
-        ? `${rest.reference || "Paiement"} (Proforma ${invoice.numero} de ${invoice.client.nom} pour ${invoice.objet})`
-        : undefined;
-
+    const libelle = `${rest.reference || "Paiement"} (Proforma ${invoice.numero} de ${invoice.client.nom} pour ${invoice.objet})`;
     const dateOperation = rest.datePaiement ? new Date(rest.datePaiement) : new Date();
 
-    // ✅ Pré-calcul du nouveau solde caisse hors transaction
-    let newBalance: number | undefined;
-    if (rest.methode === "Espèces") {
-      const lastCashJournalEntry = await prisma.cashJournal.findFirst({
-        where: { cashRegisterId: 1 },
+    // Transaction to ensure data integrity
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Get current balance and create CashJournal entry
+      const lastCashJournalEntry = await tx.cashJournal.findFirst({
+        where: { cashRegisterId: finalCashRegisterId },
         orderBy: { id: "desc" },
       });
       const lastBalance = lastCashJournalEntry ? lastCashJournalEntry.solde : 0;
-      newBalance = lastBalance + montantDecimal;
-    }
+      const newBalance = lastBalance + montantDecimal;
 
-    // ✅ Transaction allégée
-    const updatedInvoice = await prisma.$transaction(async (tx) => {
-      // 1. Créer le paiement
+      const newCashJournalEntry = await tx.cashJournal.create({
+        data: {
+          date_operation: dateOperation,
+          libelle,
+          type: "RECETTE",
+          montant: montantDecimal,
+          solde: newBalance,
+          isApportDeCaisse: false,
+          cashRegisterId: finalCashRegisterId,
+        },
+      });
+
+      // 2. Update cash register balance
+      await tx.cashRegister.update({
+        where: { id: finalCashRegisterId },
+        data: { balance: newBalance },
+      });
+
+      // 3. Create Paiement entry and link it to the cash journal entry
       await tx.paiement.create({
         data: {
           invoiceId,
           montant: montantDecimal,
+          methode,
           ...rest,
+          cashJournalEntryId: newCashJournalEntry.id,
         },
       });
 
-      // 2. Mettre à jour la facture
+      // 4. Update invoice
       const newResteAPayer = parseFloat(invoice.resteAPayer.toString()) - montantDecimal;
-      const updated = await tx.invoice.update({
+      const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
           resteAPayer: newResteAPayer,
-          statut: newResteAPayer === 0 ? "Solde" : "Payer",
+          statut: newResteAPayer <= 0 ? "Solde" : "Payer",
         },
       });
 
-      // 3. Journal + mise à jour caisse (si espèces)
-      if (rest.methode === "Espèces" && newBalance !== undefined && libelle) {
-        await tx.cashJournal.create({
-          data: {
-            date_operation: dateOperation,
-            libelle,
-            type: "RECETTE",
-            montant: montantDecimal,
-            solde: newBalance,
-            isApportDeCaisse: false,
-            cashRegisterId: 1,
-          },
-        });
-
-        await tx.cashRegister.update({
-          where: { id: 1 },
-          data: { balance: newBalance },
-        });
-      }
-
-      return updated;
+      return { updatedInvoice, newCashJournalEntryId: newCashJournalEntry.id };
     });
 
-    return NextResponse.json(updatedInvoice, { status: 201 });
+    // 5. Handle file uploads after the transaction is successful
+    if (files.length > 0) {
+      const uploadDir = join(process.cwd(), "public", "Upload", "CashJournal", String(result.newCashJournalEntryId));
+      if (!existsSync(uploadDir)) {
+        mkdirSync(uploadDir, { recursive: true });
+      }
+
+      for (const file of files) {
+        const bytes = await file.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+        const path = join(uploadDir, file.name);
+        await writeFile(path, buffer);
+
+        const fileUrl = join("/", "Upload", "CashJournal", String(result.newCashJournalEntryId), file.name).replace(/\\/g, "/");
+
+        await prisma.cashJournalAttachment.create({
+          data: {
+            cashJournalId: result.newCashJournalEntryId,
+            url: fileUrl,
+            fileName: file.name,
+            fileType: file.type,
+          },
+        });
+      }
+    }
+
+    return NextResponse.json(result.updatedInvoice, { status: 201 });
+
   } catch (error) {
     console.error("Erreur lors de l'ajout du paiement:", error);
     const errorMessage =

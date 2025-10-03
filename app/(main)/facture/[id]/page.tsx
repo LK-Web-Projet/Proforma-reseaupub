@@ -38,6 +38,13 @@ type Paiement = {
   methode?: string | null;
   reference?: string | null;
   notes?: string | null;
+  cashJournalEntry?: {
+    attachments: {
+      id: string;
+      url: string;
+      fileName: string;
+    }[];
+  } | null;
 };
 
 type Facture = {
@@ -123,6 +130,10 @@ export default function FactureDetailPage() {
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
+  const [cashRegisters, setCashRegisters] = useState<{id: number, name: string}[]>([]);
+  const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
+  const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
+
   const fetchFacture = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -130,6 +141,15 @@ export default function FactureDetailPage() {
     const data = await res.json();
     setFacture(data.error ? null : data);
     setFormData(data.error ? {} : data);
+
+    // Fetch cash registers
+    const cashRes = await fetch('/api/cash-journal');
+    const cashData = await cashRes.json();
+    setCashRegisters(cashData.cashRegisters || []);
+    if (cashData.cashRegisters?.length > 0) {
+      setSelectedCashRegisterId(cashData.cashRegisters[0].id.toString());
+    }
+
     setLoading(false);
   }, [id]);
 
@@ -292,30 +312,44 @@ export default function FactureDetailPage() {
       setPaymentError("Le montant doit être supérieur à zéro.");
       return;
     }
-    // Frontend validation: check if payment amount exceeds remaining amount
     if (facture && newPayment.montant > facture.resteAPayer) {
-      setPaymentError(`Le montant du paiement (${newPayment.montant.toLocaleString('fr-FR', { style: 'currency', currency: facture.devise })}) ne peut pas dépasser le reste à payer (${facture.resteAPayer.toLocaleString('fr-FR', { style: 'currency', currency: facture.devise })}).`);
+      setPaymentError(`Le montant du paiement ne peut pas dépasser le reste à payer.`);
       return;
     }
+
     setIsAddingPayment(true);
     setPaymentError(null);
+
+    const formData = new FormData();
+    const paymentData = {
+      montant: Number(newPayment.montant),
+      methode: newPayment.methode,
+      reference: newPayment.reference,
+      notes: newPayment.notes,
+      datePaiement: newPayment.datePaiement ? new Date(newPayment.datePaiement) : undefined,
+      cashRegisterId: newPayment.methode === 'Espèces' ? 1 : parseInt(selectedCashRegisterId, 10),
+    };
+    formData.append('paymentData', JSON.stringify(paymentData));
+
+    if (paymentFiles) {
+      Array.from(paymentFiles).forEach(file => {
+        formData.append('files', file);
+      });
+    }
+
     try {
       const res = await fetch(`/api/factures/${id}/paiements`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          montant: Number(newPayment.montant),
-          methode: newPayment.methode,
-          reference: newPayment.reference,
-          notes: newPayment.notes,
-          datePaiement: newPayment.datePaiement ? new Date(newPayment.datePaiement) : undefined,
-        }),
+        body: formData,
       });
+
       if (res.ok) {
         setIsPaymentDialogOpen(false);
-                    setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
-                    await fetchFacture();
-                    toast.success("Paiement enregistré avec succès !");      } else {
+        setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+        setPaymentFiles(null);
+        await fetchFacture();
+        toast.success("Paiement enregistré avec succès !");
+      } else {
         const err = await res.json();
         setPaymentError(err.error || "Une erreur est survenue.");
       }
@@ -745,6 +779,7 @@ export default function FactureDetailPage() {
                   <TableHead>Méthode</TableHead>
                   <TableHead>Référence</TableHead>
                   <TableHead className="text-right">Montant</TableHead>
+                  <TableHead>Preuves</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -759,6 +794,25 @@ export default function FactureDetailPage() {
                           style: "currency",
                           currency: displayDevise,
                         })}
+                      </TableCell>
+                      <TableCell>
+                        {p.cashJournalEntry?.attachments && p.cashJournalEntry.attachments.length > 0 ? (
+                          <div className="flex flex-col">
+                            {p.cashJournalEntry.attachments.map((att) => (
+                              <a
+                                key={att.id}
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:underline"
+                              >
+                                {att.fileName}
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <span>-</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -922,6 +976,27 @@ export default function FactureDetailPage() {
                   <SelectItem value="Autre">Autre</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            {newPayment.methode !== 'Espèces' && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="cashRegister" className="text-right">Caisse</label>
+                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Sélectionner une caisse" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cashRegisters.map(register => (
+                      <SelectItem key={register.id} value={register.id.toString()}>
+                        {register.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="files" className="text-right">Preuve(s)</label>
+              <Input id="files" type="file" multiple onChange={(e) => setPaymentFiles(e.target.files)} className="col-span-3" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <label htmlFor="reference" className="text-right">Référence</label>
