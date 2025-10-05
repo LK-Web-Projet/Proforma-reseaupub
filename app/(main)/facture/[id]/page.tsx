@@ -203,9 +203,7 @@ export default function FactureDetailPage() {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        setFacture(data);
-        setFormData(data);
+        await fetchFacture();
         setIsEditing(false);
         setUpdateStatus("success");
         setTimeout(() => setUpdateStatus(null), 3000);

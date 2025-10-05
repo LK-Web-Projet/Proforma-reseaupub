@@ -140,6 +140,23 @@ async function updateFacture(id: string, body: unknown) {
         `Nouveaux totaux calculés: HT=${totalHT}, TVA_amount=${montantTVA}, TTC=${totalTTC}`
       );
 
+      const payments = await prisma.paiement.findMany({
+        where: { invoiceId: id, type: 'PAIEMENT' },
+      });
+      const totalPaid = payments.reduce((acc, p) => acc + p.montant, 0);
+      const resteAPayer = totalTTC - totalPaid;
+
+      updatedFactureData.resteAPayer = resteAPayer;
+
+      // Update status to 'Solde' if paid off, but don't override 'Annuler'
+      if (resteAPayer <= 0 && totalPaid > 0) {
+        const currentInvoice = await prisma.invoice.findUnique({ where: { id }, select: { statut: true } });
+        if (currentInvoice && currentInvoice.statut !== 'Annuler') {
+           updatedFactureData.statut = 'Solde';
+           console.log(`Statut mis à jour à 'Solde' car resteAPayer=${resteAPayer}`);
+        }
+      }
+
       const createManyData = produits.map((p) => {
         const montant = Math.round(computeLineTotal(p));
         return {
