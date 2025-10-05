@@ -16,6 +16,7 @@ const paiementSchema = z.object({
     z.date().optional()
   ),
   cashRegisterId: z.number().optional(),
+  type: z.enum(['PAIEMENT', 'DEPENSE']).default('PAIEMENT'),
 });
 
 export async function POST(
@@ -33,7 +34,6 @@ export async function POST(
     const paymentData = JSON.parse(paymentDataString);
     const files = formData.getAll('files') as File[];
 
-    // Validation with Zod
     const validation = paiementSchema.safeParse(paymentData);
     if (!validation.success) {
       return NextResponse.json(
@@ -42,12 +42,12 @@ export async function POST(
       );
     }
 
-    const { montant, methode, cashRegisterId, ...rest } = validation.data;
+    const { montant, methode, cashRegisterId, type, ...rest } = validation.data;
     const montantDecimal = parseFloat(montant.toFixed(2));
 
-    const finalCashRegisterId = methode === 'Espèces' ? 1 : cashRegisterId;
+    const finalCashRegisterId = (methode === 'Espèces' && type === 'PAIEMENT') ? 1 : cashRegisterId;
     if (!finalCashRegisterId) {
-      return NextResponse.json({ error: "Cash register ID is required for this payment method." }, { status: 400 });
+      return NextResponse.json({ error: "L'ID de la caisse est requis pour cette opération." }, { status: 400 });
     }
 
     const invoice = await prisma.invoice.findUnique({
@@ -59,31 +59,45 @@ export async function POST(
       return NextResponse.json({ error: "Facture non trouvée." }, { status: 404 });
     }
 
-    if (montantDecimal > parseFloat(invoice.resteAPayer.toString())) {
+    if (type === 'PAIEMENT' && montantDecimal > parseFloat(invoice.resteAPayer.toString())) {
       return NextResponse.json(
         { error: "Le montant du paiement ne peut pas dépasser le reste à payer." },
         { status: 400 }
       );
     }
 
-    const libelle = `${rest.reference || "Paiement"} (Proforma ${invoice.numero} de ${invoice.client.nom} pour ${invoice.objet})`;
+    if (type === 'DEPENSE') {
+      const lastCashJournalEntry = await prisma.cashJournal.findFirst({
+        where: { cashRegisterId: finalCashRegisterId },
+        orderBy: { id: "desc" },
+      });
+      const currentBalance = lastCashJournalEntry ? lastCashJournalEntry.solde : 0;
+
+      if (montantDecimal > currentBalance) {
+        const cashRegister = await prisma.cashRegister.findUnique({ where: { id: finalCashRegisterId } });
+        return NextResponse.json(
+          { error: `Solde insuffisant dans la caisse "${cashRegister?.name}". Solde actuel: ${currentBalance.toLocaleString('fr-FR')} FCFA.` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const libelle = `${rest.reference || (type === 'PAIEMENT' ? 'Paiement' : 'Dépense')} (Proforma ${invoice.numero} de ${invoice.client.nom} pour ${invoice.objet})`;
     const dateOperation = rest.datePaiement ? new Date(rest.datePaiement) : new Date();
 
-    // Transaction to ensure data integrity
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Get current balance and create CashJournal entry
       const lastCashJournalEntry = await tx.cashJournal.findFirst({
         where: { cashRegisterId: finalCashRegisterId },
         orderBy: { id: "desc" },
       });
       const lastBalance = lastCashJournalEntry ? lastCashJournalEntry.solde : 0;
-      const newBalance = lastBalance + montantDecimal;
+      const newBalance = type === 'PAIEMENT' ? lastBalance + montantDecimal : lastBalance - montantDecimal;
 
       const newCashJournalEntry = await tx.cashJournal.create({
         data: {
           date_operation: dateOperation,
           libelle,
-          type: "RECETTE",
+          type: type === 'PAIEMENT' ? 'RECETTE' : 'DEPENSE',
           montant: montantDecimal,
           solde: newBalance,
           isApportDeCaisse: false,
@@ -91,37 +105,37 @@ export async function POST(
         },
       });
 
-      // 2. Update cash register balance
       await tx.cashRegister.update({
         where: { id: finalCashRegisterId },
         data: { balance: newBalance },
       });
 
-      // 3. Create Paiement entry and link it to the cash journal entry
       await tx.paiement.create({
         data: {
           invoiceId,
           montant: montantDecimal,
           methode,
+          type,
           ...rest,
           cashJournalEntryId: newCashJournalEntry.id,
         },
       });
 
-      // 4. Update invoice
-      const newResteAPayer = parseFloat(invoice.resteAPayer.toString()) - montantDecimal;
-      const updatedInvoice = await tx.invoice.update({
-        where: { id: invoiceId },
-        data: {
-          resteAPayer: newResteAPayer,
-          statut: newResteAPayer <= 0 ? "Solde" : "Payer",
-        },
-      });
+      let updatedInvoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+      if (type === 'PAIEMENT') {
+        const newResteAPayer = parseFloat(updatedInvoice!.resteAPayer.toString()) - montantDecimal;
+        updatedInvoice = await tx.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            resteAPayer: newResteAPayer,
+            statut: newResteAPayer <= 0 ? "Solde" : "Payer",
+          },
+        });
+      }
 
       return { updatedInvoice, newCashJournalEntryId: newCashJournalEntry.id };
     });
 
-    // 5. Handle file uploads after the transaction is successful
     if (files.length > 0) {
       const uploadDir = join(process.cwd(), "public", "Upload", "CashJournal", String(result.newCashJournalEntryId));
       if (!existsSync(uploadDir)) {
@@ -151,8 +165,7 @@ export async function POST(
 
   } catch (error) {
     console.error("Erreur lors de l'ajout du paiement:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Une erreur interne est survenue.";
+    const errorMessage = error instanceof Error ? error.message : "Une erreur interne est survenue.";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

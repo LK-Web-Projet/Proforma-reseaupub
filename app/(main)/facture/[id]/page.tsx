@@ -38,6 +38,7 @@ type Paiement = {
   methode?: string | null;
   reference?: string | null;
   notes?: string | null;
+  type: 'PAIEMENT' | 'DEPENSE';
   cashJournalEntry?: {
     attachments: {
       id: string;
@@ -129,6 +130,7 @@ export default function FactureDetailPage() {
   const [newPayment, setNewPayment] = useState({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [operationType, setOperationType] = useState<'PAIEMENT' | 'DEPENSE'>('PAIEMENT');
 
   const [cashRegisters, setCashRegisters] = useState<{id: number, name: string}[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
@@ -307,12 +309,12 @@ export default function FactureDetailPage() {
     setFormData((prev) => ({ ...prev, produits }));
   };
 
-  const handleAddPayment = async () => {
+  const handleSaveOperation = async () => {
     if (!newPayment.montant || newPayment.montant <= 0) {
       setPaymentError("Le montant doit être supérieur à zéro.");
       return;
     }
-    if (facture && newPayment.montant > facture.resteAPayer) {
+    if (operationType === 'PAIEMENT' && facture && newPayment.montant > facture.resteAPayer) {
       setPaymentError(`Le montant du paiement ne peut pas dépasser le reste à payer.`);
       return;
     }
@@ -327,7 +329,8 @@ export default function FactureDetailPage() {
       reference: newPayment.reference,
       notes: newPayment.notes,
       datePaiement: newPayment.datePaiement ? new Date(newPayment.datePaiement) : undefined,
-      cashRegisterId: newPayment.methode === 'Espèces' ? 1 : parseInt(selectedCashRegisterId, 10),
+      cashRegisterId: newPayment.methode === 'Espèces' && operationType === 'PAIEMENT' ? 1 : parseInt(selectedCashRegisterId, 10),
+      type: operationType,
     };
     formData.append('paymentData', JSON.stringify(paymentData));
 
@@ -348,7 +351,7 @@ export default function FactureDetailPage() {
         setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
         setPaymentFiles(null);
         await fetchFacture();
-        toast.success("Paiement enregistré avec succès !");
+        toast.success(`Opération enregistrée avec succès !`);
       } else {
         const err = await res.json();
         setPaymentError(err.error || "Une erreur est survenue.");
@@ -762,13 +765,19 @@ export default function FactureDetailPage() {
       {/* Historique des Paiements */}
       <div className="mt-8 border-t pt-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-primary">Historique des Paiements</h2>
-          {facture.resteAPayer > 0 && (
-            <Button onClick={() => setIsPaymentDialogOpen(true)}>
+          <h2 className="text-xl font-semibold text-primary">Flux Financiers</h2>
+          <div className="flex gap-2">
+            {facture.resteAPayer > 0 && (
+              <Button onClick={() => { setOperationType('PAIEMENT'); setIsPaymentDialogOpen(true); }}>
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Ajouter un paiement
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => { setOperationType('DEPENSE'); setIsPaymentDialogOpen(true); }}>
               <PlusCircle className="h-4 w-4 mr-2" />
-              Ajouter un paiement
+              Ajouter une dépense
             </Button>
-          )}
+          </div>
         </div>
         <Card>
           <CardContent className="p-0">
@@ -776,9 +785,9 @@ export default function FactureDetailPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Méthode</TableHead>
-                  <TableHead>Référence</TableHead>
-                  <TableHead className="text-right">Montant</TableHead>
+                  <TableHead>Libellé</TableHead>
+                  <TableHead className="text-right text-green-600">Entrée</TableHead>
+                  <TableHead className="text-right text-red-600">Sortie</TableHead>
                   <TableHead>Preuves</TableHead>
                 </TableRow>
               </TableHeader>
@@ -787,13 +796,12 @@ export default function FactureDetailPage() {
                   facture.paiements.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{new Date(p.datePaiement).toLocaleDateString('fr-FR')}</TableCell>
-                      <TableCell>{p.methode || '-'}</TableCell>
-                      <TableCell>{p.reference || '-'}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {Number(p.montant).toLocaleString("fr-FR", {
-                          style: "currency",
-                          currency: displayDevise,
-                        })}
+                      <TableCell>{p.reference || p.type.charAt(0) + p.type.slice(1).toLowerCase()}</TableCell>
+                      <TableCell className="text-right font-medium text-green-600">
+                        {p.type === 'PAIEMENT' ? Number(p.montant).toLocaleString("fr-FR", { style: "currency", currency: displayDevise }) : ''}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-red-600">
+                        {p.type === 'DEPENSE' ? Number(p.montant).toLocaleString("fr-FR", { style: "currency", currency: displayDevise }) : ''}
                       </TableCell>
                       <TableCell>
                         {p.cashJournalEntry?.attachments && p.cashJournalEntry.attachments.length > 0 ? (
@@ -818,8 +826,8 @@ export default function FactureDetailPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-gray-500 py-4">
-                      Aucun paiement enregistré.
+                    <TableCell colSpan={5} className="text-center text-gray-500 py-4">
+                      Aucune opération enregistrée.
                     </TableCell>
                   </TableRow>
                 )}
@@ -827,6 +835,33 @@ export default function FactureDetailPage() {
             </Table>
           </CardContent>
         </Card>
+        <div className="mt-4 flex justify-end">
+          <Card className="w-full md:w-1/2 lg:w-1/3">
+            <CardHeader>
+              <CardTitle>Résumé Financier</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total des Paiements</span>
+                <span className="font-medium text-green-600">
+                  {Number(facture.paiements.filter(p => p.type === 'PAIEMENT').reduce((acc, p) => acc + Number(p.montant), 0)).toLocaleString("fr-FR", { style: "currency", currency: displayDevise })}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total des Dépenses</span>
+                <span className="font-medium text-red-600">
+                  {Number(facture.paiements.filter(p => p.type === 'DEPENSE').reduce((acc, p) => acc + Number(p.montant), 0)).toLocaleString("fr-FR", { style: "currency", currency: displayDevise })}
+                </span>
+              </div>
+              <div className="flex justify-between border-t pt-2 mt-2">
+                <span className="font-bold">Marge</span>
+                <span className="font-bold">
+                  {Number(facture.paiements.filter(p => p.type === 'PAIEMENT').reduce((acc, p) => acc + Number(p.montant), 0) - facture.paiements.filter(p => p.type === 'DEPENSE').reduce((acc, p) => acc + Number(p.montant), 0)).toLocaleString("fr-FR", { style: "currency", currency: displayDevise })}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Documents Associés */}
@@ -948,9 +983,9 @@ export default function FactureDetailPage() {
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter un paiement</DialogTitle>
+            <DialogTitle>Ajouter une {operationType === 'PAIEMENT' ? 'paiement' : 'dépense'}</DialogTitle>
             <DialogDescription>
-              Enregistrez un nouveau versement pour la facture {facture.numero}.
+              Enregistrez une nouvelle {operationType === 'PAIEMENT' ? 'versement pour la' : 'dépense liée à la'} facture {facture.numero}.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -1000,25 +1035,35 @@ export default function FactureDetailPage() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <label htmlFor="reference" className="text-right">Référence</label>
-              <Select value={newPayment.reference} onValueChange={(value) => setNewPayment({...newPayment, reference: value})} >
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Sélectionner une référence" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Paiement Total">Paiement Total</SelectItem>
-                  <SelectItem value="Avance">Avance</SelectItem>
-                  <SelectItem value="1er tranche">1er tranche</SelectItem>
-                  <SelectItem value="2eme Tranche">2eme Tranche</SelectItem>
-                  <SelectItem value="3e tranche">3e tranche</SelectItem>
-                </SelectContent>
-              </Select>
+              {operationType === 'DEPENSE' ? (
+                <Input
+                  id="reference"
+                  value={newPayment.reference}
+                  onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })}
+                  className="col-span-3"
+                  placeholder="Référence de la dépense"
+                />
+              ) : (
+                <Select value={newPayment.reference} onValueChange={(value) => setNewPayment({...newPayment, reference: value})} >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Sélectionner une référence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Paiement Total">Paiement Total</SelectItem>
+                    <SelectItem value="Avance">Avance</SelectItem>
+                    <SelectItem value="1er tranche">1er tranche</SelectItem>
+                    <SelectItem value="2eme Tranche">2eme Tranche</SelectItem>
+                    <SelectItem value="3e tranche">3e tranche</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
           {paymentError && <p className="text-red-500 text-sm text-center">{paymentError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleAddPayment} disabled={isAddingPayment}>
-              {isAddingPayment ? "Enregistrement..." : "Enregistrer le paiement"}
+            <Button onClick={handleSaveOperation} disabled={isAddingPayment}>
+              {isAddingPayment ? "Enregistrement..." : `Enregistrer l'${operationType === 'PAIEMENT' ? 'paiement' : 'dépense'}`}
             </Button>
           </DialogFooter>
         </DialogContent>

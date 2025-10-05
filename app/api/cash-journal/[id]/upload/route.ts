@@ -11,7 +11,10 @@ export async function POST(
 ) {
   const cashJournalId = parseInt(params.id, 10);
   if (isNaN(cashJournalId)) {
-    return NextResponse.json({ error: "Invalid cash journal ID" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid cash journal ID" },
+      { status: 400 }
+    );
   }
 
   const data = await request.formData();
@@ -21,7 +24,13 @@ export async function POST(
     return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
   }
 
-  const uploadDir = join(process.cwd(), "public", "Upload", "CashJournal", String(cashJournalId));
+  const uploadDir = join(
+    process.cwd(),
+    "public",
+    "Upload",
+    "CashJournal",
+    String(cashJournalId)
+  );
   if (!existsSync(uploadDir)) {
     mkdirSync(uploadDir, { recursive: true });
   }
@@ -34,7 +43,13 @@ export async function POST(
     const path = join(uploadDir, file.name);
     await writeFile(path, buffer);
 
-    const fileUrl = join("/", "Upload", "CashJournal", String(cashJournalId), file.name).replace(/\\/g, "/");
+    const fileUrl = join(
+      "/",
+      "Upload",
+      "CashJournal",
+      String(cashJournalId),
+      file.name
+    ).replace(/\\/g, "/");
 
     const attachment = await prisma.cashJournalAttachment.create({
       data: {

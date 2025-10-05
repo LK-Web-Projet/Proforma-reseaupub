@@ -111,7 +111,14 @@ model Paiement {
   cashJournalEntryId Int?         @unique
   cashJournalEntry   CashJournal? @relation(fields: [cashJournalEntryId], references: [id])
 
+  type PaiementType @default(PAIEMENT)
+
   @@map("paiements")
+}
+
+enum PaiementType {
+  PAIEMENT
+  DEPENSE
 }
 
 enum StatusFacture {
