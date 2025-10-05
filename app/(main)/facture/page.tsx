@@ -180,7 +180,7 @@ export default function Home() {
         <Table>
           <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
-              <TableHead>Date</TableHead><TableHead>Numéro</TableHead><TableHead>Client</TableHead><TableHead>Objet</TableHead><TableHead className="text-center">Gestionnaire</TableHead><TableHead className="text-right">Total TTC</TableHead><TableHead className="text-right">Reste à Payer</TableHead> {/* NEW COLUMN */}<TableHead className="text-center">Statut</TableHead><TableHead className="text-center">Voir</TableHead>
+              <TableHead>Date</TableHead><TableHead>Numéro</TableHead><TableHead>Client</TableHead><TableHead>Objet</TableHead><TableHead className="text-center">Gestionnaire</TableHead><TableHead className="text-right">Total TTC</TableHead><TableHead className="text-right">Reste à Payer</TableHead><TableHead className="text-center">Statut</TableHead><TableHead className="text-center">Voir</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
