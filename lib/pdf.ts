@@ -127,7 +127,9 @@ export async function generateInvoicePdf(
       [
         p.quantite.toString(),
         p.designation,
-        `${formatNumber(Number(p.duree))} ${p.uniteDuree}`,
+        p.includeduree
+          ? `${formatNumber(Number(p.duree))} ${p.uniteDuree}`
+          : "-",
         `${formatNumber(Number(p.prixUnitaire))} ${facture.devise}`,
         `${formatNumber(Number(p.montantTotal))} ${facture.devise}`,
       ],
