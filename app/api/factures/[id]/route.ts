@@ -6,22 +6,23 @@ import { StatusFacture } from "@prisma/client";
 // ---------- Schéma de validation ----------
 const productSchema = z.object({
   id: z.string().optional(),
-  productId: z.string().min(1, "productId est requis"),
+  produitId: z.string().optional(),
   designation: z.string().min(1, "designation est requise"),
   quantite: z.coerce.number().min(1, "quantité min 1"),
   prixUnitaire: z.coerce.number().min(0, "prix unitaire >= 0"),
   duree: z.coerce.number().min(0).optional(),
-  uniteDuree: z.enum(["jour", "heure", "mois" , "semaine"]).optional(),
+  uniteDuree: z.enum(["jour", "heure", "mois", "semaine"]).optional(),
   includeduree: z.boolean().optional(),
 });
 
 const updateInvoiceSchema = z.object({
   statut: z.nativeEnum(StatusFacture).optional(),
   produits: z.array(productSchema).optional(),
-  tva: z.coerce.number().min(0).optional(), // pourcentage attendu (ex: 18)
+  tva: z.coerce.number().min(0).optional(),
   devise: z.enum(["XOF", "EUR", "USD"]).optional(),
   paymentConditionPercentage: z.number().optional().nullable(),
   objet: z.string().min(1, "L'objet de la facture est requis.").optional(),
+  gestionnaireId: z.string().optional().nullable(),
 });
 
 // ---------- Helpers ----------
@@ -102,113 +103,132 @@ async function updateFacture(id: string, body: unknown) {
   }
 
   console.log("Validation réussie. Données validées:", validation.data);
-  const { statut, produits, tva, devise, paymentConditionPercentage, objet } = validation.data;
+  const { statut, produits, tva, devise, paymentConditionPercentage, objet, gestionnaireId } = validation.data;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updatedFactureData: any = {};
-
-    if (statut) {
-      updatedFactureData.statut = statut;
-      console.log(`Mise à jour du statut: ${statut}`);
-    }
-
-    if (devise) {
-      updatedFactureData.devise = devise;
-    }
-
-    if (paymentConditionPercentage !== undefined) {
-      updatedFactureData.paymentConditionPercentage = paymentConditionPercentage;
-    }
-
-    if (objet) {
-      updatedFactureData.objet = objet;
-      console.log(`Mise à jour de l'objet: ${objet}`);
-    }
-
-    if (produits && tva !== undefined) {
-      console.log("Mise à jour des produits et calcul des totaux.");
-
-      const totalHT = produits.reduce(
-        (acc, p) => acc + computeLineTotal(p),
-        0
-      );
-      const montantTVA = totalHT * 0.18;
-      const totalTTC = totalHT + montantTVA;
-
-      console.log(
-        `Nouveaux totaux calculés: HT=${totalHT}, TVA_amount=${montantTVA}, TTC=${totalTTC}`
-      );
-
-      const payments = await prisma.paiement.findMany({
-        where: { invoiceId: id, type: 'PAIEMENT' },
-      });
-      const totalPaid = payments.reduce((acc, p) => acc + p.montant, 0);
-      const resteAPayer = totalTTC - totalPaid;
-
-      updatedFactureData.resteAPayer = resteAPayer;
-
-      // Update status to 'Solde' if paid off, but don't override 'Annuler'
-      if (resteAPayer <= 0 && totalPaid > 0) {
-        const currentInvoice = await prisma.invoice.findUnique({ where: { id }, select: { statut: true } });
-        if (currentInvoice && currentInvoice.statut !== 'Annuler') {
-           updatedFactureData.statut = 'Solde';
-           console.log(`Statut mis à jour à 'Solde' car resteAPayer=${resteAPayer}`);
-        }
-      }
-
-      const createManyData = produits.map((p) => {
-        const montant = Math.round(computeLineTotal(p));
-        return {
-          invoiceId: id,
-          productId: p.productId,
-          designation: p.designation,
-          quantite: toNumber(p.quantite),
-          prixUnitaire: toNumber(p.prixUnitaire),
-          duree:
-            p.duree === undefined || p.duree === null ? 0 : toNumber(p.duree),
-          uniteDuree: p.uniteDuree ?? undefined,
-          montantTotal: montant,
-          includeduree: p.includeduree ?? false,
-        };
-      });
-
-      // Transaction pour la mise à jour des produits uniquement
-      // Cela découpe la grosse transaction en morceaux plus petits pour éviter les timeouts
+    // Start a transaction
+    const updatedFacture = await prisma.$transaction(async (tx) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const productUpdateOperations: any[] = [
-        prisma.invoiceProduit.deleteMany({ where: { invoiceId: id } }),
-      ];
-      if (createManyData.length > 0) {
-        productUpdateOperations.push(
-          prisma.invoiceProduit.createMany({ data: createManyData })
-        );
+      const updatedFactureData: any = {};
+
+      if (statut) {
+        updatedFactureData.statut = statut;
+        console.log(`Mise à jour du statut: ${statut}`);
       }
-      await prisma.$transaction(productUpdateOperations);
 
-      console.log("Produits de la facture mis à jour.");
+      if (devise) {
+        updatedFactureData.devise = devise;
+      }
 
+      if (paymentConditionPercentage !== undefined) {
+        updatedFactureData.paymentConditionPercentage = paymentConditionPercentage;
+      }
 
-      updatedFactureData.totalHT = totalHT;
-      updatedFactureData.tva = montantTVA;
-      updatedFactureData.totalTTC = totalTTC;
-    }
+      if (objet) {
+        updatedFactureData.objet = objet;
+        console.log(`Mise à jour de l'objet: ${objet}`);
+      }
 
-    // Update final de la facture
-    const finalUpdate = await prisma.invoice.update({
-      where: { id },
-      data: updatedFactureData,
-      include: {
-        produits: { include: { produit: true } },
-        client: true,
-        gestionnaires: { include: { gestionnaire: true } },
-        bonCommande: true,
-        factureNormaliser: true,
-      },
+      // Handle gestionnaire update
+      if (gestionnaireId !== undefined) {
+        await tx.invoiceGestionnaire.deleteMany({ where: { invoiceId: id } });
+        if (gestionnaireId) { // if not null
+          await tx.invoiceGestionnaire.create({
+            data: {
+              invoiceId: id,
+              gestionnaireId: gestionnaireId,
+            },
+          });
+        }
+        console.log(`Mise à jour du gestionnaire pour la facture ${id}`);
+      }
+
+      if (produits && tva !== undefined) {
+        console.log("Mise à jour des produits et calcul des totaux.");
+
+        const totalHT = produits.reduce((acc, p) => acc + computeLineTotal(p), 0);
+        const montantTVA = totalHT * 0.18;
+        const totalTTC = totalHT + montantTVA;
+
+        console.log(`Nouveaux totaux calculés: HT=${totalHT}, TVA_amount=${montantTVA}, TTC=${totalTTC}`);
+
+        const payments = await tx.paiement.findMany({
+          where: { invoiceId: id, type: 'PAIEMENT' },
+        });
+        const totalPaid = payments.reduce((acc, p) => acc + p.montant, 0);
+        const resteAPayer = totalTTC - totalPaid;
+
+        updatedFactureData.resteAPayer = resteAPayer;
+
+        if (resteAPayer <= 0 && totalPaid > 0) {
+          const currentInvoice = await tx.invoice.findUnique({ where: { id }, select: { statut: true } });
+          if (currentInvoice && currentInvoice.statut !== 'Annuler') {
+            updatedFactureData.statut = 'Solde';
+            console.log(`Statut mis à jour à 'Solde' car resteAPayer=${resteAPayer}`);
+          }
+        }
+
+        // Product updates
+        await tx.invoiceProduit.deleteMany({ where: { invoiceId: id } });
+
+        for (const p of produits) {
+          let productId = p.produitId;
+
+          if (!productId && p.designation) {
+            const product = await tx.produit.upsert({
+              where: { nom: p.designation },
+              update: { prixUnitaire: toNumber(p.prixUnitaire) },
+              create: {
+                nom: p.designation,
+                prixUnitaire: toNumber(p.prixUnitaire),
+              },
+            });
+            productId = product.id;
+          }
+
+          if (productId) {
+            await tx.invoiceProduit.create({
+              data: {
+                invoiceId: id,
+                productId: productId,
+                designation: p.designation,
+                quantite: toNumber(p.quantite),
+                prixUnitaire: toNumber(p.prixUnitaire),
+                duree: p.duree ? toNumber(p.duree) : 0,
+                uniteDuree: p.uniteDuree ?? undefined,
+                montantTotal: Math.round(computeLineTotal(p)),
+                includeduree: p.includeduree ?? false,
+              },
+            });
+          }
+        }
+
+        console.log("Produits de la facture mis à jour.");
+
+        updatedFactureData.totalHT = totalHT;
+        updatedFactureData.tva = montantTVA;
+        updatedFactureData.totalTTC = totalTTC;
+      }
+
+      // Final invoice update
+      const finalUpdate = await tx.invoice.update({
+        where: { id },
+        data: updatedFactureData,
+        include: {
+          produits: { include: { produit: true } },
+          client: true,
+          gestionnaires: { include: { gestionnaire: true } },
+          bonCommande: true,
+          factureNormaliser: true,
+        },
+      });
+
+      return finalUpdate;
     });
 
     console.log("Mise à jour de la facture réussie.");
-    return NextResponse.json(finalUpdate);
+    return NextResponse.json(updatedFacture);
+
   } catch (error: Error | unknown) {
     console.error("Erreur lors de la mise à jour de la facture :", error);
     return NextResponse.json(
