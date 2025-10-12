@@ -114,7 +114,11 @@ export default function FactureDetailPage() {
   );
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [formData, setFormData] = useState<Partial<Facture>>({});
+  const [formData, setFormData] = useState<Partial<Facture> & { gestionnaireId?: string | null }>({});
+
+  const [allGestionnaires, setAllGestionnaires] = useState<{id: string, nom: string, prenom: string}[]>([]);
+  const [allProduits, setAllProduits] = useState<{id: string, nom: string, prixUnitaire: number}[]>([]);
+
 
   const [bonCommandeFile, setBonCommandeFile] = useState<File | undefined>();
   const [factureNormaliseeFile, setFactureNormaliseeFile] = useState<File | undefined>();
@@ -139,20 +143,36 @@ export default function FactureDetailPage() {
   const fetchFacture = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    const res = await fetch(`/api/factures/${id}`);
-    const data = await res.json();
-    setFacture(data.error ? null : data);
-    setFormData(data.error ? {} : data);
+    try {
+      const [factureRes, cashRes, gestionnairesRes, produitsRes] = await Promise.all([
+        fetch(`/api/factures/${id}`),
+        fetch('/api/cash-journal'),
+        fetch('/api/gestionnaires'),
+        fetch('/api/produits'),
+      ]);
 
-    // Fetch cash registers
-    const cashRes = await fetch('/api/cash-journal');
-    const cashData = await cashRes.json();
-    setCashRegisters(cashData.cashRegisters || []);
-    if (cashData.cashRegisters?.length > 0) {
-      setSelectedCashRegisterId(cashData.cashRegisters[0].id.toString());
+      const data = await factureRes.json();
+      setFacture(data.error ? null : data);
+      setFormData(data.error ? {} : { ...data, gestionnaireId: data.gestionnaires?.[0]?.gestionnaireId });
+
+      const cashData = await cashRes.json();
+      setCashRegisters(cashData.cashRegisters || []);
+      if (cashData.cashRegisters?.length > 0) {
+        setSelectedCashRegisterId(cashData.cashRegisters[0].id.toString());
+      }
+
+      const gestionnairesData = await gestionnairesRes.json();
+      setAllGestionnaires(gestionnairesData.error ? [] : gestionnairesData);
+
+      const produitsData = await produitsRes.json();
+      setAllProduits(produitsData.error ? [] : produitsData);
+
+    } catch (error) {
+      console.error("Failed to fetch initial data", error);
+      toast.error("Erreur lors du chargement des données.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -252,6 +272,30 @@ export default function FactureDetailPage() {
     }
   };
 
+  const handleAddProduct = () => {
+    const newProduct = {
+      id: `temp-${Date.now()}`,
+      produitId: "",
+      designation: "",
+      quantite: 1,
+      prixUnitaire: 0,
+      duree: 1,
+      uniteDuree: "jour" as UniteDuree,
+      montantTotal: 0,
+      includeduree: false,
+    };
+    setFormData((prev) => ({
+      ...prev,
+      produits: [...(prev?.produits || []), newProduct],
+    }));
+  };
+
+  const handleRemoveProduct = (index: number) => {
+    const newProduits = [...(formData.produits || [])];
+    newProduits.splice(index, 1);
+    setFormData((prev) => ({ ...prev, produits: newProduits }));
+  };
+
   // Modified to open dialog
   const handleFileDelete = (type: 'bon' | 'facture') => {
     setFileToDeleteType(type);
@@ -294,9 +338,24 @@ export default function FactureDetailPage() {
   const handleProductChange = (index: number, e: React.ChangeEvent<HTMLInputElement> | { target: { name: string; value: string } }) => {
     const { name, value } = e.target;
     const produits = [...(formData.produits || [])];
-    const isNumeric = (e.target as HTMLInputElement).type === 'number';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    produits[index] = { ...produits[index], [name]: isNumeric ? parseFloat(value) : value } as any;
+
+    if (name === 'designation') {
+      const selectedProduit = allProduits.find(p => p.nom === value);
+      if (selectedProduit) {
+        produits[index] = { 
+          ...produits[index], 
+          designation: value, 
+          prixUnitaire: selectedProduit.prixUnitaire,
+          produitId: selectedProduit.id
+        } as any;
+      } else {
+        produits[index] = { ...produits[index], designation: value, produitId: '' } as any;
+      }
+    } else {
+      const isNumeric = (e.target as HTMLInputElement).type === 'number';
+      produits[index] = { ...produits[index], [name]: isNumeric ? parseFloat(value) : value } as any;
+    }
+    
     setFormData((prev) => ({ ...prev, produits }));
   };
 
@@ -470,7 +529,11 @@ export default function FactureDetailPage() {
         </div>
         <div className="text-right">
           {!facture.bonCommande && !facture.factureNormaliser && (
-            <Button onClick={() => setIsEditing(!isEditing)} variant="outline">
+            <Button 
+              onClick={() => setIsEditing(!isEditing)} 
+              variant="outline"
+              disabled={facture.statut === 'Payer' || facture.statut === 'Solde'}
+            >
               {isEditing ? "Annuler" : "Modifier"}
             </Button>
           )}
@@ -501,15 +564,34 @@ export default function FactureDetailPage() {
             <h2 className="font-bold underline text-lg text-primary">
               Commercial :
             </h2>
-            <div className="font-medium">
-              {facture.gestionnaires?.length > 0
-                ? facture.gestionnaires
-                    .map(
-                      (g) => `${g.gestionnaire?.prenom} ${g.gestionnaire?.nom}`
-                    )
-                    .join(", ")
-                : "-"}
-            </div>
+            {isEditing ? (
+              <Select
+                value={formData.gestionnaireId ?? ""}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, gestionnaireId: value === 'null' ? null : value }))}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Sélectionner un commercial" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="null">Aucun</SelectItem>
+                  {allGestionnaires.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.prenom} {g.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="font-medium">
+                {facture.gestionnaires?.length > 0
+                  ? facture.gestionnaires
+                      .map(
+                        (g) => `${g.gestionnaire?.prenom} ${g.gestionnaire?.nom}`
+                      )
+                      .join(", ")
+                  : "-"}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -559,6 +641,7 @@ export default function FactureDetailPage() {
               <th className="px-4 py-2 text-center">Unité</th>
               <th className="px-4 py-2 text-center">Inclure Durée</th>
               <th className="px-4 py-2 text-right">Total</th>
+              {isEditing && <th className="px-4 py-2"></th>}
             </tr>
           </thead>
           <tbody>
@@ -567,11 +650,21 @@ export default function FactureDetailPage() {
                 <tr key={p.id} className="border-b">
                   <td className="px-4 py-2">
                     {isEditing ? (
-                      <Input
-                        name="designation"
-                        value={p.designation}
-                        onChange={(e) => handleProductChange(index, e)}
-                      />
+                      <>
+                        <Input
+                          name="designation"
+                          value={p.designation}
+                          onChange={(e) => handleProductChange(index, e)}
+                          list={`produits-list-${index}`}
+                          autoComplete="off"
+                          placeholder="Saisir ou rechercher..."
+                        />
+                        <datalist id={`produits-list-${index}`}>
+                          {allProduits.map((prod) => (
+                            <option key={prod.id} value={prod.nom} />
+                          ))}
+                        </datalist>
+                      </>
                     ) : (
                       p.designation
                     )}
@@ -608,7 +701,7 @@ export default function FactureDetailPage() {
                       <Input
                         name="duree"
                         type="number"
-                        value={p.duree}
+                        value={p.duree ?? 1}
                         onChange={(e) => handleProductChange(index, e)}
                       />
                     ) : (
@@ -623,7 +716,6 @@ export default function FactureDetailPage() {
                         onValueChange={(value) =>
                           handleProductChange(index, {
                             target: { name: "uniteDuree", value },
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           } as any)
                         }
                       >
@@ -662,11 +754,24 @@ export default function FactureDetailPage() {
                           currency: displayDevise,
                         })}
                   </td>
+                  {isEditing && (
+                    <td className="px-4 py-2 text-center">
+                      <Button variant="destructive" size="icon" onClick={() => handleRemoveProduct(index)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               )
             )}
           </tbody>
         </table>
+        {isEditing && (
+          <Button onClick={handleAddProduct} className="mt-4">
+            <PlusCircle className="h-4 w-4 mr-2" />
+            Ajouter un produit
+          </Button>
+        )}
       </div>
       {/* Bouton PDF */}
       <div className="flex justify-end mb-6 space-x-2">
@@ -986,7 +1091,7 @@ export default function FactureDetailPage() {
               Enregistrez une nouvelle {operationType === 'PAIEMENT' ? 'versement pour la' : 'dépense liée à la'} facture {facture.numero}.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4"> 
             <div className="grid grid-cols-4 items-center gap-4">
               <label htmlFor="montant" className="text-right">Montant</label>
               <Input id="montant" type="number" value={newPayment.montant} onChange={(e) => setNewPayment({...newPayment, montant: parseFloat(e.target.value)})} className="col-span-3" />
