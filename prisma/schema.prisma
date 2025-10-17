@@ -183,3 +183,38 @@ enum OperationType {
   DEPENSE
   TRANSFERT
 }
+
+model Fournisseur {
+  id              String    @id @default(cuid())
+  nom             String?
+  prenom          String?
+  entreprise      String    @unique
+  contact         String
+  domaineActivite String
+  adresse         String
+  email           String    @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  factures FactureFournisseur[]
+}
+
+model FactureFournisseur {
+  id           String                   @id @default(cuid())
+  reference    String                   @unique
+  montant      Decimal                  @db.Decimal(10, 2)
+  date         DateTime
+  pieceJointe  String?
+  status       StatutFactureFournisseur @default(EN_ATTENTE)
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  fournisseurId String
+  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+}
+
+enum StatutFactureFournisseur {
+  EN_ATTENTE
+  PAYEE
+  ANNULEE
+}

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
+  Building2,
   Calendar,
   Home,
   Plus,
@@ -82,6 +83,24 @@ const Commercial = [
   },
 ];
 
+const fournisseur = [
+  {
+    title: "Liste Fournisseurs",
+    url: "/fournisseur",
+    icon: Users,
+  },
+  {
+    title: "Liste Factures",
+    url: "/fournisseur/factures",
+    icon: FileText,
+  },
+  {
+    title: "Ajouter Facture",
+    url: "/fournisseur/facture/new",
+    icon: Plus,
+  },
+];
+
 const finance = [
   {
     title: "Journal de Caisse",
@@ -102,6 +121,7 @@ export function AppSidebar() {
   const [isFactureOpen, setIsFactureOpen] = useState(true);
   const [isClientOpen, setIsClientOpen] = useState(false);
   const [isCommercialOpen, setIsCommercialOpen] = useState(false);
+  const [isFournisseurOpen, setIsFournisseurOpen] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
 
   useEffect(() => {
@@ -181,6 +201,43 @@ export function AppSidebar() {
           <CollapsibleContent>
             <SidebarMenu className="space-y-1 pl-2">
               {client.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <Link
+                      key={item.title}
+                      href={item.url}
+                      className={cn(
+                        "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
+                        pathname === item.url
+                          ? "bg-gray-900 text-white"
+                          : "text-gray-600"
+                      )}
+                    >
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </CollapsibleContent>
+        </Collapsible>
+        <Collapsible open={isFournisseurOpen} onOpenChange={setIsFournisseurOpen}>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <Building2 className="w-5 h-5" />
+              <span className="font-bold">Fournisseurs</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 transition-transform",
+                  isFournisseurOpen && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenu className="space-y-1 pl-2">
+              {fournisseur.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <Link
