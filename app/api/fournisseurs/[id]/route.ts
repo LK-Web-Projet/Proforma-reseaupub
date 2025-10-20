@@ -10,6 +10,9 @@ export async function GET(req: Request, { params }: Params) {
   try {
     const fournisseur = await prisma.fournisseur.findUnique({
       where: { id: params.id },
+      include: {
+        factures: true,
+      },
     });
 
     if (!fournisseur) {

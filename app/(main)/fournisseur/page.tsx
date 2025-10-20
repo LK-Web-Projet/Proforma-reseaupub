@@ -9,17 +9,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import { FournisseurTableSkeleton } from "@/components/FournisseurTableSkeleton";
 import { FournisseurModal, Fournisseur } from "@/components/FournisseurModal";
-import { PlusCircle, Edit, Trash2 } from 'lucide-react';
+import { PlusCircle } from 'lucide-react';
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 export default function FournisseursPage() {
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFournisseur, setSelectedFournisseur] = useState<Fournisseur | null>(null);
+  const router = useRouter();
 
   const fetchFournisseurs = useCallback(async () => {
     setLoading(true);
@@ -57,29 +59,6 @@ export default function FournisseursPage() {
     fetchFournisseurs();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce fournisseur ?")) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/fournisseurs/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Erreur lors de la suppression.");
-      }
-
-      toast.success("Fournisseur supprimé avec succès !");
-      fetchFournisseurs();
-    } catch (error: any) {
-      console.error(error);
-      toast.error(error.message);
-    }
-  };
-
   return (
     <>
       <FournisseurModal
@@ -105,7 +84,6 @@ export default function FournisseursPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Domaine d'activité</TableHead>
-                <TableHead className="text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -113,25 +91,17 @@ export default function FournisseursPage() {
                 <FournisseurTableSkeleton />
               ) : fournisseurs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center h-24">
+                  <TableCell colSpan={4} className="text-center h-24">
                     Aucun fournisseur trouvé.
                   </TableCell>
                 </TableRow>
               ) : (
                 fournisseurs.map((fournisseur) => (
-                  <TableRow key={fournisseur.id}>
+                  <TableRow key={fournisseur.id} onClick={() => router.push(`/fournisseur/${fournisseur.id}`)} className="cursor-pointer">
                     <TableCell className="font-medium">{fournisseur.entreprise}</TableCell>
                     <TableCell>{fournisseur.email}</TableCell>
                     <TableCell>{fournisseur.contact}</TableCell>
                     <TableCell>{fournisseur.domaineActivite}</TableCell>
-                    <TableCell className="text-center space-x-2">
-                      <Button variant="outline" size="icon" onClick={() => handleOpenModal(fournisseur)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDelete(fournisseur.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 ))
               )}

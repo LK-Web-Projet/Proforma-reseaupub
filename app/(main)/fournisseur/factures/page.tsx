@@ -156,7 +156,7 @@ export default function FacturesListPage() {
               <Calendar mode="range" selected={filters.dateRange} onSelect={(range) => setFilters(prev => ({ ...prev, dateRange: range }))} />
             </PopoverContent>
           </Popover>
-          <div className="flex items-end space-x-2">
+          <div className="flex items-end flex-wrap space-x-2">
             <Button onClick={fetchFactures} className="w-full"><Search className="mr-2 h-4 w-4"/>Rechercher</Button>
             <Button onClick={resetFilters} variant="ghost" className="w-full"><X className="mr-2 h-4 w-4"/>Réinitialiser</Button>
           </div>

@@ -96,7 +96,7 @@ const fournisseur = [
   },
   {
     title: "Ajouter Facture",
-    url: "/fournisseur/facture/new",
+    url: "/fournisseur/factures/new",
     icon: Plus,
   },
 ];
