@@ -46,18 +46,18 @@ export async function PUT(req: Request, { params }: Params) {
     });
 
     return NextResponse.json(updatedFournisseur);
-  } catch (error: any) {
-    console.error(`Erreur lors de la mise à jour du fournisseur ${params.id}:`, error);
-    if (error.code === 'P2025') { // Record to update not found
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    console.error(`Erreur lors de la mise à jour du fournisseur ${params.id}:`, err);
+    if (err.code === 'P2025') { // Record to update not found
       return NextResponse.json({ message: 'Fournisseur non trouvé' }, { status: 404 });
     }
-    if (error.code === 'P2002') { // Unique constraint violation
+    if (err.code === 'P2002') { // Unique constraint violation
       return NextResponse.json({ message: `Un fournisseur avec cet email ou nom d'entreprise existe déjà.` }, { status: 409 });
     }
     return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
   }
 }
-
 // DELETE /api/fournisseurs/[id] - Supprimer un fournisseur
 export async function DELETE(req: Request, { params }: Params) {
   try {
@@ -66,11 +66,13 @@ export async function DELETE(req: Request, { params }: Params) {
     });
 
     return new NextResponse(null, { status: 204 }); // No Content
-  } catch (error: any) {
-    console.error(`Erreur lors de la suppression du fournisseur ${params.id}:`, error);
-    if (error.code === 'P2025') { // Record to delete not found
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    console.error(`Erreur lors de la suppression du fournisseur ${params.id}:`, err);
+    if (err.code === 'P2025') { // Record to delete not found
       return NextResponse.json({ message: 'Fournisseur non trouvé' }, { status: 404 });
     }
     return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
   }
 }
+

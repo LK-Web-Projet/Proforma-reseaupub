@@ -337,23 +337,32 @@ export default function FactureDetailPage() {
 
   const handleProductChange = (index: number, e: React.ChangeEvent<HTMLInputElement> | { target: { name: string; value: string } }) => {
     const { name, value } = e.target;
-    const produits = [...(formData.produits || [])];
+    // Use the concrete produits type from Facture to avoid `any`
+    const produits = [...(formData.produits || [])] as Facture["produits"];
 
     if (name === 'designation') {
       const selectedProduit = allProduits.find(p => p.nom === value);
       if (selectedProduit) {
-        produits[index] = { 
-          ...produits[index], 
-          designation: value, 
+        produits[index] = {
+          ...produits[index],
+          designation: value,
           prixUnitaire: selectedProduit.prixUnitaire,
-          produitId: selectedProduit.id
-        } as any;
+          produitId: selectedProduit.id,
+        } as Facture["produits"][number];
       } else {
-        produits[index] = { ...produits[index], designation: value, produitId: '' } as any;
+        produits[index] = {
+          ...produits[index],
+          designation: value,
+          produitId: '',
+        } as Facture["produits"][number];
       }
     } else {
       const isNumeric = (e.target as HTMLInputElement).type === 'number';
-      produits[index] = { ...produits[index], [name]: isNumeric ? parseFloat(value) : value } as any;
+      // dynamic property assignment may produce a type mismatch, so assert to the concrete product type
+      produits[index] = {
+        ...produits[index],
+        [name]: isNumeric ? parseFloat(value) : value,
+      } as unknown as Facture["produits"][number];
     }
     
     setFormData((prev) => ({ ...prev, produits }));
@@ -716,7 +725,7 @@ export default function FactureDetailPage() {
                         onValueChange={(value) =>
                           handleProductChange(index, {
                             target: { name: "uniteDuree", value },
-                          } as any)
+                          } as { target: { name: string; value: string } })
                         }
                       >
                         <SelectTrigger>

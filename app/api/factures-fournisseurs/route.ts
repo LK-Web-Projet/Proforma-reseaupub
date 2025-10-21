@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const where: any = {};
+    const where: Prisma.FactureFournisseurWhereInput = {};
 
     if (fournisseurId) {
       where.fournisseurId = fournisseurId;
@@ -22,13 +23,14 @@ export async function GET(req: NextRequest) {
       where.status = status;
     }
     if (startDate || endDate) {
-      where.date = {};
+      const dateFilter: Prisma.DateTimeFilter = {};
       if (startDate) {
-        where.date.gte = new Date(startDate);
+        dateFilter.gte = new Date(startDate);
       }
       if (endDate) {
-        where.date.lte = new Date(endDate);
+        dateFilter.lte = new Date(endDate);
       }
+      where.date = dateFilter;
     }
 
     const factures = await prisma.factureFournisseur.findMany({
@@ -57,7 +59,8 @@ export async function POST(req: NextRequest) {
     const montant = formData.get('montant') as string;
     const date = formData.get('date') as string;
     const fournisseurId = formData.get('fournisseurId') as string;
-    const status = formData.get('status') as any;
+    const statusValue = formData.get('status');
+    const status = typeof statusValue === 'string' ? statusValue : null;
 
     if (!reference || !montant || !date || !fournisseurId || !status) {
       return NextResponse.json({ message: 'Les champs référence, montant, date, fournisseur et statut sont requis.' }, { status: 400 });

@@ -6,7 +6,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { FournisseurForm } from './FournisseurForm';
 import { toast } from "sonner";
@@ -53,9 +52,13 @@ export function FournisseurModal({ isOpen, onClose, onSuccess, initialData }: Fo
       toast.success(initialData ? 'Fournisseur mis à jour avec succès !' : 'Fournisseur créé avec succès !');
       onSuccess(); // Refetch data on parent page
       onClose(); // Close modal
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error.message);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error(String(error));
+      }
     } finally {
       setIsSubmitting(false);
     }

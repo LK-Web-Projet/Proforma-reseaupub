@@ -87,17 +87,25 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <label htmlFor="entreprise">Entreprise *</label>
-          <Input id="entreprise" name="entreprise" value={formData.entreprise} onChange={handleChange} required />
+          <Input
+            id="entreprise"
+            name="entreprise"
+            value={formData.entreprise}
+            onChange={handleChange}
+            required
+          />
         </div>
         <div className="space-y-2">
-          <label htmlFor="domaineActivite">Domaine d'activité</label>
+          <label htmlFor="domaineActivite">Domaine d&apos;activité</label>
           <Select onValueChange={handleDomainChange} value={selectValue}>
             <SelectTrigger>
               <SelectValue placeholder="Sélectionner un domaine" />
             </SelectTrigger>
             <SelectContent>
-              {domainOptions.map(option => (
-                <SelectItem key={option} value={option}>{option}</SelectItem>
+              {domainOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
               ))}
               <SelectItem value="Autre">Autre</SelectItem>
             </SelectContent>
@@ -106,12 +114,14 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
       </div>
       {isOtherDomain && (
         <div className="space-y-2">
-          <label htmlFor="customDomaineActivite">Domaine d'activité (personnalisé)</label>
-          <Input 
-            id="customDomaineActivite" 
-            name="domaineActivite" 
-            value={formData.domaineActivite} 
-            onChange={handleChange} 
+          <label htmlFor="customDomaineActivite">
+            Domaine d&apos;activité (personnalisé)
+          </label>
+          <Input
+            id="customDomaineActivite"
+            name="domaineActivite"
+            value={formData.domaineActivite}
+            onChange={handleChange}
             placeholder="Précisez le domaine d'activité"
           />
         </div>
@@ -119,30 +129,58 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <label htmlFor="nom">Nom</label>
-          <Input id="nom" name="nom" value={formData.nom} onChange={handleChange} />
+          <Input
+            id="nom"
+            name="nom"
+            value={formData.nom}
+            onChange={handleChange}
+          />
         </div>
         <div className="space-y-2">
           <label htmlFor="prenom">Prénom</label>
-          <Input id="prenom" name="prenom" value={formData.prenom} onChange={handleChange} />
+          <Input
+            id="prenom"
+            name="prenom"
+            value={formData.prenom}
+            onChange={handleChange}
+          />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <label htmlFor="email">Email *</label>
-          <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+          />
         </div>
         <div className="space-y-2">
           <label htmlFor="contact">Contact *</label>
-          <Input id="contact" name="contact" value={formData.contact} onChange={handleChange} required />
+          <Input
+            id="contact"
+            name="contact"
+            value={formData.contact}
+            onChange={handleChange}
+            required
+          />
         </div>
       </div>
       <div className="space-y-2">
         <label htmlFor="adresse">Adresse</label>
-        <Input id="adresse" name="adresse" value={formData.adresse} onChange={handleChange} />
+        <Input
+          id="adresse"
+          name="adresse"
+          value={formData.adresse}
+          onChange={handleChange}
+        />
       </div>
       <div className="flex justify-end pt-4">
         <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+          {isSubmitting ? "Enregistrement..." : "Enregistrer"}
         </Button>
       </div>
     </form>

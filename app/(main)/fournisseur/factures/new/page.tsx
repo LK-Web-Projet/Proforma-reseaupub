@@ -92,9 +92,10 @@ export default function NewFactureFournisseurPage() {
 
       toast.success("Facture fournisseur créée avec succès !");
       router.push('/fournisseur/factures'); // Redirect to a future list page
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

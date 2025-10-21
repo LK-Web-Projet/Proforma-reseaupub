@@ -83,7 +83,7 @@ export default function FournisseursPage() {
                 <TableHead>Entreprise</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Contact</TableHead>
-                <TableHead>Domaine d'activité</TableHead>
+                <TableHead>Domaine d&apos;activité</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -97,8 +97,16 @@ export default function FournisseursPage() {
                 </TableRow>
               ) : (
                 fournisseurs.map((fournisseur) => (
-                  <TableRow key={fournisseur.id} onClick={() => router.push(`/fournisseur/${fournisseur.id}`)} className="cursor-pointer">
-                    <TableCell className="font-medium">{fournisseur.entreprise}</TableCell>
+                  <TableRow
+                    key={fournisseur.id}
+                    onClick={() =>
+                      router.push(`/fournisseur/${fournisseur.id}`)
+                    }
+                    className="cursor-pointer"
+                  >
+                    <TableCell className="font-medium">
+                      {fournisseur.entreprise}
+                    </TableCell>
                     <TableCell>{fournisseur.email}</TableCell>
                     <TableCell>{fournisseur.contact}</TableCell>
                     <TableCell>{fournisseur.domaineActivite}</TableCell>

@@ -21,9 +21,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     });
 
     return NextResponse.json(updatedFacture);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Erreur lors de la mise à jour de la facture ${params.id}:`, error);
-    if (error.code === 'P2025') { // Record to update not found
+
+    const err = error as { code?: string; message?: string } | null;
+
+    if (err && err.code === 'P2025') { // Record to update not found
       return NextResponse.json({ message: 'Facture non trouvée' }, { status: 404 });
     }
     return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });

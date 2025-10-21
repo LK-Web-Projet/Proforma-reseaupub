@@ -40,10 +40,13 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(newFournisseur, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erreur lors de la création du fournisseur:', error);
-    if (error.code === 'P2002') { // Unique constraint violation
-      return NextResponse.json({ message: `Un fournisseur avec cet email ou nom d'entreprise existe déjà.` }, { status: 409 });
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+      const errWithCode = error as { code?: string };
+      if (errWithCode.code === 'P2002') { // Unique constraint violation
+        return NextResponse.json({ message: `Un fournisseur avec cet email ou nom d'entreprise existe déjà.` }, { status: 409 });
+      }
     }
     return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
   }
