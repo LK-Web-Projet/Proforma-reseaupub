@@ -27,6 +27,7 @@ interface FournisseurDetails extends Fournisseur {
 export default function FournisseurDetailsPage() {
   const [fournisseur, setFournisseur] = useState<FournisseurDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<StatutFactureFournisseur | null>(null);
   const params = useParams();
   const id = params.id as string;
 
@@ -91,8 +92,17 @@ export default function FournisseurDetailsPage() {
     }
   };
 
-  const paidInvoices = fournisseur?.factures?.filter(inv => inv.status === 'PAYEE').length || 0;
-  const pendingInvoices = fournisseur?.factures?.filter(inv => inv.status === 'EN_ATTENTE').length || 0;
+  const paidInvoicesAmount = fournisseur?.factures
+    ?.filter(inv => inv.status === 'PAYEE')
+    .reduce((sum, inv) => sum + Number(inv.montant), 0) || 0;
+
+  const pendingInvoicesAmount = fournisseur?.factures
+    ?.filter(inv => inv.status === 'EN_ATTENTE')
+    .reduce((sum, inv) => sum + Number(inv.montant), 0) || 0;
+
+  const displayedFactures = statusFilter
+    ? fournisseur?.factures.filter(f => f.status === statusFilter)
+    : fournisseur?.factures;
 
   if (loading) {
     return <div>Chargement...</div>;
@@ -107,20 +117,26 @@ export default function FournisseurDetailsPage() {
       <h1 className="text-2xl font-bold mb-4">{fournisseur.entreprise}</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <Card>
+        <Card 
+          onClick={() => setStatusFilter(statusFilter === 'PAYEE' ? null : 'PAYEE')}
+          className={`cursor-pointer transition-all hover:shadow-lg ${statusFilter === 'PAYEE' ? 'ring-2 ring-green-500' : ''}`}
+        >
           <CardHeader>
             <CardTitle>Factures Payées</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{paidInvoices}</p>
+            <p className="text-3xl font-bold">{new Intl.NumberFormat('fr-FR').format(paidInvoicesAmount)} XOF</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          onClick={() => setStatusFilter(statusFilter === 'EN_ATTENTE' ? null : 'EN_ATTENTE')}
+          className={`cursor-pointer transition-all hover:shadow-lg ${statusFilter === 'EN_ATTENTE' ? 'ring-2 ring-yellow-500' : ''}`}
+        >
           <CardHeader>
             <CardTitle>Factures en Attente</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{pendingInvoices}</p>
+            <p className="text-3xl font-bold">{new Intl.NumberFormat('fr-FR').format(pendingInvoicesAmount)} XOF</p>
           </CardContent>
         </Card>
       </div>
@@ -138,14 +154,14 @@ export default function FournisseurDetailsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(fournisseur?.factures?.length || 0) === 0 ? (
+            {(displayedFactures?.length || 0) === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center h-24">
                   Aucune facture trouvée.
                 </TableCell>
               </TableRow>
             ) : (
-              fournisseur.factures.map((facture) => (
+              displayedFactures.map((facture) => (
                 <TableRow key={facture.id}>
                   <TableCell>{facture.reference}</TableCell>
                   <TableCell>{format(new Date(facture.date), "dd/MM/yyyy")}</TableCell>
