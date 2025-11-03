@@ -107,8 +107,8 @@ export async function generateInvoicePdf(
   y.value -= 25;
 
   // Tableau des produits
-  const headers = ["Qte", "Désignation", "Durée", "Prix unitaire HT", "Montant HT"];
-  const columnWidths = [30, 200, 50, 100, 150];
+  const headers = ["Désignation", "Qte", "Durée", "Prix unitaire HT", "Montant HT"];
+  const columnWidths = [200, 30, 50, 100, 150];
   const tableX = 40;
   const lineHeight = 30;
 
@@ -118,15 +118,15 @@ export async function generateInvoicePdf(
   y.value -= lineHeight;
 
   for (const p of facture.produits) {
-    const designationLines = getLines(p.designation, font, 11, columnWidths[1] - 10);
+    const designationLines = getLines(p.designation, font, 11, columnWidths[0] - 10);
     const rowHeight = Math.max(lineHeight, designationLines.length * lineHeight);
 
     await checkNewPage(rowHeight);
     drawTableRow(
       page,
       [
-        p.quantite.toString(),
         p.designation,
+        p.quantite.toString(),
         p.includeduree
           ? `${formatNumber(Number(p.duree))} ${p.uniteDuree}`
           : "-",
@@ -165,7 +165,7 @@ export async function generateInvoicePdf(
   // Conditions de paiement
   await checkNewPage(50);
   const totalTTCInWords = writtenNumber(totalTTC, { lang: 'fr' });
-  const fullText = `Arrêté la présente facture Proforma à la somme de : ${formatNumber(
+  const fullText = `Arrêtée la présente facture proforma à la somme de : ${formatNumber(
     totalTTC
   )} ${
     facture.devise
@@ -180,7 +180,7 @@ export async function generateInvoicePdf(
   
   if (facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0) {
     y.value -= 20;
-    const conditionText = `NB : Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation`;
+    const conditionText = `NB : Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation.`;
     const conditionLines = getLines(conditionText, font, 10, width - pageMargin * 2);
     await checkNewPage(conditionLines.length * 15);
     for (const line of conditionLines) {
@@ -228,13 +228,13 @@ async function drawHeader(
 
   const companyX = 40;
   let companyY = 700;
-  drawText(page, font, `Delivrer par : ${facture.societeNom ?? Entreprise.nom}`, companyX, companyY, 10);
+  drawText(page, font, `Délivrée par : ${facture.societeNom ?? Entreprise.nom}`, companyX, companyY, 10);
   companyY -= 15;
   drawText(page, font, `Adresse : ${facture.societeAdresse ?? Entreprise.adresse}`, companyX, companyY, 10);
   companyY -= 15;
   drawText(page, font, `IFU : ${facture.societeIFU ?? Entreprise.IFU}`, companyX, companyY, 10);
   companyY -= 15;
-  drawText(page, font, "Email : finance@reseaupub.com", companyX, companyY, 10);
+  drawText(page, font, "E-mail : finance@reseaupub.com", companyX, companyY, 10);
   companyY -= 15;
   drawText(page, font, "Téléphone : +229 01 69 81 30 30", companyX, companyY, 10);
 }
@@ -276,7 +276,7 @@ function drawTableRow(
       color: isHeader ? rgb(0.95, 0.95, 0.95) : rgb(1, 1, 1),
     });
 
-    if (i === 1 && designationLines) { // Designation column
+    if (i === 0 && designationLines) { // Designation column
       let lineY = y - 12;
       for (const line of designationLines) {
         drawText(page, font, line, x + 5, lineY, 11);

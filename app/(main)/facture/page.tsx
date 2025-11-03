@@ -75,9 +75,7 @@ export default function Home() {
   return (
     <div className="w-full">
       <div className="flex flex-wrap justify-between items-center  mb-6">
-        <h1 className="text-2xl font-bold mb-8">
-          Liste des factures délivrées
-        </h1>
+        <h1 className="text-2xl font-bold mb-8">Liste des factures émises</h1>
 
         {/* Filtres et Recherche */}
         <div className="w-full">
@@ -148,12 +146,12 @@ export default function Home() {
                     title="Sélectionnez un statut"
                   >
                     <option value="">Tous</option>
-                    <option value="Envoyer">Envoyer</option>
-                    <option value="Valider">Valider</option>
-                    <option value="Payer">Payer</option>
-                    <option value="Annuler">Annuler</option>
-                    <option value="Archiver">Archiver</option>
-                    <option value="Solde">Soldé</option> {/* NEW OPTION */}
+                    <option value="Envoyer">Envoyée</option>
+                    <option value="Valider">Validée</option>
+                    <option value="Payer">Payée</option>
+                    <option value="Annuler">Annulée</option>
+                    <option value="Archiver">Archivée</option>
+                    <option value="Solde">Soldée</option> {/* NEW OPTION */}
                   </select>
                 </div>
               </div>
@@ -180,7 +178,15 @@ export default function Home() {
         <Table>
           <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
-              <TableHead>Date</TableHead><TableHead>Numéro</TableHead><TableHead>Client</TableHead><TableHead>Objet</TableHead><TableHead className="text-center">Gestionnaire</TableHead><TableHead className="text-right">Total TTC</TableHead><TableHead className="text-right">Reste à Payer</TableHead><TableHead className="text-center">Statut</TableHead><TableHead className="text-center">Voir</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Numéro</TableHead>
+              <TableHead>Client</TableHead>
+              <TableHead>Objet</TableHead>
+              <TableHead className="text-center">Gestionnaire</TableHead>
+              <TableHead className="text-right">Total TTC</TableHead>
+              <TableHead className="text-right">Reste à Payer</TableHead>
+              <TableHead className="text-center">Statut</TableHead>
+              <TableHead className="text-center">Voir</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -240,7 +246,7 @@ export default function Home() {
                   <TableCell className="text-right font-semibold">
                     {formatMoney(facture.totalTTC, facture.devise)}
                   </TableCell>
-                  <TableCell className="text-right font-semibold"> {/* NEW CELL */}
+                  <TableCell className="text-right font-semibold">
                     {formatMoney(facture.resteAPayer, facture.devise)}
                   </TableCell>
                   <TableCell className="text-center">

@@ -1036,7 +1036,7 @@ export default function FactureDetailPage() {
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-lg font-medium flex items-center gap-2">
                 <Receipt className="h-5 w-5 text-green-500" /> Facture
-                (Normalisée , Chèque ,etc)
+                (Normalisée, Chèque, etc.)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1095,9 +1095,9 @@ export default function FactureDetailPage() {
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter une {operationType === 'PAIEMENT' ? 'paiement' : 'dépense'}</DialogTitle>
+            <DialogTitle>{operationType === 'PAIEMENT' ? 'Ajouter un paiement' : 'Ajouter une dépense'}</DialogTitle>
             <DialogDescription>
-              Enregistrez une nouvelle {operationType === 'PAIEMENT' ? 'versement pour la' : 'dépense liée à la'} facture {facture.numero}.
+              {operationType === 'PAIEMENT' ? 'Enregistrez un nouveau versement pour la' : 'Enregistrez une nouvelle dépense liée à la'} facture {facture.numero}.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4"> 
@@ -1163,7 +1163,7 @@ export default function FactureDetailPage() {
                   <SelectContent>
                     <SelectItem value="Paiement Total">Paiement Total</SelectItem>
                     <SelectItem value="Avance">Avance</SelectItem>
-                    <SelectItem value="1er tranche">1er tranche</SelectItem>
+                    <SelectItem value="1ère tranche">1ère tranche</SelectItem>
                     <SelectItem value="2eme Tranche">2eme Tranche</SelectItem>
                     <SelectItem value="3e tranche">3e tranche</SelectItem>
                   </SelectContent>
