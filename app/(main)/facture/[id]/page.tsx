@@ -465,10 +465,12 @@ export default function FactureDetailPage() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Statut"   />
+                    <SelectValue placeholder="Statut" />
                   </SelectTrigger>
                   <SelectContent>
-                    {STATUT_FACTURE_OPTIONS.filter(option => ["Envoyer", "Annuler"].includes(option.value)).map(option => (
+                    {STATUT_FACTURE_OPTIONS.filter((option) =>
+                      ["Envoyer", "Annuler"].includes(option.value)
+                    ).map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -488,7 +490,7 @@ export default function FactureDetailPage() {
                   <SelectValue placeholder="Devise" />
                 </SelectTrigger>
                 <SelectContent>
-                  {DEVISE_OPTIONS.map(option => (
+                  {DEVISE_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -499,7 +501,10 @@ export default function FactureDetailPage() {
                 name="paymentConditionPercentage"
                 value={String(formData.paymentConditionPercentage ?? 0)}
                 onValueChange={(value) =>
-                  setFormData((prev) => ({ ...prev, paymentConditionPercentage: Number(value) }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    paymentConditionPercentage: Number(value),
+                  }))
                 }
               >
                 <SelectTrigger>
@@ -507,8 +512,15 @@ export default function FactureDetailPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="0">Aucun acompte</SelectItem>
+                  <SelectItem value="10">10%</SelectItem>
+                  <SelectItem value="20">20%</SelectItem>
+                  <SelectItem value="30">30%</SelectItem>
+                  <SelectItem value="40">40%</SelectItem>
                   <SelectItem value="50">50%</SelectItem>
+                  <SelectItem value="60">60%</SelectItem>
                   <SelectItem value="70">70%</SelectItem>
+                  <SelectItem value="80">80%</SelectItem>
+                  <SelectItem value="90">90%</SelectItem>
                   <SelectItem value="100">100%</SelectItem>
                 </SelectContent>
               </Select>
@@ -538,10 +550,12 @@ export default function FactureDetailPage() {
         </div>
         <div className="text-right">
           {!facture.bonCommande && !facture.factureNormaliser && (
-            <Button 
-              onClick={() => setIsEditing(!isEditing)} 
+            <Button
+              onClick={() => setIsEditing(!isEditing)}
               variant="outline"
-              disabled={facture.statut === 'Payer' || facture.statut === 'Solde'}
+              disabled={
+                facture.statut === "Payer" || facture.statut === "Solde"
+              }
             >
               {isEditing ? "Annuler" : "Modifier"}
             </Button>
@@ -567,7 +581,9 @@ export default function FactureDetailPage() {
           {facture.client?.email ? (
             <div className="font-medium">Email : {facture.client.email}</div>
           ) : (
-            <div className="font-medium text-red-500">Email : email non défini</div>
+            <div className="font-medium text-red-500">
+              Email : email non défini
+            </div>
           )}
           <div className="commercial items-center flex flex-wrap gap-2">
             <h2 className="font-bold underline text-lg text-primary">
@@ -576,7 +592,12 @@ export default function FactureDetailPage() {
             {isEditing ? (
               <Select
                 value={formData.gestionnaireId ?? ""}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, gestionnaireId: value === 'null' ? null : value }))}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    gestionnaireId: value === "null" ? null : value,
+                  }))
+                }
               >
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Sélectionner un commercial" />
@@ -595,7 +616,8 @@ export default function FactureDetailPage() {
                 {facture.gestionnaires?.length > 0
                   ? facture.gestionnaires
                       .map(
-                        (g) => `${g.gestionnaire?.prenom} ${g.gestionnaire?.nom}`
+                        (g) =>
+                          `${g.gestionnaire?.prenom} ${g.gestionnaire?.nom}`
                       )
                       .join(", ")
                   : "-"}
@@ -631,12 +653,16 @@ export default function FactureDetailPage() {
         )}
       </div>
 
-      {facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0 && !isEditing && (
-        <div className="mb-6">
-          <span className="font-semibold text-primary">Condition de paiement :</span>{" "}
-          {`Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation`}
-        </div>
-      )}
+      {facture.paymentConditionPercentage &&
+        facture.paymentConditionPercentage > 0 &&
+        !isEditing && (
+          <div className="mb-6">
+            <span className="font-semibold text-primary">
+              Condition de paiement :
+            </span>{" "}
+            {`Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation`}
+          </div>
+        )}
 
       {/* Tableau des produits/services */}
       <div className="overflow-x-auto mb-8">
@@ -732,7 +758,7 @@ export default function FactureDetailPage() {
                           <SelectValue placeholder="Unité" />
                         </SelectTrigger>
                         <SelectContent>
-                          {UNITE_DUREE_OPTIONS.map(option => (
+                          {UNITE_DUREE_OPTIONS.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>
@@ -765,7 +791,11 @@ export default function FactureDetailPage() {
                   </td>
                   {isEditing && (
                     <td className="px-4 py-2 text-center">
-                      <Button variant="destructive" size="icon" onClick={() => handleRemoveProduct(index)}>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleRemoveProduct(index)}
+                      >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </td>
@@ -865,7 +895,11 @@ export default function FactureDetailPage() {
             currency: displayDevise,
           })}
         </div>
-        <div className={`text-lg font-bold ${facture.resteAPayer > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+        <div
+          className={`text-lg font-bold ${
+            facture.resteAPayer > 0 ? "text-orange-600" : "text-green-600"
+          }`}
+        >
           Reste à Payer :{" "}
           {Number(facture.resteAPayer).toLocaleString("fr-FR", {
             style: "currency",
@@ -877,15 +911,28 @@ export default function FactureDetailPage() {
       {/* Historique des Paiements */}
       <div className="mt-8 border-t pt-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-primary">Flux Financiers</h2>
+          <h2 className="text-xl font-semibold text-primary">
+            Flux Financiers
+          </h2>
           <div className="flex gap-2">
             {facture.resteAPayer > 0 && (
-              <Button onClick={() => { setOperationType('PAIEMENT'); setIsPaymentDialogOpen(true); }}>
+              <Button
+                onClick={() => {
+                  setOperationType("PAIEMENT");
+                  setIsPaymentDialogOpen(true);
+                }}
+              >
                 <PlusCircle className="h-4 w-4 mr-2" />
                 Ajouter un paiement
               </Button>
             )}
-            <Button variant="outline" onClick={() => { setOperationType('DEPENSE'); setIsPaymentDialogOpen(true); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setOperationType("DEPENSE");
+                setIsPaymentDialogOpen(true);
+              }}
+            >
               <PlusCircle className="h-4 w-4 mr-2" />
               Ajouter une dépense
             </Button>
@@ -898,8 +945,12 @@ export default function FactureDetailPage() {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Libellé</TableHead>
-                  <TableHead className="text-right text-green-600">Entrée</TableHead>
-                  <TableHead className="text-right text-red-600">Sortie</TableHead>
+                  <TableHead className="text-right text-green-600">
+                    Entrée
+                  </TableHead>
+                  <TableHead className="text-right text-red-600">
+                    Sortie
+                  </TableHead>
                   <TableHead>Preuves</TableHead>
                 </TableRow>
               </TableHeader>
@@ -907,16 +958,32 @@ export default function FactureDetailPage() {
                 {facture.paiements && facture.paiements.length > 0 ? (
                   facture.paiements.map((p) => (
                     <TableRow key={p.id}>
-                      <TableCell>{new Date(p.datePaiement).toLocaleDateString('fr-FR')}</TableCell>
-                      <TableCell>{p.reference || p.type.charAt(0) + p.type.slice(1).toLowerCase()}</TableCell>
-                      <TableCell className="text-right font-medium text-green-600">
-                        {p.type === 'PAIEMENT' ? Number(p.montant).toLocaleString("fr-FR", { style: "currency", currency: displayDevise }) : ''}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-red-600">
-                        {p.type === 'DEPENSE' ? Number(p.montant).toLocaleString("fr-FR", { style: "currency", currency: displayDevise }) : ''}
+                      <TableCell>
+                        {new Date(p.datePaiement).toLocaleDateString("fr-FR")}
                       </TableCell>
                       <TableCell>
-                        {p.cashJournalEntry?.attachments && p.cashJournalEntry.attachments.length > 0 ? (
+                        {p.reference ||
+                          p.type.charAt(0) + p.type.slice(1).toLowerCase()}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-green-600">
+                        {p.type === "PAIEMENT"
+                          ? Number(p.montant).toLocaleString("fr-FR", {
+                              style: "currency",
+                              currency: displayDevise,
+                            })
+                          : ""}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-red-600">
+                        {p.type === "DEPENSE"
+                          ? Number(p.montant).toLocaleString("fr-FR", {
+                              style: "currency",
+                              currency: displayDevise,
+                            })
+                          : ""}
+                      </TableCell>
+                      <TableCell>
+                        {p.cashJournalEntry?.attachments &&
+                        p.cashJournalEntry.attachments.length > 0 ? (
                           <div className="flex flex-col">
                             {p.cashJournalEntry.attachments.map((att) => (
                               <a
@@ -938,7 +1005,10 @@ export default function FactureDetailPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-gray-500 py-4">
+                    <TableCell
+                      colSpan={5}
+                      className="text-center text-gray-500 py-4"
+                    >
                       Aucune opération enregistrée.
                     </TableCell>
                   </TableRow>
@@ -954,21 +1024,49 @@ export default function FactureDetailPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Total des Paiements</span>
+                <span className="text-muted-foreground">
+                  Total des Paiements
+                </span>
                 <span className="font-medium text-green-600">
-                  {Number(facture.paiements.filter(p => p.type === 'PAIEMENT').reduce((acc, p) => acc + Number(p.montant), 0)).toLocaleString("fr-FR", { style: "currency", currency: displayDevise })}
+                  {Number(
+                    facture.paiements
+                      .filter((p) => p.type === "PAIEMENT")
+                      .reduce((acc, p) => acc + Number(p.montant), 0)
+                  ).toLocaleString("fr-FR", {
+                    style: "currency",
+                    currency: displayDevise,
+                  })}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Total des Dépenses</span>
+                <span className="text-muted-foreground">
+                  Total des Dépenses
+                </span>
                 <span className="font-medium text-red-600">
-                  {Number(facture.paiements.filter(p => p.type === 'DEPENSE').reduce((acc, p) => acc + Number(p.montant), 0)).toLocaleString("fr-FR", { style: "currency", currency: displayDevise })}
+                  {Number(
+                    facture.paiements
+                      .filter((p) => p.type === "DEPENSE")
+                      .reduce((acc, p) => acc + Number(p.montant), 0)
+                  ).toLocaleString("fr-FR", {
+                    style: "currency",
+                    currency: displayDevise,
+                  })}
                 </span>
               </div>
               <div className="flex justify-between border-t pt-2 mt-2">
                 <span className="font-bold">Marge</span>
                 <span className="font-bold">
-                  {Number(facture.paiements.filter(p => p.type === 'PAIEMENT').reduce((acc, p) => acc + Number(p.montant), 0) - facture.paiements.filter(p => p.type === 'DEPENSE').reduce((acc, p) => acc + Number(p.montant), 0)).toLocaleString("fr-FR", { style: "currency", currency: displayDevise })}
+                  {Number(
+                    facture.paiements
+                      .filter((p) => p.type === "PAIEMENT")
+                      .reduce((acc, p) => acc + Number(p.montant), 0) -
+                      facture.paiements
+                        .filter((p) => p.type === "DEPENSE")
+                        .reduce((acc, p) => acc + Number(p.montant), 0)
+                  ).toLocaleString("fr-FR", {
+                    style: "currency",
+                    currency: displayDevise,
+                  })}
                 </span>
               </div>
             </CardContent>
@@ -1095,23 +1193,60 @@ export default function FactureDetailPage() {
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{operationType === 'PAIEMENT' ? 'Ajouter un paiement' : 'Ajouter une dépense'}</DialogTitle>
+            <DialogTitle>
+              {operationType === "PAIEMENT"
+                ? "Ajouter un paiement"
+                : "Ajouter une dépense"}
+            </DialogTitle>
             <DialogDescription>
-              {operationType === 'PAIEMENT' ? 'Enregistrez un nouveau versement pour la' : 'Enregistrez une nouvelle dépense liée à la'} facture {facture.numero}.
+              {operationType === "PAIEMENT"
+                ? "Enregistrez un nouveau versement pour la"
+                : "Enregistrez une nouvelle dépense liée à la"}{" "}
+              facture {facture.numero}.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4"> 
+          <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="montant" className="text-right">Montant</label>
-              <Input id="montant" type="number" value={newPayment.montant} onChange={(e) => setNewPayment({...newPayment, montant: parseFloat(e.target.value)})} className="col-span-3" />
+              <label htmlFor="montant" className="text-right">
+                Montant
+              </label>
+              <Input
+                id="montant"
+                type="number"
+                value={newPayment.montant}
+                onChange={(e) =>
+                  setNewPayment({
+                    ...newPayment,
+                    montant: parseFloat(e.target.value),
+                  })
+                }
+                className="col-span-3"
+              />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="datePaiement" className="text-right">Date</label>
-              <Input id="datePaiement" type="date" value={newPayment.datePaiement} onChange={(e) => setNewPayment({...newPayment, datePaiement: e.target.value})} className="col-span-3" />
+              <label htmlFor="datePaiement" className="text-right">
+                Date
+              </label>
+              <Input
+                id="datePaiement"
+                type="date"
+                value={newPayment.datePaiement}
+                onChange={(e) =>
+                  setNewPayment({ ...newPayment, datePaiement: e.target.value })
+                }
+                className="col-span-3"
+              />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="methode" className="text-right">Méthode</label>
-              <Select value={newPayment.methode} onValueChange={(value) => setNewPayment({...newPayment, methode: value})}>
+              <label htmlFor="methode" className="text-right">
+                Méthode
+              </label>
+              <Select
+                value={newPayment.methode}
+                onValueChange={(value) =>
+                  setNewPayment({ ...newPayment, methode: value })
+                }
+              >
                 <SelectTrigger className="col-span-3">
                   <SelectValue placeholder="Méthode de paiement" />
                 </SelectTrigger>
@@ -1124,16 +1259,24 @@ export default function FactureDetailPage() {
                 </SelectContent>
               </Select>
             </div>
-            {newPayment.methode !== 'Espèces' && (
+            {newPayment.methode !== "Espèces" && (
               <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="cashRegister" className="text-right">Caisse</label>
-                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
+                <label htmlFor="cashRegister" className="text-right">
+                  Caisse
+                </label>
+                <Select
+                  value={selectedCashRegisterId}
+                  onValueChange={setSelectedCashRegisterId}
+                >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Sélectionner une caisse" />
                   </SelectTrigger>
                   <SelectContent>
-                    {cashRegisters.map(register => (
-                      <SelectItem key={register.id} value={register.id.toString()}>
+                    {cashRegisters.map((register) => (
+                      <SelectItem
+                        key={register.id}
+                        value={register.id.toString()}
+                      >
                         {register.name}
                       </SelectItem>
                     ))}
@@ -1142,26 +1285,45 @@ export default function FactureDetailPage() {
               </div>
             )}
             <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="files" className="text-right">Preuve(s)</label>
-              <Input id="files" type="file" multiple onChange={(e) => setPaymentFiles(e.target.files)} className="col-span-3" />
+              <label htmlFor="files" className="text-right">
+                Preuve(s)
+              </label>
+              <Input
+                id="files"
+                type="file"
+                multiple
+                onChange={(e) => setPaymentFiles(e.target.files)}
+                className="col-span-3"
+              />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="reference" className="text-right">Référence</label>
-              {operationType === 'DEPENSE' ? (
+              <label htmlFor="reference" className="text-right">
+                Référence
+              </label>
+              {operationType === "DEPENSE" ? (
                 <Input
                   id="reference"
                   value={newPayment.reference}
-                  onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })}
+                  onChange={(e) =>
+                    setNewPayment({ ...newPayment, reference: e.target.value })
+                  }
                   className="col-span-3"
                   placeholder="Référence de la dépense"
                 />
               ) : (
-                <Select value={newPayment.reference} onValueChange={(value) => setNewPayment({...newPayment, reference: value})} >
+                <Select
+                  value={newPayment.reference}
+                  onValueChange={(value) =>
+                    setNewPayment({ ...newPayment, reference: value })
+                  }
+                >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Sélectionner une référence" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Paiement Total">Paiement Total</SelectItem>
+                    <SelectItem value="Paiement Total">
+                      Paiement Total
+                    </SelectItem>
                     <SelectItem value="Avance">Avance</SelectItem>
                     <SelectItem value="1ère tranche">1ère tranche</SelectItem>
                     <SelectItem value="2eme Tranche">2eme Tranche</SelectItem>
@@ -1171,11 +1333,22 @@ export default function FactureDetailPage() {
               )}
             </div>
           </div>
-          {paymentError && <p className="text-red-500 text-sm text-center">{paymentError}</p>}
+          {paymentError && (
+            <p className="text-red-500 text-sm text-center">{paymentError}</p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Annuler</Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsPaymentDialogOpen(false)}
+            >
+              Annuler
+            </Button>
             <Button onClick={handleSaveOperation} disabled={isAddingPayment}>
-              {isAddingPayment ? "Enregistrement..." : `Enregistrer l'${operationType === 'PAIEMENT' ? 'paiement' : 'dépense'}`}
+              {isAddingPayment
+                ? "Enregistrement..."
+                : `Enregistrer l'${
+                    operationType === "PAIEMENT" ? "paiement" : "dépense"
+                  }`}
             </Button>
           </DialogFooter>
         </DialogContent>
