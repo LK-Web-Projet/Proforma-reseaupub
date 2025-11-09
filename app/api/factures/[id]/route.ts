@@ -224,6 +224,8 @@ async function updateFacture(id: string, body: unknown) {
       });
 
       return finalUpdate;
+    }, {
+      timeout: 15000, // 15 seconds
     });
 
     console.log("Mise à jour de la facture réussie.");
