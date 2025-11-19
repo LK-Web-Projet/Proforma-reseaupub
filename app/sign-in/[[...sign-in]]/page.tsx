@@ -14,19 +14,20 @@ export default function App() {
           className="w-auto h-32"
         />
         <div className="flex flex-col gap-5 text-white text-center">
-
-        <h1 className="text-4xl font-bold">
-          Bienvenue sur votre plateforme de Gestion des Finances a reseaupub
-        </h1>
-        <p>
-          Générez vos factures proforma professionnelles en quelques clics, Gérez la comptabilité, Connectez-vous pour créer, personnaliser et envoyer
-          vos documents instantanément.
-        </p>
+          <h1 className="text-4xl font-bold">
+            Bienvenue sur votre plateforme de Gestion des Finances a reseaupub
+          </h1>
+          <p>
+            Générez vos factures proforma professionnelles en quelques clics,
+            Gérez la comptabilité, Connectez-vous pour créer, personnaliser et
+            envoyer vos documents instantanément.
+          </p>
         </div>
       </div>
       {/* Render the SignIn component from Clerk */}
       <div className="w-1/2 h-full flex items-center justify-center bg-white p-8">
-        <SignIn />
+        <SignIn fallbackRedirectUrl="/facture"
+                forceRedirectUrl="/facture" />
       </div>
     </div>
   );
