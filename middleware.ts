@@ -2,23 +2,24 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Routes publiques
+// --- Routes publiques ---
 const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/"]);
 
-// Récupère les origines autorisées depuis .env
-const allowedOrigins =
-  process.env.NEXT_PUBLIC_ALLOWED_ORIGINS?.split(",") || [];
+// --- Origines autorisées depuis .env ---
+const allowedOrigins = process.env.NEXT_PUBLIC_ALLOWED_ORIGINS
+  ? process.env.NEXT_PUBLIC_ALLOWED_ORIGINS.split(",")
+  : [];
 
 export default clerkMiddleware((auth, req: NextRequest) => {
-  // --- Clerk ---
+  const origin = req.headers.get("origin") || "";
+  const res = NextResponse.next();
+
+  // ----- Clerk -----
   if (!isPublicRoute(req)) {
     auth.protect();
   }
 
-  // --- CORS ---
-  const origin = req.headers.get("origin") || "";
-  const res = NextResponse.next();
-
+  // ----- CORS -----
   if (allowedOrigins.includes(origin)) {
     res.headers.set("Access-Control-Allow-Origin", origin);
     res.headers.set(
@@ -36,7 +37,9 @@ export default clerkMiddleware((auth, req: NextRequest) => {
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*|/)",
+    // Toutes les pages sauf assets (_next, fichiers statiques)
+    "/((?!_next|.*\\..*).*)",
+    // API
     "/(api|trpc)(.*)",
   ],
 };
