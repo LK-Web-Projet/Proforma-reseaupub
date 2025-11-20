@@ -30,31 +30,30 @@ export default async function RootLayout({
 }>) {
   const { userId } = await auth();
   return (
-    <ClerkProvider
-      afterSignOutUrl="/sign-in"
-    >
+    <ClerkProvider afterSignOutUrl="/sign-in">
       <html lang="fr">
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
         >
-            {userId ? (
-              <div className="absolute top-0 right-0 w-content h-auto  shadow-md flex items-center justify-between px-4 bg-transparent rounded-b-md">
-                <Image
-                  src="/RESEAUPUB LOGO MIX COLOR@300xcoupé.png"
-                  alt="Logo"
-                  width={100}
-                  height={100}
-                />
-              </div>
-            ) : (
-              <h1 className="absolute top-0 right-0"></h1>
-            )}
-
-            <div>
-                <Providers>
-              <main>{children}</main>
-              </Providers>
+          {userId ? (
+            <div className="absolute top-0 right-0 w-content h-auto  shadow-md flex items-center justify-between px-4 bg-transparent rounded-b-md">
+              <Image
+                src="/RESEAUPUB LOGO MIX COLOR@300xcoupé.png"
+                alt="Logo"
+                width={100}
+                height={100}
+                className="h-auto w-auto"
+              />
             </div>
+          ) : (
+            <h1 className="absolute top-0 right-0"></h1>
+          )}
+
+          <div>
+            <Providers>
+              <main>{children}</main>
+            </Providers>
+          </div>
         </body>
       </html>
     </ClerkProvider>
