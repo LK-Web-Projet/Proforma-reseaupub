@@ -117,6 +117,8 @@ const finance = [
 export function AppSidebar() {
   const pathname = usePathname();
   const { user, isLoaded, isSignedIn } = useUser();
+  const role = user?.organizationMemberships?.[0]?.role ?? "no-role";
+
   const router = useRouter();
   const [isFactureOpen, setIsFactureOpen] = useState(true);
   const [isClientOpen, setIsClientOpen] = useState(false);
@@ -222,117 +224,129 @@ export function AppSidebar() {
             </SidebarMenu>
           </CollapsibleContent>
         </Collapsible>
-        <Collapsible open={isFournisseurOpen} onOpenChange={setIsFournisseurOpen}>
-          <CollapsibleTrigger asChild>
-            <SidebarMenuButton>
-              <Building2 className="w-5 h-5" />
-              <span className="font-bold">Fournisseurs</span>
-              <ChevronRight
-                className={cn(
-                  "ml-auto w-4 h-4 transition-transform",
-                  isFournisseurOpen && "rotate-90"
-                )}
-              />
-            </SidebarMenuButton>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <SidebarMenu className="space-y-1 pl-2">
-              {fournisseur.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      key={item.title}
-                      href={item.url}
-                      className={cn(
-                        "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                        pathname === item.url
-                          ? "bg-gray-900 text-white"
-                          : "text-gray-600"
-                      )}
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </CollapsibleContent>
-        </Collapsible>
-        <Collapsible open={isCommercialOpen} onOpenChange={setIsCommercialOpen}>
-          <CollapsibleTrigger asChild>
-            <SidebarMenuButton>
-              <Briefcase className="w-5 h-5" />
-              <span className="font-bold">Commercial</span>
-              <ChevronRight
-                className={cn(
-                  "ml-auto w-4 h-4 transition-transform",
-                  isCommercialOpen && "rotate-90"
-                )}
-              />
-            </SidebarMenuButton>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <SidebarMenu className="space-y-1 pl-2">
-              {Commercial.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      key={item.title}
-                      href={item.url}
-                      className={cn(
-                        "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                        pathname === item.url
-                          ? "bg-gray-900 text-white"
-                          : "text-gray-600"
-                      )}
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </CollapsibleContent>
-        </Collapsible>
-        <Collapsible open={isFinanceOpen} onOpenChange={setIsFinanceOpen}>
-          <CollapsibleTrigger asChild>
-            <SidebarMenuButton>
-              <Landmark className="w-5 h-5" />
-              <span className="font-bold">Finance</span>
-              <ChevronRight
-                className={cn(
-                  "ml-auto w-4 h-4 transition-transform",
-                  isFinanceOpen && "rotate-90"
-                )}
-              />
-            </SidebarMenuButton>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <SidebarMenu className="space-y-1 pl-2">
-              {finance.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      key={item.title}
-                      href={item.url}
-                      className={cn(
-                        "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                        pathname === item.url
-                          ? "bg-gray-900 text-white"
-                          : "text-gray-600"
-                      )}
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </CollapsibleContent>
-        </Collapsible>
+        {role === "org:admin" && (
+          <Collapsible
+            open={isFournisseurOpen}
+            onOpenChange={setIsFournisseurOpen}
+          >
+            <CollapsibleTrigger asChild>
+              <SidebarMenuButton>
+                <Building2 className="w-5 h-5" />
+                <span className="font-bold">Fournisseurs</span>
+                <ChevronRight
+                  className={cn(
+                    "ml-auto w-4 h-4 transition-transform",
+                    isFournisseurOpen && "rotate-90"
+                  )}
+                />
+              </SidebarMenuButton>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu className="space-y-1 pl-2">
+                {fournisseur.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <Link
+                        key={item.title}
+                        href={item.url}
+                        className={cn(
+                          "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
+                          pathname === item.url
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-600"
+                        )}
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+        {role === "org:admin" && (
+          <Collapsible
+            open={isCommercialOpen}
+            onOpenChange={setIsCommercialOpen}
+          >
+            <CollapsibleTrigger asChild>
+              <SidebarMenuButton>
+                <Briefcase className="w-5 h-5" />
+                <span className="font-bold">Commercial</span>
+                <ChevronRight
+                  className={cn(
+                    "ml-auto w-4 h-4 transition-transform",
+                    isCommercialOpen && "rotate-90"
+                  )}
+                />
+              </SidebarMenuButton>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu className="space-y-1 pl-2">
+                {Commercial.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <Link
+                        key={item.title}
+                        href={item.url}
+                        className={cn(
+                          "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
+                          pathname === item.url
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-600"
+                        )}
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+        {role === "org:admin" && (
+          <Collapsible open={isFinanceOpen} onOpenChange={setIsFinanceOpen}>
+            <CollapsibleTrigger asChild>
+              <SidebarMenuButton>
+                <Landmark className="w-5 h-5" />
+                <span className="font-bold">Finance</span>
+                <ChevronRight
+                  className={cn(
+                    "ml-auto w-4 h-4 transition-transform",
+                    isFinanceOpen && "rotate-90"
+                  )}
+                />
+              </SidebarMenuButton>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu className="space-y-1 pl-2">
+                {finance.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <Link
+                        key={item.title}
+                        href={item.url}
+                        className={cn(
+                          "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
+                          pathname === item.url
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-600"
+                        )}
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <div className="flex facture-center gap-2 pl-4">
