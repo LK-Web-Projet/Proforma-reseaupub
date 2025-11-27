@@ -33,7 +33,6 @@ model Invoice {
   totalHT                    Decimal
   tva                        Decimal
   totalTTC                   Decimal
-  resteAPayer                Decimal               @default(0.00)
   historiqueModifications    Json?
   societeNom                 String
   societeIFU                 String
@@ -41,6 +40,8 @@ model Invoice {
   statut                     StatusFacture         @default(Brouillon)
   devise                     Devise                @default(XOF)
   paymentConditionPercentage Int?
+  resteAPayer                Decimal               @default(0.00)
+  info                       String?
   bonCommande                BonCommande?
   factureNormaliser          FactureNormaliser?
   client                     Client                @relation(fields: [clientId], references: [id])
@@ -99,21 +100,79 @@ model InvoiceGestionnaire {
 }
 
 model Paiement {
-  id           String   @id @default(uuid())
-  montant      Decimal
-  datePaiement DateTime @default(now())
-  methode      String?
-  reference    String?
-  notes        String?  @db.Text
-  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  invoiceId    String
-
+  id                 String       @id @default(uuid())
+  montant            Decimal
+  datePaiement       DateTime     @default(now())
+  methode            String?
+  reference          String?
+  notes              String?
+  invoiceId          String
   cashJournalEntryId Int?         @unique
+  type               PaiementType @default(PAIEMENT)
   cashJournalEntry   CashJournal? @relation(fields: [cashJournalEntryId], references: [id])
-
-  type PaiementType @default(PAIEMENT)
+  invoice            Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@map("paiements")
+}
+
+model CashRegister {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  balance   Float         @default(0)
+  createdAt DateTime      @default(now())
+  journals  CashJournal[]
+}
+
+model CashJournal {
+  id               Int                     @id @default(autoincrement())
+  date_operation   DateTime
+  libelle          String
+  type             OperationType
+  montant          Float
+  solde            Float
+  createdAt        DateTime                @default(now())
+  cashRegisterId   Int                     @default(1)
+  isApportDeCaisse Boolean?                @default(false)
+  cashRegister     CashRegister            @relation(fields: [cashRegisterId], references: [id])
+  attachments      CashJournalAttachment[]
+  paiement         Paiement?
+}
+
+model CashJournalAttachment {
+  id            String      @id @default(uuid())
+  cashJournalId Int
+  url           String
+  fileName      String
+  fileType      String
+  createdAt     DateTime    @default(now())
+  cashJournal   CashJournal @relation(fields: [cashJournalId], references: [id], onDelete: Cascade)
+}
+
+model Fournisseur {
+  id              String               @id @default(cuid())
+  nom             String?
+  prenom          String?
+  entreprise      String               @unique
+  contact         String
+  domaineActivite String
+  adresse         String
+  email           String               @unique
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  factures        FactureFournisseur[]
+}
+
+model FactureFournisseur {
+  id            String                   @id @default(cuid())
+  reference     String                   @unique
+  montant       Decimal                  @db.Decimal(10, 2)
+  date          DateTime
+  pieceJointe   String?
+  status        StatutFactureFournisseur @default(EN_ATTENTE)
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  fournisseurId String
+  fournisseur   Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
 }
 
 enum PaiementType {
@@ -128,7 +187,7 @@ enum StatusFacture {
   Annuler
   Archiver
   Payer
-  Solde // NEW STATUS
+  Solde
 }
 
 enum UniteDuree {
@@ -144,73 +203,10 @@ enum Devise {
   USD
 }
 
-model CashRegister {
-  id        Int           @id @default(autoincrement())
-  name      String        @unique
-  balance   Float         @default(0)
-  createdAt DateTime      @default(now())
-  journals  CashJournal[]
-}
-
-model CashJournal {
-  id               Int           @id @default(autoincrement())
-  date_operation   DateTime
-  createdAt        DateTime      @default(now())
-  libelle          String
-  type             OperationType
-  montant          Float
-  solde            Float
-  isApportDeCaisse Boolean?       @default(false)
-
-  cashRegisterId Int           @default(1)
-  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
-  attachments    CashJournalAttachment[]
-  paiement       Paiement?    
-}
-
-model CashJournalAttachment {
-  id            String      @id @default(uuid())
-  cashJournalId Int
-  url           String
-  fileName      String
-  fileType      String
-  createdAt     DateTime    @default(now())
-  cashJournal   CashJournal @relation(fields: [cashJournalId], references: [id], onDelete: Cascade)
-}
-
 enum OperationType {
   RECETTE
   DEPENSE
   TRANSFERT
-}
-
-model Fournisseur {
-  id              String    @id @default(cuid())
-  nom             String?
-  prenom          String?
-  entreprise      String    @unique
-  contact         String
-  domaineActivite String
-  adresse         String
-  email           String    @unique
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  factures FactureFournisseur[]
-}
-
-model FactureFournisseur {
-  id           String                   @id @default(cuid())
-  reference    String                   @unique
-  montant      Decimal                  @db.Decimal(10, 2)
-  date         DateTime
-  pieceJointe  String?
-  status       StatutFactureFournisseur @default(EN_ATTENTE)
-  createdAt    DateTime                 @default(now())
-  updatedAt    DateTime                 @updatedAt
-
-  fournisseurId String
-  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
 }
 
 enum StatutFactureFournisseur {

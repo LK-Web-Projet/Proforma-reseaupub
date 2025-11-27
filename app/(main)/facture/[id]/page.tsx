@@ -27,6 +27,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner"; // Import toast
@@ -63,6 +64,7 @@ type Facture = {
   societeIFU: string;
   societeAdresse?: string;
   devise: Devise;
+  info?: string | null;
   client: {
     nom: string;
     email?: string;
@@ -653,6 +655,32 @@ export default function FactureDetailPage() {
         )}
       </div>
 
+      {isEditing ? (
+        <div className="mb-6">
+          <label htmlFor="info" className="font-semibold text-primary">
+            Informations complémentaires :
+          </label>
+          <Textarea
+            id="info"
+            name="info"
+            value={formData.info ?? ""}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, info: e.target.value }))
+            }
+            placeholder="Informations additionnelles à afficher sur la facture..."
+          />
+        </div>
+      ) : (
+        facture.info && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-md border">
+            <h3 className="font-semibold text-primary mb-2">
+              Informations complémentaires :
+            </h3>
+            <p className="text-sm whitespace-pre-wrap">{facture.info}</p>
+          </div>
+        )
+      )}
+
       {facture.paymentConditionPercentage &&
         facture.paymentConditionPercentage > 0 &&
         !isEditing && (
@@ -660,7 +688,7 @@ export default function FactureDetailPage() {
             <span className="font-semibold text-primary">
               Condition de paiement :
             </span>{" "}
-            {`Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation`}
+            {`Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est  requis afin de confirmer la commande et lancer la prestation.`}
           </div>
         )}
 

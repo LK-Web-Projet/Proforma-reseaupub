@@ -185,7 +185,7 @@ export async function generateInvoicePdf(
   
   if (facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0) {
     y.value -= 20;
-    const conditionText = `NB : Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est exigé avant le démarrage de la prestation.`;
+    const conditionText = `NB : Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est requis afin de confirmer la commande et lancer la prestation.`;
     const conditionLines = getLines(conditionText, font, 10, width - pageMargin * 2);
     await checkNewPage(conditionLines.length * 15);
     for (const line of conditionLines) {
@@ -193,6 +193,35 @@ export async function generateInvoicePdf(
         y.value -= 30;
     }
   }
+
+  if (facture.info) {
+    y.value -= 10;
+    const blueColor = rgb(0.1, 0.1, 0.7); // A distinct blue color
+    const titleFontSize = 12; // Larger for title
+    const contentFontSize = 11; // Larger for content
+    const infoTitle = 'Informations Complémentaires:';
+
+    // Calculate lines for title and content to check page break
+    const titleDisplayLines = getLines(infoTitle, boldFont, titleFontSize, width - pageMargin * 2);
+    const infoContentLines = getLines(facture.info, boldFont, contentFontSize, width - pageMargin * 2);
+
+    // Estimate height needed for title + content + spacing
+    const estimatedHeightNeeded = titleDisplayLines.length * (titleFontSize + 3) + infoContentLines.length * (contentFontSize + 2) + 20;
+
+    await checkNewPage(estimatedHeightNeeded);
+
+    // Draw title in bold and blue
+    drawText(page, boldFont, infoTitle, pageMargin, y.value, titleFontSize, 'left', blueColor);
+    y.value -= (titleFontSize + 5); // spacing after title
+
+    // Draw content in bold and blue
+    for (const line of infoContentLines) {
+      drawText(page, boldFont, line, pageMargin, y.value, contentFontSize, 'left', blueColor);
+      y.value -= (contentFontSize + 2); // spacing between content lines
+    }
+    y.value -= 10; // spacing after the whole block
+  }
+  
   // Explications abréviations
   await checkNewPage(40);
   drawText(page, font, "HT : Hors Taxes", pageMargin, y.value, 8);
@@ -301,14 +330,15 @@ function drawText(
   x: number,
   y: number,
   size = 12,
-  align: 'left' | 'right' = 'left'
+  align: 'left' | 'right' = 'left',
+  color = rgb(0, 0, 0)
 ) {
     let textX = x;
     if (align === 'right') {
         const textWidth = font.widthOfTextAtSize(text, size);
         textX = x - textWidth;
     }
-  page.drawText(text, { x: textX, y, size, font });
+  page.drawText(text, { x: textX, y, size, font, color });
 }
 
 function centerText(

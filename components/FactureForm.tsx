@@ -37,6 +37,7 @@ import {
 import { useRouter } from "next/navigation";
 import { ClientCombobox } from "./ClientCombobox";
 import { DEVISE, DEVISE_OPTIONS, UNITE_DUREE, UNITE_DUREE_OPTIONS } from "@/lib/constants";
+import { Textarea } from "./ui/textarea";
 
 // --- Définition des types pour les données ---
 interface Client {
@@ -69,6 +70,7 @@ const productSchema = z.object({
 const schema = z.object({
   clientNom: z.string().min(1, "Le nom du client est requis."),
   objet: z.string().min(1, "L'objet de la facture est requis."),
+  info: z.string().optional(),
   produits: z.array(productSchema)
     .min(1, "Au moins un produit est requis.")
     .refine(
@@ -274,6 +276,19 @@ export default function FactureForm() {
                 {errors.objet?.message}
               </p>
             }
+          </div>
+          <div>
+            <label htmlFor="info">Informations complémentaires</label>
+            <Textarea
+              id="info"
+              {...register("info")}
+              placeholder="Informations additionnelles à afficher sur la facture..."
+            />
+            {errors.info && (
+              <p className="text-red-500 text-xs mt-1">
+                {errors.info.message}
+              </p>
+            )}
           </div>
           {/* Gestionnaire */}
           <div>

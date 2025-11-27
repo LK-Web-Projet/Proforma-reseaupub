@@ -23,6 +23,7 @@ const updateInvoiceSchema = z.object({
   paymentConditionPercentage: z.number().optional().nullable(),
   objet: z.string().min(1, "L'objet de la facture est requis.").optional(),
   gestionnaireId: z.string().optional().nullable(),
+  info: z.string().optional().nullable(),
 });
 
 // ---------- Helpers ----------
@@ -103,7 +104,7 @@ async function updateFacture(id: string, body: unknown) {
   }
 
   console.log("Validation réussie. Données validées:", validation.data);
-  const { statut, produits, tva, devise, paymentConditionPercentage, objet, gestionnaireId } = validation.data;
+  const { statut, produits, tva, devise, paymentConditionPercentage, objet, gestionnaireId, info } = validation.data;
 
   try {
     // Start a transaction
@@ -127,6 +128,10 @@ async function updateFacture(id: string, body: unknown) {
       if (objet) {
         updatedFactureData.objet = objet;
         console.log(`Mise à jour de l'objet: ${objet}`);
+      }
+      if (info) {
+        updatedFactureData.info = info;
+        console.log(`Mise à jour de l'objet: ${info}`);
       }
 
       // Handle gestionnaire update
