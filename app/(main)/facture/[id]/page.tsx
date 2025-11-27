@@ -65,6 +65,7 @@ type Facture = {
   societeAdresse?: string;
   devise: Devise;
   info?: string | null;
+  isTaxExempt?: boolean | null;
   client: {
     nom: string;
     email?: string;
@@ -435,8 +436,9 @@ export default function FactureDetailPage() {
   if (!facture) return <div className="text-center text-red-500 mt-10">Facture non trouvée.</div>;
 
   const displayTotalHT = isEditing ? formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0 : facture.totalHT;
-  const displayTVA = isEditing ? displayTotalHT * 0.18 : facture.tva;
-  const displayTotalTTC = isEditing ? displayTotalHT + displayTVA : facture.totalTTC;
+  const isExempt = isEditing ? formData.isTaxExempt : facture.isTaxExempt;
+  const displayTVA = isExempt ? 0 : displayTotalHT * 0.18;
+  const displayTotalTTC = displayTotalHT + displayTVA;
   const displayDevise = isEditing ? formData.devise : facture.devise;
 
   return (
@@ -455,8 +457,24 @@ export default function FactureDetailPage() {
           </div>
         </div>
         <div className="text-right">
+          {facture.isTaxExempt && !isEditing && (
+            <Badge variant="secondary" className="text-md mb-2">
+              Exonéré de TVA
+            </Badge>
+          )}
           {isEditing ? (
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="isTaxExempt"
+                  checked={formData.isTaxExempt ?? false}
+                  onCheckedChange={(value) =>
+                    setFormData((prev) => ({ ...prev, isTaxExempt: value }))
+                  }
+                />
+                <label htmlFor="isTaxExempt">Exonérer de TVA</label>
+              </div>
+              <div className="flex gap-2">
               {!facture.bonCommande && (
                 <Select
                   name="statut"
@@ -526,6 +544,7 @@ export default function FactureDetailPage() {
                   <SelectItem value="100">100%</SelectItem>
                 </SelectContent>
               </Select>
+              </div>
             </div>
           ) : (
             <Badge

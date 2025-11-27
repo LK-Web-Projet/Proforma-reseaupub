@@ -24,6 +24,7 @@ const updateInvoiceSchema = z.object({
   objet: z.string().min(1, "L'objet de la facture est requis.").optional(),
   gestionnaireId: z.string().optional().nullable(),
   info: z.string().optional().nullable(),
+  isTaxExempt: z.boolean().optional(),
 });
 
 // ---------- Helpers ----------
@@ -104,13 +105,15 @@ async function updateFacture(id: string, body: unknown) {
   }
 
   console.log("Validation réussie. Données validées:", validation.data);
-  const { statut, produits, tva, devise, paymentConditionPercentage, objet, gestionnaireId, info } = validation.data;
+  const { statut, produits, tva, devise, paymentConditionPercentage, objet, gestionnaireId, info, isTaxExempt } = validation.data;
 
   try {
     // Start a transaction
     const updatedFacture = await prisma.$transaction(async (tx) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updatedFactureData: any = {};
+      const currentInvoice = await tx.invoice.findUnique({ where: { id } });
+      if (!currentInvoice) throw new Error("Facture non trouvée pour la mise à jour");
 
       if (statut) {
         updatedFactureData.statut = statut;
@@ -133,6 +136,10 @@ async function updateFacture(id: string, body: unknown) {
         updatedFactureData.info = info;
         console.log(`Mise à jour de l'objet: ${info}`);
       }
+       if (isTaxExempt !== undefined) {
+        updatedFactureData.isTaxExempt = isTaxExempt;
+      }
+
 
       // Handle gestionnaire update
       if (gestionnaireId !== undefined) {
@@ -148,11 +155,13 @@ async function updateFacture(id: string, body: unknown) {
         console.log(`Mise à jour du gestionnaire pour la facture ${id}`);
       }
 
-      if (produits && tva !== undefined) {
-        console.log("Mise à jour des produits et calcul des totaux.");
+      if (produits || isTaxExempt !== undefined) {
+        console.log("Mise à jour des produits ou de l'exonération de taxe et calcul des totaux.");
+        
+        const finalIsTaxExempt = isTaxExempt ?? currentInvoice.isTaxExempt;
 
-        const totalHT = produits.reduce((acc, p) => acc + computeLineTotal(p), 0);
-        const montantTVA = totalHT * 0.18;
+        const totalHT = produits ? produits.reduce((acc, p) => acc + computeLineTotal(p), 0) : Number(currentInvoice.totalHT);
+        const montantTVA = finalIsTaxExempt ? 0 : totalHT * 0.18;
         const totalTTC = totalHT + montantTVA;
 
         console.log(`Nouveaux totaux calculés: HT=${totalHT}, TVA_amount=${montantTVA}, TTC=${totalTTC}`);
@@ -164,55 +173,54 @@ async function updateFacture(id: string, body: unknown) {
         const resteAPayer = totalTTC - totalPaid;
 
         updatedFactureData.resteAPayer = resteAPayer;
-
+        updatedFactureData.totalHT = totalHT;
+        updatedFactureData.tva = montantTVA;
+        updatedFactureData.totalTTC = totalTTC;
+        
         if (resteAPayer <= 0 && totalPaid > 0) {
-          const currentInvoice = await tx.invoice.findUnique({ where: { id }, select: { statut: true } });
-          if (currentInvoice && currentInvoice.statut !== 'Annuler') {
+          if (currentInvoice.statut !== 'Annuler') {
             updatedFactureData.statut = 'Solde';
             console.log(`Statut mis à jour à 'Solde' car resteAPayer=${resteAPayer}`);
           }
         }
 
-        // Product updates
-        await tx.invoiceProduit.deleteMany({ where: { invoiceId: id } });
+        // Product updates only if they are provided
+        if (produits) {
+          await tx.invoiceProduit.deleteMany({ where: { invoiceId: id } });
 
-        for (const p of produits) {
-          let productId = p.produitId;
+          for (const p of produits) {
+            let productId = p.produitId;
 
-          if (!productId && p.designation) {
-            const product = await tx.produit.upsert({
-              where: { nom: p.designation },
-              update: { prixUnitaire: toNumber(p.prixUnitaire) },
-              create: {
-                nom: p.designation,
-                prixUnitaire: toNumber(p.prixUnitaire),
-              },
-            });
-            productId = product.id;
+            if (!productId && p.designation) {
+              const product = await tx.produit.upsert({
+                where: { nom: p.designation },
+                update: { prixUnitaire: toNumber(p.prixUnitaire) },
+                create: {
+                  nom: p.designation,
+                  prixUnitaire: toNumber(p.prixUnitaire),
+                },
+              });
+              productId = product.id;
+            }
+
+            if (productId) {
+              await tx.invoiceProduit.create({
+                data: {
+                  invoiceId: id,
+                  productId: productId,
+                  designation: p.designation,
+                  quantite: toNumber(p.quantite),
+                  prixUnitaire: toNumber(p.prixUnitaire),
+                  duree: p.duree ? toNumber(p.duree) : 0,
+                  uniteDuree: p.uniteDuree ?? undefined,
+                  montantTotal: Math.round(computeLineTotal(p)),
+                  includeduree: p.includeduree ?? false,
+                },
+              });
+            }
           }
-
-          if (productId) {
-            await tx.invoiceProduit.create({
-              data: {
-                invoiceId: id,
-                productId: productId,
-                designation: p.designation,
-                quantite: toNumber(p.quantite),
-                prixUnitaire: toNumber(p.prixUnitaire),
-                duree: p.duree ? toNumber(p.duree) : 0,
-                uniteDuree: p.uniteDuree ?? undefined,
-                montantTotal: Math.round(computeLineTotal(p)),
-                includeduree: p.includeduree ?? false,
-              },
-            });
-          }
+          console.log("Produits de la facture mis à jour.");
         }
-
-        console.log("Produits de la facture mis à jour.");
-
-        updatedFactureData.totalHT = totalHT;
-        updatedFactureData.tva = montantTVA;
-        updatedFactureData.totalTTC = totalTTC;
       }
 
       // Final invoice update

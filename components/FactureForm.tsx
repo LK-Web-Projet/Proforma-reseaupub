@@ -71,6 +71,7 @@ const schema = z.object({
   clientNom: z.string().min(1, "Le nom du client est requis."),
   objet: z.string().min(1, "L'objet de la facture est requis."),
   info: z.string().optional(),
+  isTaxExempt: z.boolean().optional(),
   produits: z.array(productSchema)
     .min(1, "Au moins un produit est requis.")
     .refine(
@@ -192,7 +193,8 @@ export default function FactureForm() {
     return acc + totalLigne;
   }, 0);
 
-  const tva = totalHT * 0.18;
+  const watchedIsTaxExempt = watch("isTaxExempt");
+  const tva = watchedIsTaxExempt ? 0 : totalHT * 0.18;
   const totalTTC = totalHT + tva;
 
   // --- Soumission du formulaire ---
@@ -313,8 +315,7 @@ export default function FactureForm() {
                     ))}
                   </SelectContent>
                 </Select>
-              )}
-            />
+              )}     />
           </div>
           <div>
             <label htmlFor="devise">Devise</label>
@@ -369,6 +370,20 @@ export default function FactureForm() {
                 </Select>
               )}
             />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Controller
+              name="isTaxExempt"
+              control={control}
+              render={({ field }) => (
+                <Switch
+                  id="isTaxExempt"
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              )}
+            />
+            <label htmlFor="isTaxExempt">Exonérer de TVA</label>
           </div>
         </CardContent>
       </Card>

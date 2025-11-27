@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 // POST /api/factures
 export async function POST(request: Request) {
   try {
-    const { clientNom, objet, produits, gestionnaireId, devise, paymentConditionPercentage, info } = await request.json();
+    const { clientNom, objet, produits, gestionnaireId, devise, paymentConditionPercentage, info, isTaxExempt } = await request.json();
 
     if (!clientNom || !objet || !produits || !produits.length) {
       return NextResponse.json(
@@ -100,7 +100,7 @@ export async function POST(request: Request) {
         }
         totalHT += montantTotalLigne;
       }
-      const tva = totalHT * 0.18;
+      const tva = isTaxExempt ? 0 : totalHT * 0.18;
       const totalTTC = totalHT + tva;
 
       // 3. Génération du numéro de facture
@@ -145,6 +145,7 @@ export async function POST(request: Request) {
           devise: devise || "XOF",
           paymentConditionPercentage: paymentConditionPercentage,
           info,
+          isTaxExempt: isTaxExempt || false,
         },
       });
 

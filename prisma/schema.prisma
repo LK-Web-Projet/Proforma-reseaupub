@@ -48,6 +48,7 @@ model Invoice {
   gestionnaires              InvoiceGestionnaire[]
   produits                   InvoiceProduit[]
   paiements                  Paiement[]
+  isTaxExempt                Boolean           @default(false)
 }
 
 model BonCommande {
