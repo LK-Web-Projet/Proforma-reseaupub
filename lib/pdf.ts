@@ -15,24 +15,41 @@ const formatNumber = (num: number) => {
   return new Intl.NumberFormat("fr-FR").format(num).replace(/\s/g, ' ');
 };
 
-function getLines(text: string, font: PDFFont, fontSize: number, maxWidth: number) {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
+function getLines(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
+  const allLines: string[] = [];
+  const paragraphs = text.split('\n'); // Split by explicit newlines first
 
-  for (const word of words) {
-    const prospectiveLine = currentLine + (currentLine === '' ? '' : ' ') + word;
-    const width = font.widthOfTextAtSize(prospectiveLine, fontSize);
-
-    if (width > maxWidth) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = prospectiveLine;
+  for (const paragraph of paragraphs) {
+    if (paragraph.trim() === '') { // Handle empty lines (e.g., consecutive \n\n)
+      allLines.push('');
+      continue;
     }
+    const words = paragraph.split(' ');
+    let currentLine = '';
+
+    for (const word of words) {
+      const prospectiveLine = currentLine + (currentLine === '' ? '' : ' ') + word;
+      const width = font.widthOfTextAtSize(prospectiveLine, fontSize);
+
+      if (width > maxWidth) {
+        allLines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = prospectiveLine;
+      }
+    }
+    allLines.push(currentLine);
   }
-  lines.push(currentLine);
-  return lines;
+  return allLines;
+}
+
+function capitalizeAndRespectNewlines(text: string): string {
+  if (!text) return '';
+  return text.split('\n') // Split by newlines
+             .map(line => line.split(' ') // Split each line by spaces
+                               .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                               .join(' '))
+             .join('\n'); // Rejoin with newlines
 }
 
 export async function generateInvoicePdf(
@@ -186,8 +203,8 @@ export async function generateInvoicePdf(
   if (facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0) {
     y.value -= 20;
     const conditionText = `NB : Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est requis afin de confirmer la commande et lancer la prestation.`;
-    const conditionLines = getLines(conditionText, font, 10, width - pageMargin * 2);
-    await checkNewPage(conditionLines.length * 15);
+    const conditionLines = getLines(conditionText, font, 10, width - pageMargin );
+    await checkNewPage(conditionLines.length * 10);
     for (const line of conditionLines) {
         drawText(page, font, line, pageMargin, y.value, 10);
         y.value -= 30;
@@ -211,15 +228,15 @@ export async function generateInvoicePdf(
     await checkNewPage(estimatedHeightNeeded);
 
     // Draw title in bold and blue
-    drawText(page, boldFont, infoTitle, pageMargin, y.value, titleFontSize, 'left', blueColor);
+    drawText(page, boldFont, infoTitle, pageMargin, y.value, titleFontSize, 'left');
     y.value -= (titleFontSize + 5); // spacing after title
 
     // Draw content in bold and blue
     for (const line of infoContentLines) {
-      drawText(page, boldFont, line, pageMargin, y.value, contentFontSize, 'left', blueColor);
+      drawText(page, font, line, pageMargin, y.value, contentFontSize, 'left', blueColor);
       y.value -= (contentFontSize + 2); // spacing between content lines
     }
-    y.value -= 10; // spacing after the whole block
+    y.value -= 20; // spacing after the whole block
   }
   
   // Explications abréviations
