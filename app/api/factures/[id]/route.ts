@@ -105,7 +105,7 @@ async function updateFacture(id: string, body: unknown) {
   }
 
   console.log("Validation réussie. Données validées:", validation.data);
-  const { statut, produits, tva, devise, paymentConditionPercentage, objet, gestionnaireId, info, isTaxExempt } = validation.data;
+  const { statut, produits, devise, paymentConditionPercentage, objet, gestionnaireId, info, isTaxExempt } = validation.data;
 
   try {
     // Start a transaction

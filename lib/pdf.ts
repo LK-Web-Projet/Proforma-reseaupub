@@ -43,15 +43,6 @@ function getLines(text: string, font: PDFFont, fontSize: number, maxWidth: numbe
   return allLines;
 }
 
-function capitalizeAndRespectNewlines(text: string): string {
-  if (!text) return '';
-  return text.split('\n') // Split by newlines
-             .map(line => line.split(' ') // Split each line by spaces
-                               .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                               .join(' '))
-             .join('\n'); // Rejoin with newlines
-}
-
 export async function generateInvoicePdf(
   facture: InvoiceWithDetails
 ): Promise<Uint8Array> {
