@@ -435,7 +435,7 @@ export default function FactureDetailPage() {
   if (loading) return <div className="flex justify-center items-center h-96">Chargement...</div>;
   if (!facture) return <div className="text-center text-red-500 mt-10">Facture non trouvée.</div>;
 
-  const displayTotalHT = isEditing ? formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0 : facture.totalHT;
+  const displayTotalHT = isEditing ? formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0 : Number(facture.totalHT);
   const isExempt = isEditing ? formData.isTaxExempt : facture.isTaxExempt;
   const displayTVA = isExempt ? 0 : displayTotalHT * 0.18;
   const displayTotalTTC = displayTotalHT + displayTVA;
