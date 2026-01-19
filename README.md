@@ -1,98 +1,88 @@
-# Projet Proforma ReseauPub
+# Proforma-Reseaupub
 
-Ce projet est une application web conçue pour la gestion des factures proforma, des clients et des gestionnaires pour ReseauPub.
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white) ![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white) ![Clerk](https://img.shields.io/badge/Clerk-6C47FF?style=for-the-badge&logo=clerk&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
-## Sommaire
+Plateforme interne de gestion financière pour la création de factures proforma, le suivi de la trésorerie et la gestion des fournisseurs.
 
-- [Projet Proforma ReseauPub](#projet-proforma-reseaupub)
-  - [Sommaire](#sommaire)
-  - [Technologies Utilisées](#technologies-utilisées)
-  - [Initialisation du Projet](#initialisation-du-projet)
-  - [Lancement du Serveur de Développement](#lancement-du-serveur-de-développement)
-  - [Structure du Projet](#structure-du-projet)
-  - [Gestion des Branches](#gestion-des-branches)
-  - [Qualité du Code](#qualité-du-code)
+Pour une documentation technique détaillée sur l'architecture, les modèles de données et les API, veuillez consulter le fichier **[MEMO.md](./MEMO.md)**.
 
-## Technologies Utilisées
+---
 
-- **Framework**: [Next.js](https://nextjs.org/)
-- **Langage**: [TypeScript](https://www.typescriptlang.org/)
-- **ORM**: [Prisma](https://www.prisma.io/)
-- **Base de données**: PostgreSQL (via Supabase)
-- **Style**: [Tailwind CSS](https://tailwindcss.com/)
-- **Composants UI**: [shadcn/ui](https://ui.shadcn.com/)
-- **Linting**: [ESLint](https://eslint.org/)
+## 🚀 Démarrage Rapide
 
-## Initialisation du Projet
+Suivez ces étapes pour configurer et lancer le projet en environnement de développement.
 
-Pour mettre en place l'environnement de développement local, suivez ces étapes :
+### 1. Prérequis
 
-1.  **Cloner le dépôt**
+- [Node.js](https://nodejs.org/en/) (version 20.x ou supérieure)
+- [npm](https://www.npmjs.com/) (généralement inclus avec Node.js)
+- [Git](https://git-scm.com/)
+- [Docker](https://www.docker.com/) (recommandé pour la base de données)
+
+### 2. Installation
+
+1.  **Clonez le dépôt :**
     ```bash
-    git clone [(https://github.com/LK-Web-Projet/Proforma-reseaupub.git)]
+    git clone <URL_DU_DEPOT>
     cd Proforma-reseaupub
     ```
 
-2.  **Installer les dépendances**
-    Assurez-vous d'avoir Node.js (version 20.x ou supérieure) et npm installés.
+2.  **Installez les dépendances :**
     ```bash
     npm install
     ```
 
-3.  **Configurer les variables d'environnement**
-    Créez un fichier `.env.local` à la racine du projet en copiant le contenu de `.env.example` (s'il existe). Remplissez les variables nécessaires, notamment `DATABASE_URL`.
-    ```bash
-    # .env.local
-    DATABASE_URL="postgresql://user:password@host:port/database"
+3.  **Configurez les variables d'environnement :**
+
+    Créez un fichier `.env.local` à la racine du projet en copiant `.env.example` (s'il existe) ou en partant de zéro. Remplissez les variables requises :
+
+    ```env
+    # Base de données (Prisma)
+    # Exemple avec une base de données locale via Docker
+    DATABASE_URL="postgresql://user:password@localhost:5432/mydb?schema=public"
+    DIRECT_URL="postgresql://user:password@localhost:5432/mydb?schema=public"
+
+    # Authentification (Clerk)
+    # Récupérez ces clés depuis votre dashboard Clerk
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+    CLERK_SECRET_KEY=sk_test_...
+
+    NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+    NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+    NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/
+    NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/
     ```
 
-4.  **Appliquer les migrations de la base de données**
-    Cette commande synchronisera le schéma de votre base de données avec les modèles Prisma.
+4.  **Mettez en place la base de données :**
+
+    Lancez une instance PostgreSQL (par exemple avec Docker). Appliquez ensuite les migrations Prisma pour créer le schéma de la base de données.
+
     ```bash
     npx prisma migrate dev
     ```
 
-## Lancement du Serveur de Développement
+5.  **Peuplez la base de données (seeding) :**
 
-Une fois l'initialisation terminée, vous pouvez lancer le serveur de développement :
+    Exécutez le script de seeding pour insérer les données initiales.
+
+    ```bash
+    npm run db:seed
+    ```
+
+### 3. Lancer l'Application
+
+Une fois l'installation terminée, lancez le serveur de développement :
 
 ```bash
 npm run dev
 ```
 
-L'application sera alors accessible à l'adresse [http://localhost:3000](http://localhost:3000).
+L'application sera accessible à l'adresse [http://localhost:3000](http://localhost:3000).
 
-## Structure du Projet
+## 🛠️ Scripts Disponibles
 
--   `/app`: Contient les pages et les routes de l'application (App Router de Next.js).
--   `/app/api`: Contient les routes de l'API backend.
--   `/components`: Contient les composants React réutilisables.
--   `/lib`: Contient les fonctions utilitaires, la configuration de Prisma, etc.
--   `/prisma`: Contient le schéma de la base de données (`schema.prisma`) et les fichiers de migration.
--   `/public`: Contient les fichiers statiques (images, logos).
-
-## Gestion des Branches
-
-Pour assurer une bonne organisation et éviter les conflits, veuillez suivre cette stratégie de branches :
-
--   **`main`**: Cette branche contient le code stable et prêt pour la production. Personne ne doit pousser directement sur `main`.
--   **`develop`**: C'est la branche de développement principale. Toutes les nouvelles fonctionnalités doivent être fusionnées ici avant de passer sur `main`.
--   **`feature/...`**: Pour chaque nouvelle fonctionnalité, créez une branche à partir de `develop`.
-    -   Exemple : `feature/gestion-clients` ou `feature/export-pdf`
--   **`security/...`**: Pour chaque test de securité lier a l'app, créez une branche à partir de `develop`.
-    -   Exemple : `security//scan/api-payments` ou `security/fix/`
-
-**Flux de travail :**
-1.  Assurez-vous que votre branche `develop` est à jour : `git pull origin develop`.
-2.  Créez votre branche de fonctionnalité : `git checkout -b feature/nom-de-la-feature`.
-3.  Travaillez sur votre fonctionnalité et faites des commits réguliers.
-4.  Une fois terminé, ouvrez une *Pull Request* (PR) de votre branche `feature/...` vers `develop`.
-5.  Après la revue et l'approbation, la PR sera fusionnée.
-
-## Qualité du Code
-
-Pour maintenir une base de code propre et cohérente, nous utilisons ESLint. Avant de soumettre votre code, veuillez lancer la commande suivante pour vérifier et corriger les erreurs de style :
-
-```bash
-npm run lint
-```
+- `npm run dev`: Lance le serveur de développement avec Turbopack.
+- `npm run build`: Compile l'application pour la production.
+- `npm run start`: Démarre un serveur de production.
+- `npm run lint`: Lance le linter ESLint pour vérifier la qualité du code.
+- `npm run db:seed`: Exécute le script de seeding de la base de données.
