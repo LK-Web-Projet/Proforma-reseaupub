@@ -43,6 +43,7 @@ export default function Home() {
   const [dateMax, setDateMax] = useState('');
   const [objet, setObjet] = useState('');
   const [statut, setStatut] = useState('');
+  const [year, setYear] = useState(new Date().getFullYear().toString());
   const [loading, setLoading] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
 
@@ -58,10 +59,13 @@ export default function Home() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    //params.set("statut", "deliver");
+    if (year && year !== '') {
+      params.set('year', year);
+    } else {
+      if (dateMin) params.set('dateMin', dateMin);
+      if (dateMax) params.set('dateMax', dateMax);
+    }
     if (clientId) params.set('clientId', clientId);
-    if (dateMin) params.set('dateMin', dateMin);
-    if (dateMax) params.set('dateMax', dateMax);
     if (objet) params.set('objet', objet);
     if (statut) params.set('statut', statut);
 
@@ -69,7 +73,7 @@ export default function Home() {
       .then((res) => res.json())
       .then(setFactures)
       .finally(() => setLoading(false));
-  }, [clientId, dateMin, dateMax, objet, statut]);
+  }, [clientId, dateMin, dateMax, objet, statut, year]);
 
 
   return (
@@ -93,6 +97,28 @@ export default function Home() {
             <div className="mb-6 bg-white p-4 rounded-md shadow-sm border">
               <h2 className="text-lg font-semibold mb-2">Filtres</h2>
               <div className="flex gap-4 flex-wrap items-end">
+                 <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Année
+                  </label>
+                  <select
+                    value={year}
+                    onChange={(e) => {
+                      setYear(e.target.value);
+                      // Reset date fields when year is selected
+                      setDateMin("");
+                      setDateMax("");
+                    }}
+                    className="border-gray-300 rounded-md shadow-sm p-2"
+                    title="Sélectionnez une année"
+                  >
+                    <option value="">Toutes les années</option>
+                    <option value="2027">2027</option>
+                    <option value="2026">2026</option>
+                    <option value="2025">2025</option>
+                    <option value="2024">2024</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     Client
@@ -118,9 +144,13 @@ export default function Home() {
                   <Input
                     type="date"
                     value={dateMin}
-                    onChange={(e) => setDateMin(e.target.value)}
+                    onChange={(e) => {
+                      setDateMin(e.target.value);
+                      setYear(""); // Désactiver le filtre par année
+                    }}
                     className="border-gray-300 rounded-md shadow-sm"
                     title="Date minimale"
+                    disabled={!!year} // Désactiver si une année est sélectionnée
                   />
                 </div>
                 <div>
@@ -130,9 +160,13 @@ export default function Home() {
                   <Input
                     type="date"
                     value={dateMax}
-                    onChange={(e) => setDateMax(e.target.value)}
+                    onChange={(e) => {
+                      setDateMax(e.target.value);
+                      setYear(""); // Désactiver le filtre par année
+                    }}
                     className="border-gray-300 rounded-md shadow-sm"
                     title="Date maximale"
+                    disabled={!!year} // Désactiver si une année est sélectionnée
                   />
                 </div>
                 <div>

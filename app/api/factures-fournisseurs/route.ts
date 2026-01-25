@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const year = searchParams.get('year');
 
     const where: Prisma.FactureFournisseurWhereInput = {};
 
@@ -22,7 +23,14 @@ export async function GET(req: NextRequest) {
     if (status) {
       where.status = status;
     }
-    if (startDate || endDate) {
+
+    if (year) {
+      const parsedYear = parseInt(year, 10);
+      where.date = {
+        gte: new Date(parsedYear, 0, 1),
+        lt: new Date(parsedYear + 1, 0, 1),
+      };
+    } else if (startDate || endDate) {
       const dateFilter: Prisma.DateTimeFilter = {};
       if (startDate) {
         dateFilter.gte = new Date(startDate);
@@ -31,6 +39,12 @@ export async function GET(req: NextRequest) {
         dateFilter.lte = new Date(endDate);
       }
       where.date = dateFilter;
+    } else {
+      const currentYear = new Date().getFullYear();
+      where.date = {
+        gte: new Date(currentYear, 0, 1),
+        lt: new Date(currentYear + 1, 0, 1),
+      };
     }
 
     const factures = await prisma.factureFournisseur.findMany({

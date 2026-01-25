@@ -32,6 +32,7 @@ export default function FacturesListPage() {
     fournisseurId: '',
     status: '',
     dateRange: undefined as DateRange | undefined,
+    year: new Date().getFullYear().toString(),
   });
   const [loading, setLoading] = useState(true);
 
@@ -40,10 +41,19 @@ export default function FacturesListPage() {
     async function fetchFournisseurs() {
       try {
         const res = await fetch("/api/fournisseurs");
-        if (!res.ok) throw new Error("Failed to fetch fournisseurs");
-        setFournisseurs(await res.json());
+        console.log('Fournisseurs API response status:', res.status);
+        
+        if (!res.ok) {
+          const errorBody = await res.text();
+          console.error('Fournisseurs API error response:', res.status, errorBody);
+          throw new Error(`Failed to fetch fournisseurs: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        console.log('Fournisseurs fetched successfully:', data);
+        setFournisseurs(data);
       } catch (error) {
-        console.error(error);
+        console.error('Error fetching fournisseurs:', error);
         toast.error("Erreur lors de la récupération des fournisseurs.");
       }
     }
@@ -55,9 +65,14 @@ export default function FacturesListPage() {
     setLoading(true);
     const params = new URLSearchParams();
     if (filters.fournisseurId) params.append('fournisseurId', filters.fournisseurId);
-    if (filters.status) params.append('status', filters.status);
-    if (filters.dateRange?.from) params.append('startDate', filters.dateRange.from.toISOString());
-    if (filters.dateRange?.to) params.append('endDate', filters.dateRange.to.toISOString());
+    if (filters.status && filters.status !== 'ALL') params.append('status', filters.status);
+    
+    if (filters.year && filters.year !== 'ALL') {
+      params.append('year', filters.year);
+    } else {
+      if (filters.dateRange?.from) params.append('startDate', filters.dateRange.from.toISOString());
+      if (filters.dateRange?.to) params.append('endDate', filters.dateRange.to.toISOString());
+    }
 
     try {
       const res = await fetch(`/api/factures-fournisseurs?${params.toString()}`);
@@ -80,6 +95,7 @@ export default function FacturesListPage() {
       fournisseurId: '',
       status: '',
       dateRange: undefined,
+      year: new Date().getFullYear().toString(),
     });
   };
 
@@ -122,7 +138,7 @@ export default function FacturesListPage() {
       
       <Card className="mb-8">
         <CardHeader><CardTitle>Filtres</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <FournisseurCombobox 
             fournisseurs={fournisseurs}
             value={filters.fournisseurId}
@@ -132,14 +148,25 @@ export default function FacturesListPage() {
           <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
             <SelectTrigger><SelectValue placeholder="Statut" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="ALL">Tous</SelectItem>
               <SelectItem value="EN_ATTENTE">En attente</SelectItem>
               <SelectItem value="PAYEE">Payée</SelectItem>
               <SelectItem value="ANNULEE">Annulée</SelectItem>
             </SelectContent>
           </Select>
+           <Select value={filters.year} onValueChange={(value) => setFilters(prev => ({ ...prev, year: value, dateRange: undefined }))}>
+            <SelectTrigger><SelectValue placeholder="Année" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Toutes les années</SelectItem>
+              <SelectItem value="2027">2027</SelectItem>
+              <SelectItem value="2026">2026</SelectItem>
+              <SelectItem value="2025">2025</SelectItem>
+              <SelectItem value="2024">2024</SelectItem>
+            </SelectContent>
+          </Select>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant={"outline"} className="w-full justify-start text-left font-normal">
+              <Button variant={"outline"} className="w-full justify-start text-left font-normal" disabled={!!filters.year}>
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {filters.dateRange?.from ? (
                   filters.dateRange.to ? (
@@ -153,7 +180,7 @@ export default function FacturesListPage() {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="range" selected={filters.dateRange} onSelect={(range) => setFilters(prev => ({ ...prev, dateRange: range }))} />
+              <Calendar mode="range" selected={filters.dateRange} onSelect={(range) => setFilters(prev => ({ ...prev, dateRange: range, year: '' }))} />
             </PopoverContent>
           </Popover>
           <div className="flex items-end flex-wrap space-x-2">
@@ -162,7 +189,6 @@ export default function FacturesListPage() {
           </div>
         </CardContent>
       </Card>
-
       <div className="rounded-md border bg-white">
         <Table>
           <TableHeader>
