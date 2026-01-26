@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // --- Routes publiques ---
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/"]);
+const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/", "/favicon.ico",]);
 
 // --- Origines autorisées depuis .env ---
 const allowedOrigins = process.env.NEXT_PUBLIC_ALLOWED_ORIGINS
