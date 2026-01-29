@@ -4,10 +4,10 @@ import prisma from '@/lib/prisma';
 // GET /api/produits/[id]
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params; 
+    const { id } = context.params; 
 
     const produit = await prisma.produit.findUnique({
       where: { id:id },
@@ -25,12 +25,12 @@ export async function GET(
 // PUT /api/produits/[id]
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
     const data = await request.json();
     const produitMisAJour = await prisma.produit.update({
-      where: { id: params.id },
+      where: { id: context.params.id },
       data,
     });
     return NextResponse.json(produitMisAJour);
@@ -43,10 +43,10 @@ export async function PUT(
 // DELETE /api/produits/[id]
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    await prisma.produit.delete({ where: { id: params.id } });
+    await prisma.produit.delete({ where: { id: context.params.id } });
     return new NextResponse(null, { status: 204 }); // No Content
   } catch (error) {
     console.error("Erreur lors de la suppression du produit :", error);

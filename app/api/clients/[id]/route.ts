@@ -4,10 +4,10 @@ import prisma from '@/lib/prisma';
 // GET /api/clients/[id]
 export async function GET(
   request: Request,
-  context: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = await context.params; // <-- attendre la résolution
+    const { id } = context.params;
     const client = await prisma.client.findUnique({
       where: { id },
     });
@@ -27,11 +27,11 @@ export async function GET(
 // PUT /api/clients/[id]
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
     const data = await request.json();
-    const { id } = params; 
+    const { id } = context.params; 
     const clientMisAJour = await prisma.client.update({
       where: { id: id },
       data,
@@ -46,10 +46,10 @@ export async function PUT(
 // DELETE /api/clients/[id]
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    await prisma.client.delete({ where: { id: params.id } });
+    await prisma.client.delete({ where: { id: context.params.id } });
     return new NextResponse(null, { status: 204 }); // No Content
   } catch (error) {
     console.error("Erreur lors de la suppression du client :", error);

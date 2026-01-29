@@ -37,9 +37,9 @@ async function updateInvoiceStatus(invoiceId: string) {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
-  const invoiceId = params.id;
+  const invoiceId = context.params.id;
   const data = await request.formData();
   const file: File | null = data.get('file') as unknown as File;
   const type = data.get('type') as 'bon' | 'facture';
@@ -97,9 +97,9 @@ export async function POST(
 
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    context: { params: { id: string } }
 ) {
-    const invoiceId = params.id;
+    const invoiceId = context.params.id;
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') as 'bon' | 'facture';
 

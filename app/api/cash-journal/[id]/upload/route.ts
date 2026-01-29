@@ -7,9 +7,9 @@ import prisma from "@/lib/prisma";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
-  const cashJournalId = parseInt(params.id, 10);
+  const cashJournalId = parseInt(context.params.id, 10);
   if (isNaN(cashJournalId)) {
     return NextResponse.json(
       { error: "Invalid cash journal ID" },
