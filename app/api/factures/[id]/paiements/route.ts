@@ -21,69 +21,98 @@ const paiementSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  context: { params: { id: string } }
+  {params}: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id: invoiceId } = context.params;
+    const { id: invoiceId } = await params;
     const formData = await request.formData();
 
-    const paymentDataString = formData.get('paymentData') as string;
+    const paymentDataString = formData.get("paymentData") as string;
     if (!paymentDataString) {
-      return NextResponse.json({ error: "Payment data is missing" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Payment data is missing" },
+        { status: 400 },
+      );
     }
     const paymentData = JSON.parse(paymentDataString);
-    const files = formData.getAll('files') as File[];
+    const files = formData.getAll("files") as File[];
 
     const validation = paiementSchema.safeParse(paymentData);
     if (!validation.success) {
       return NextResponse.json(
         { error: "Données invalides", details: validation.error.formErrors },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const { montant, methode, cashRegisterId, type, ...rest } = validation.data;
     const montantDecimal = parseFloat(montant.toFixed(2));
 
-    const finalCashRegisterId = (methode === 'Espèces' && type === 'PAIEMENT') ? 1 : cashRegisterId;
+    const finalCashRegisterId =
+      methode === "Espèces" && type === "PAIEMENT" ? 1 : cashRegisterId;
     if (!finalCashRegisterId) {
-      return NextResponse.json({ error: "L'ID de la caisse est requis pour cette opération." }, { status: 400 });
+      return NextResponse.json(
+        { error: "L'ID de la caisse est requis pour cette opération." },
+        { status: 400 },
+      );
     }
 
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
-      select: { resteAPayer: true, numero: true, objet: true, client: { select: { nom: true } } },
+      select: {
+        resteAPayer: true,
+        numero: true,
+        objet: true,
+        client: { select: { nom: true } },
+      },
     });
 
     if (!invoice) {
-      return NextResponse.json({ error: "Facture non trouvée." }, { status: 404 });
-    }
-
-    if (type === 'PAIEMENT' && montantDecimal > parseFloat(invoice.resteAPayer.toString())) {
       return NextResponse.json(
-        { error: "Le montant du paiement ne peut pas dépasser le reste à payer." },
-        { status: 400 }
+        { error: "Facture non trouvée." },
+        { status: 404 },
       );
     }
 
-    if (type === 'DEPENSE') {
+    if (
+      type === "PAIEMENT" &&
+      montantDecimal > parseFloat(invoice.resteAPayer.toString())
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Le montant du paiement ne peut pas dépasser le reste à payer.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (type === "DEPENSE") {
       const lastCashJournalEntry = await prisma.cashJournal.findFirst({
         where: { cashRegisterId: finalCashRegisterId },
         orderBy: { id: "desc" },
       });
-      const currentBalance = lastCashJournalEntry ? lastCashJournalEntry.solde : 0;
+      const currentBalance = lastCashJournalEntry
+        ? lastCashJournalEntry.solde
+        : 0;
 
       if (montantDecimal > currentBalance) {
-        const cashRegister = await prisma.cashRegister.findUnique({ where: { id: finalCashRegisterId } });
+        const cashRegister = await prisma.cashRegister.findUnique({
+          where: { id: finalCashRegisterId },
+        });
         return NextResponse.json(
-          { error: `Solde insuffisant dans la caisse "${cashRegister?.name}". Solde actuel: ${currentBalance.toLocaleString('fr-FR')} FCFA.` },
-          { status: 400 }
+          {
+            error: `Solde insuffisant dans la caisse "${cashRegister?.name}". Solde actuel: ${currentBalance.toLocaleString("fr-FR")} FCFA.`,
+          },
+          { status: 400 },
         );
       }
     }
 
-    const libelle = `${rest.reference || (type === 'PAIEMENT' ? 'Paiement' : 'Dépense')} (Proforma ${invoice.numero} de ${invoice.client.nom} pour ${invoice.objet})`;
-    const dateOperation = rest.datePaiement ? new Date(rest.datePaiement) : new Date();
+    const libelle = `${rest.reference || (type === "PAIEMENT" ? "Paiement" : "Dépense")} (Proforma ${invoice.numero} de ${invoice.client.nom} pour ${invoice.objet})`;
+    const dateOperation = rest.datePaiement
+      ? new Date(rest.datePaiement)
+      : new Date();
 
     const result = await prisma.$transaction(async (tx) => {
       const lastCashJournalEntry = await tx.cashJournal.findFirst({
@@ -91,13 +120,16 @@ export async function POST(
         orderBy: { id: "desc" },
       });
       const lastBalance = lastCashJournalEntry ? lastCashJournalEntry.solde : 0;
-      const newBalance = type === 'PAIEMENT' ? lastBalance + montantDecimal : lastBalance - montantDecimal;
+      const newBalance =
+        type === "PAIEMENT"
+          ? lastBalance + montantDecimal
+          : lastBalance - montantDecimal;
 
       const newCashJournalEntry = await tx.cashJournal.create({
         data: {
           date_operation: dateOperation,
           libelle,
-          type: type === 'PAIEMENT' ? 'RECETTE' : 'DEPENSE',
+          type: type === "PAIEMENT" ? "RECETTE" : "DEPENSE",
           montant: montantDecimal,
           solde: newBalance,
           isApportDeCaisse: false,
@@ -121,9 +153,12 @@ export async function POST(
         },
       });
 
-      let updatedInvoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
-      if (type === 'PAIEMENT') {
-        const newResteAPayer = parseFloat(updatedInvoice!.resteAPayer.toString()) - montantDecimal;
+      let updatedInvoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+      });
+      if (type === "PAIEMENT") {
+        const newResteAPayer =
+          parseFloat(updatedInvoice!.resteAPayer.toString()) - montantDecimal;
         updatedInvoice = await tx.invoice.update({
           where: { id: invoiceId },
           data: {
@@ -137,7 +172,13 @@ export async function POST(
     });
 
     if (files.length > 0) {
-      const uploadDir = join(process.cwd(), "public", "Upload", "CashJournal", String(result.newCashJournalEntryId));
+      const uploadDir = join(
+        process.cwd(),
+        "public",
+        "Upload",
+        "CashJournal",
+        String(result.newCashJournalEntryId),
+      );
       if (!existsSync(uploadDir)) {
         mkdirSync(uploadDir, { recursive: true });
       }
@@ -148,7 +189,13 @@ export async function POST(
         const path = join(uploadDir, file.name);
         await writeFile(path, buffer);
 
-        const fileUrl = join("/", "Upload", "CashJournal", String(result.newCashJournalEntryId), file.name).replace(/\\/g, "/");
+        const fileUrl = join(
+          "/",
+          "Upload",
+          "CashJournal",
+          String(result.newCashJournalEntryId),
+          file.name,
+        ).replace(/\\/g, "/");
 
         await prisma.cashJournalAttachment.create({
           data: {
@@ -162,10 +209,12 @@ export async function POST(
     }
 
     return NextResponse.json(result.updatedInvoice, { status: 201 });
-
   } catch (error) {
     console.error("Erreur lors de l'ajout du paiement:", error);
-    const errorMessage = error instanceof Error ? error.message : "Une erreur interne est survenue.";
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Une erreur interne est survenue.";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
