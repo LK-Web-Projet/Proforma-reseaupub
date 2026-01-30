@@ -115,28 +115,36 @@ export default function FournisseurDetailsPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">{fournisseur.entreprise}</h1>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <Card 
-          onClick={() => setStatusFilter(statusFilter === 'PAYEE' ? null : 'PAYEE')}
-          className={`cursor-pointer transition-all hover:shadow-lg ${statusFilter === 'PAYEE' ? 'ring-2 ring-green-500' : ''}`}
+        <Card
+          onClick={() =>
+            setStatusFilter(statusFilter === "PAYEE" ? null : "PAYEE")
+          }
+          className={`cursor-pointer transition-all hover:shadow-lg ${statusFilter === "PAYEE" ? "ring-2 ring-green-500" : ""}`}
         >
           <CardHeader>
             <CardTitle>Factures Payées</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{new Intl.NumberFormat('fr-FR').format(paidInvoicesAmount)} XOF</p>
+            <p className="text-3xl font-bold">
+              {new Intl.NumberFormat("fr-FR").format(paidInvoicesAmount)} XOF
+            </p>
           </CardContent>
         </Card>
-        <Card 
-          onClick={() => setStatusFilter(statusFilter === 'EN_ATTENTE' ? null : 'EN_ATTENTE')}
-          className={`cursor-pointer transition-all hover:shadow-lg ${statusFilter === 'EN_ATTENTE' ? 'ring-2 ring-yellow-500' : ''}`}
+        <Card
+          onClick={() =>
+            setStatusFilter(statusFilter === "EN_ATTENTE" ? null : "EN_ATTENTE")
+          }
+          className={`cursor-pointer transition-all hover:shadow-lg ${statusFilter === "EN_ATTENTE" ? "ring-2 ring-yellow-500" : ""}`}
         >
           <CardHeader>
             <CardTitle>Factures en Attente</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{new Intl.NumberFormat('fr-FR').format(pendingInvoicesAmount)} XOF</p>
+            <p className="text-3xl font-bold">
+              {new Intl.NumberFormat("fr-FR").format(pendingInvoicesAmount)} XOF
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -161,17 +169,32 @@ export default function FournisseurDetailsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              displayedFactures.map((facture) => (
+              (displayedFactures ?? []).map((facture) => (
                 <TableRow key={facture.id}>
                   <TableCell>{facture.reference}</TableCell>
-                  <TableCell>{format(new Date(facture.date), "dd/MM/yyyy")}</TableCell>
-                  <TableCell>{new Intl.NumberFormat('fr-FR').format(Number(facture.montant))} XOF</TableCell>
                   <TableCell>
-                    <Select value={facture.status} onValueChange={(newStatus: StatutFactureFournisseur) => handleStatusChange(facture.id, newStatus)}>
-                      <SelectTrigger className="border-none !bg-transparent p-0 h-auto">
+                    {format(new Date(facture.date), "dd/MM/yyyy")}
+                  </TableCell>
+                  <TableCell>
+                    {new Intl.NumberFormat("fr-FR").format(
+                      Number(facture.montant),
+                    )}{" "}
+                    XOF
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={facture.status}
+                      onValueChange={(newStatus: StatutFactureFournisseur) =>
+                        handleStatusChange(facture.id, newStatus)
+                      }
+                    >
+                      <SelectTrigger className="border-none bg-transparent! p-0 h-auto">
                         <SelectValue asChild>
-                           <Badge variant={getStatusVariant(facture.status)} className="cursor-pointer">
-                            {facture.status.replace('_', ' ')}
+                          <Badge
+                            variant={getStatusVariant(facture.status)}
+                            className="cursor-pointer"
+                          >
+                            {facture.status.replace("_", " ")}
                           </Badge>
                         </SelectValue>
                       </SelectTrigger>
@@ -185,7 +208,11 @@ export default function FournisseurDetailsPage() {
                   <TableCell className="text-center">
                     {facture.pieceJointe && (
                       <Button asChild variant="outline" size="sm">
-                        <a href={facture.pieceJointe} target="_blank" rel="noopener noreferrer">
+                        <a
+                          href={facture.pieceJointe}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           <Download className="mr-2 h-4 w-4" />
                           Voir PJ
                         </a>

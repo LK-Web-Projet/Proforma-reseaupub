@@ -4,33 +4,39 @@ import prisma from '@/lib/prisma';
 // GET /api/produits/[id]
 export async function GET(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = context.params; 
+    const { id } = await params;
 
     const produit = await prisma.produit.findUnique({
-      where: { id:id },
+      where: { id: id },
     });
     if (!produit) {
-      return NextResponse.json({ error: 'Produit non trouvé' }, { status: 404 });
+      return NextResponse.json(
+        { error: "Produit non trouvé" },
+        { status: 404 },
+      );
     }
     return NextResponse.json(produit);
   } catch (error) {
     console.error("Erreur lors de la récupération du produit :", error);
-    return NextResponse.json({ error: 'Erreur Interne du Serveur' }, { status: 500 });
+    return NextResponse.json(
+      { error: "Erreur Interne du Serveur" },
+      { status: 500 },
+    );
   }
 }
 
 // PUT /api/produits/[id]
 export async function PUT(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const data = await request.json();
     const produitMisAJour = await prisma.produit.update({
-      where: { id: context.params.id },
+      where: { id: (await params).id },
       data,
     });
     return NextResponse.json(produitMisAJour);
@@ -43,10 +49,10 @@ export async function PUT(
 // DELETE /api/produits/[id]
 export async function DELETE(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await prisma.produit.delete({ where: { id: context.params.id } });
+    await prisma.produit.delete({ where: { id: (await params).id } });
     return new NextResponse(null, { status: 204 }); // No Content
   } catch (error) {
     console.error("Erreur lors de la suppression du produit :", error);

@@ -48,9 +48,9 @@ function computeLineTotal(p: z.infer<typeof productSchema>) {
 // ---------- GET ----------
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  {params}: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
+  const { id } = await params;
 
   try {
     const facture = await prisma.invoice.findUnique({
@@ -169,7 +169,7 @@ async function updateFacture(id: string, body: unknown) {
         const payments = await tx.paiement.findMany({
           where: { invoiceId: id, type: 'PAIEMENT' },
         });
-        const totalPaid = payments.reduce((acc, p) => acc + p.montant, 0);
+        const totalPaid = payments.reduce((acc, p) => acc + p.montant.toNumber(), 0);
         const resteAPayer = totalTTC - totalPaid;
 
         updatedFactureData.resteAPayer = resteAPayer;
@@ -212,7 +212,7 @@ async function updateFacture(id: string, body: unknown) {
                   quantite: toNumber(p.quantite),
                   prixUnitaire: toNumber(p.prixUnitaire),
                   duree: p.duree ? toNumber(p.duree) : 0,
-                  uniteDuree: p.uniteDuree ?? undefined,
+                  uniteDuree: p.uniteDuree ?? "jour",
                   montantTotal: Math.round(computeLineTotal(p)),
                   includeduree: p.includeduree ?? false,
                 },
@@ -256,9 +256,9 @@ async function updateFacture(id: string, body: unknown) {
 // ---------- PATCH / PUT ----------
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  {params}: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
+  const { id } = await params;
   const body = await request.json();
   return updateFacture(id, body);
 }
@@ -275,9 +275,9 @@ export async function PUT(
 // ---------- DELETE ----------
 export async function DELETE(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  {params}: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
+  const { id } = await params;
 
   try {
     await prisma.invoiceProduit.deleteMany({ where: { invoiceId: id } });

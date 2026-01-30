@@ -620,7 +620,7 @@ export default function FactureDetailPage() {
                   }))
                 }
               >
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-50">
                   <SelectValue placeholder="Sélectionner un commercial" />
                 </SelectTrigger>
                 <SelectContent>

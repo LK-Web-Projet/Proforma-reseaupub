@@ -12,16 +12,19 @@ const paiementSchema = z.object({
   reference: z.string().optional(),
   notes: z.string().optional(),
   datePaiement: z.preprocess(
-    (arg) => (typeof arg === "string" || arg instanceof Date ? new Date(arg) : undefined),
-    z.date().optional()
+    (arg) =>
+      typeof arg === "string" || arg instanceof Date
+        ? new Date(arg)
+        : undefined,
+    z.date().optional(),
   ),
   cashRegisterId: z.number().optional(),
-  type: z.enum(['PAIEMENT', 'DEPENSE']).default('PAIEMENT'),
+  type: z.enum(["PAIEMENT", "DEPENSE"]).default("PAIEMENT"),
 });
 
 export async function POST(
   request: NextRequest,
-  {params}: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id: invoiceId } = await params;
@@ -34,13 +37,15 @@ export async function POST(
         { status: 400 },
       );
     }
+
     const paymentData = JSON.parse(paymentDataString);
     const files = formData.getAll("files") as File[];
 
     const validation = paiementSchema.safeParse(paymentData);
     if (!validation.success) {
+      // ✅ Correction : remplacer formErrors par format()
       return NextResponse.json(
-        { error: "Données invalides", details: validation.error.formErrors },
+        { error: "Données invalides", details: validation.error.format() },
         { status: 400 },
       );
     }

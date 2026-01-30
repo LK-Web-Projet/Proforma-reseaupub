@@ -241,7 +241,7 @@ export default function Home() {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="truncate max-w-[150px] inline-block">
+                          <span className="truncate max-w-37.5 inline-block">
                             {facture.client?.nom || "-"}
                           </span>
                         </TooltipTrigger>
@@ -255,7 +255,7 @@ export default function Home() {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="truncate max-w-[150px] inline-block">
+                          <span className="truncate max-w-37.5 inline-block">
                             {facture.objet}
                           </span>
                         </TooltipTrigger>

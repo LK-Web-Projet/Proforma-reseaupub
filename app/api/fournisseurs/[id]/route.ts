@@ -30,8 +30,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const updatedFournisseur = await prisma.fournisseur.update({
       where: { id: (await params).id },
-      data: {
-        nom,
+        data: {
+          nom,
         prenom,
         entreprise,
         contact,
@@ -55,7 +55,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 // DELETE /api/fournisseurs/[id] - Supprimer un fournisseur
-export async function DELETE(req: Request, {params}: { params: { id: string } }) {
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     await prisma.fournisseur.delete({
       where: { id: (await params).id },
@@ -64,11 +67,21 @@ export async function DELETE(req: Request, {params}: { params: { id: string } })
     return new NextResponse(null, { status: 204 }); // No Content
   } catch (error: unknown) {
     const err = error as { code?: string; message?: string };
-    console.error(`Erreur lors de la suppression du fournisseur ${(await params).id}:`, err);
-    if (err.code === 'P2025') { // Record to delete not found
-      return NextResponse.json({ message: 'Fournisseur non trouvé' }, { status: 404 });
+    console.error(
+      `Erreur lors de la suppression du fournisseur ${(await params).id}:`,
+      err,
+    );
+    if (err.code === "P2025") {
+      // Record to delete not found
+      return NextResponse.json(
+        { message: "Fournisseur non trouvé" },
+        { status: 404 },
+      );
     }
-    return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
+    return NextResponse.json(
+      { message: "Erreur interne du serveur" },
+      { status: 500 },
+    );
   }
 }
 

@@ -215,7 +215,7 @@ export default function FacturesListPage() {
                   <TableCell>{new Intl.NumberFormat('fr-FR').format(facture.montant)} XOF</TableCell>
                   <TableCell>
                     <Select value={facture.status} onValueChange={(newStatus: FactureFournisseur['status']) => handleStatusChange(facture.id, newStatus)}>
-                      <SelectTrigger className="border-none !bg-transparent p-0 h-auto">
+                      <SelectTrigger className="border-none bg-transparent! p-0 h-auto">
                         <SelectValue asChild>
                            <Badge variant={getStatusVariant(facture.status)} className="cursor-pointer">
                             {facture.status.replace('_', ' ')}
