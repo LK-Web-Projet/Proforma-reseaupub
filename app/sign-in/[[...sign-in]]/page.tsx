@@ -4,7 +4,7 @@ import { SignIn } from "@clerk/nextjs";
 import Image from "next/image";
 export default function App() {
   return (
-    <div className="w-full h-[100vh] flex flex-wrap  items-center justify-center bg-gray-100">
+    <div className="w-full h-screen flex flex-wrap  items-center justify-center bg-gray-100">
       <div className="h-full w-1/2 flex flex-col items-center justify-center gap-12 p-5 bg-black text-center">
         <Image
           src="/LOGO ROSE@300xcoupé.png"

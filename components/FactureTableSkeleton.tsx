@@ -7,25 +7,25 @@ export function FactureTableSkeleton() {
       {Array.from({ length: 8 }).map((_, index) => (
         <TableRow key={index}>
           <TableCell>
-            <Skeleton className="h-5 w-[100px]" />
+            <Skeleton className="h-5 w-25" />
           </TableCell>
           <TableCell>
-            <Skeleton className="h-5 w-[150px]" />
+            <Skeleton className="h-5 w-37.5" />
           </TableCell>
           <TableCell>
-            <Skeleton className="h-5 w-[120px]" />
+            <Skeleton className="h-5 w-30" />
           </TableCell>
           <TableCell>
-            <Skeleton className="h-5 w-[250px]" />
+            <Skeleton className="h-5 w-62.5" />
           </TableCell>
           <TableCell className="text-center">
-            <Skeleton className="h-5 w-[130px] mx-auto" />
+            <Skeleton className="h-5 w-32.5 mx-auto" />
           </TableCell>
           <TableCell className="text-right">
-            <Skeleton className="h-5 w-[100px] ml-auto" />
+            <Skeleton className="h-5 w-25 ml-auto" />
           </TableCell>
           <TableCell className="text-center">
-            <Skeleton className="h-5 w-[80px] mx-auto" />
+            <Skeleton className="h-5 w-20 mx-auto" />
           </TableCell>
           <TableCell className="flex justify-end">
             <Skeleton className="h-5 w-5" />

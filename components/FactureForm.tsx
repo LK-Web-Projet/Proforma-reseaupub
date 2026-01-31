@@ -88,7 +88,8 @@ const schema = z.object({
   paymentConditionPercentage: z.number().optional(),
 });
 
-type FactureFormType = z.infer<typeof schema>;
+type FactureFormInput = z.input<typeof schema>;
+type FactureFormOutput = z.output<typeof schema>;
 
 const defaultProduct = {
   designation: "",
@@ -155,7 +156,7 @@ export default function FactureForm() {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<FactureFormType>({
+  } = useForm<FactureFormInput>({
     resolver: zodResolver(schema),
     defaultValues: {
       clientNom: "",
@@ -181,9 +182,9 @@ export default function FactureForm() {
 
   // --- Calculs des totaux ---
   const totalHT = watchedProduits.reduce((acc, p) => {
-    const quantite = p.quantite || 0;
-    const prix = p.prixUnitaire || 0;
-    const duree = p.duree || 1;
+    const quantite = Number(p.quantite) || 0;
+    const prix = Number(p.prixUnitaire) || 0;
+    const duree = Number(p.duree) || 1;
     const inclureDuree = p.includeduree;
 
     let totalLigne = quantite * prix;
@@ -198,33 +199,37 @@ export default function FactureForm() {
   const totalTTC = totalHT + tva;
 
   // --- Soumission du formulaire ---
-  const onSubmit: SubmitHandler<FactureFormType> = async (data) => {
-    // 🔹 Transformation de la valeur "none" en undefined
-    if (data.gestionnaireId === "null") {
-      data.gestionnaireId = undefined;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch("/api/factures", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+  const onSubmit: SubmitHandler<FactureFormInput> = async (data) => {
+  // Ici, data est encore "input"
+  
+  const validatedData: FactureFormOutput = schema.parse(data);
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Une erreur est survenue.");
-      }
+  if (validatedData.gestionnaireId === "null") {
+    validatedData.gestionnaireId = undefined;
+  }
 
-      toast.success("Facture enregistrée avec succès !");
-      router.push("/"); // Redirection vers la page d'accueil
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      toast.error((error as Error).message);
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    const res = await fetch("/api/factures", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedData),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Une erreur est survenue.");
     }
-  };
+
+    toast.success("Facture enregistrée avec succès !");
+    router.push("/");
+  } catch (error) {
+    toast.error((error as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // --- Gestion de l'autocomplétion des produits ---
   const handleProductChange = (index: number, value: string) => {
@@ -503,12 +508,17 @@ export default function FactureForm() {
                   {/* Montant Total Ligne */}
                   <TableCell>
                     {(() => {
-                      const {
-                        quantite = 0,
-                        prixUnitaire = 0,
-                        duree = 1,
-                        includeduree = false,
-                      } = watchedProduits[index] || {};
+                       const {
+                         quantite = 0,
+                         prixUnitaire = 0,
+                         duree = 1,
+                         includeduree = false,
+                       } = (watchedProduits[index] ?? {}) as {
+                         quantite?: number;
+                         prixUnitaire?: number;
+                         duree?: number;
+                         includeduree?: boolean;
+                       };
                       let total = (quantite || 0) * (prixUnitaire || 0);
                       if (includeduree) {
                         total *= duree || 1;

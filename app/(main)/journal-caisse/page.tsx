@@ -249,11 +249,11 @@ export default function CashJournalPage() {
                     <TableCell>
                       {new Date(entry.date_operation).toLocaleString("fr-FR")}
                     </TableCell>
-                    <TableCell className="max-w-[250px]">
+                    <TableCell className="max-w-62.5">
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <p className="truncate max-w-[150px] cursor-pointer">
+                            <p className="truncate max-w-37.5 cursor-pointer">
                               {entry.cashRegister.name}
                             </p>
                           </TooltipTrigger>
@@ -267,7 +267,7 @@ export default function CashJournalPage() {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <p className="truncate max-w-[250px] cursor-pointer">
+                            <p className="truncate max-w-62.5 cursor-pointer">
                               {entry.libelle}
                             </p>
                           </TooltipTrigger>
@@ -306,7 +306,7 @@ export default function CashJournalPage() {
                               href={att.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-500 hover:underline truncate max-w-[55px]"
+                              className="text-blue-500 hover:underline truncate max-w-13.75"
                             >
                               {att.fileName}
                             </a>
