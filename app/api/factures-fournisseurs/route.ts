@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(newFacture, { status: 201 });
   } catch (error) {
     console.error(
-      "Erreur lors de la création de la facture fournisseur:",
+      "Erreur lors de la création de la facture fournisseur:Verifier si reference existe déja...",
       error,
     );
     return NextResponse.json(
