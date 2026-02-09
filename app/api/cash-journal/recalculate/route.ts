@@ -21,27 +21,27 @@ export async function POST() {
       });
 
       // Recalculate solde for each entry and update the entry
-      for (const entry of journalEntries) {
-        if (entry.type === OperationType.RECETTE) {
+    for (const entry of journalEntries) {
+      switch (entry.type) {
+        case OperationType.RECETTE:
           currentBalance += entry.montant;
-        } else if (entry.type === OperationType.DEPENSE) {
-          currentBalance -= entry.montant;
-        } else if (entry.type === OperationType.TRANSFERT) {
-          // For transfers, the entry type already reflects RECETTE or DEPENSE
-          // so the currentBalance calculation is correct based on the entry's type
-          if (entry.type === OperationType.RECETTE) {
-            currentBalance += entry.montant;
-          } else if (entry.type === OperationType.DEPENSE) {
-            currentBalance -= entry.montant;
-          }
-        }
+          break;
 
-        // Update the solde for the current journal entry
-        await prisma.cashJournal.update({
-          where: { id: entry.id },
-          data: { solde: currentBalance },
-        });
+        case OperationType.DEPENSE:
+          currentBalance -= entry.montant;
+          break;
+
+        case OperationType.TRANSFERT:
+          // Aucun impact direct sur le solde
+          break;
       }
+
+      await prisma.cashJournal.update({
+        where: { id: entry.id },
+        data: { solde: currentBalance },
+      });
+    }
+
 
       // Update the final balance for the cash register
       await prisma.cashRegister.update({

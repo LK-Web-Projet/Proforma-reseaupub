@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     const dateMin = searchParams.get("dateMin");
     const dateMax = searchParams.get("dateMax");
     const objet = searchParams.get("objet");
+    const year = searchParams.get("year");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: { [key: string]: any } = {};
@@ -21,11 +22,19 @@ export async function GET(request: Request) {
     if (statut) where.statut = statut;
     if (clientId) where.clientId = clientId;
     if (objet) where.objet = { contains: objet, mode: "insensitive" };
-    if (dateMin || dateMax) {
+
+    if (year) {
+      const parsedYear = parseInt(year, 10);
+      where.dateCreation = {
+        gte: new Date(`${parsedYear}-01-01T00:00:00.000Z`),
+        lt: new Date(`${parsedYear + 1}-01-01T00:00:00.000Z`),
+      };
+    } else if (dateMin || dateMax) {
       where.dateCreation = {};
       if (dateMin) where.dateCreation.gte = new Date(dateMin);
       if (dateMax) where.dateCreation.lte = new Date(dateMax);
     }
+    // Si year est vide ET pas de dateMin/dateMax, on affiche TOUTES les factures
 
     const factures = await prisma.invoice.findMany({
       where,

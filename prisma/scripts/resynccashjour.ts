@@ -1,7 +1,6 @@
 //  npx ts-node prisma/scripts/resynccashjour.ts // Pour exécuter ce script
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { PrismaClient } = require("@prisma/client");
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -26,3 +25,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

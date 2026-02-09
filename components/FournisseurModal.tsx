@@ -25,7 +25,7 @@ export type Fournisseur = {
 interface FournisseurModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (fournisseur: Fournisseur) => void; // ✅
   initialData?: Fournisseur | null;
 }
 
@@ -40,17 +40,22 @@ export function FournisseurModal({ isOpen, onClose, onSuccess, initialData }: Fo
     try {
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Une erreur est survenue.');
+        throw new Error(errorData.message || "Une erreur est survenue.");
       }
+      const fournisseur: Fournisseur = await response.json(); // ✅
 
-      toast.success(initialData ? 'Fournisseur mis à jour avec succès !' : 'Fournisseur créé avec succès !');
-      onSuccess(); // Refetch data on parent page
+      toast.success(
+        initialData
+          ? "Fournisseur mis à jour avec succès !"
+          : "Fournisseur créé avec succès !",
+      );
+      onSuccess(fournisseur); // Refetch data on parent page
       onClose(); // Close modal
     } catch (error: unknown) {
       console.error(error);
@@ -66,7 +71,7 @@ export function FournisseurModal({ isOpen, onClose, onSuccess, initialData }: Fo
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[625px]">
+      <DialogContent className="sm:max-w-156.26">
         <DialogHeader>
           <DialogTitle>
             {initialData ? 'Modifier le fournisseur' : 'Ajouter un nouveau fournisseur'}

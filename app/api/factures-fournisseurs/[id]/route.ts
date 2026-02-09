@@ -2,10 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-interface Params {
-  params: { id: string };
-}
-
 // PATCH /api/factures-fournisseurs/[id] - Mettre à jour le statut d'une facture
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -41,3 +37,4 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ message: 'Erreur interne du serveur', details: err?.message || "Unknown" }, { status: 500 });
   }
 }
+

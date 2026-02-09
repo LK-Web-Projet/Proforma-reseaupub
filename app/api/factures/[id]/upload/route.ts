@@ -37,15 +37,18 @@ async function updateInvoiceStatus(invoiceId: string) {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const invoiceId = params.id;
+  const invoiceId = (await params).id;
   const data = await request.formData();
-  const file: File | null = data.get('file') as unknown as File;
-  const type = data.get('type') as 'bon' | 'facture';
+  const file: File | null = data.get("file") as unknown as File;
+  const type = data.get("type") as "bon" | "facture";
 
   if (!file || !type) {
-    return NextResponse.json({ success: false, message: 'Missing file or type' });
+    return NextResponse.json({
+      success: false,
+      message: "Missing file or type",
+    });
   }
 
   const invoice = await prisma.invoice.findUnique({
@@ -53,10 +56,10 @@ export async function POST(
   });
 
   if (!invoice) {
-    return NextResponse.json({ success: false, message: 'Invoice not found' });
+    return NextResponse.json({ success: false, message: "Invoice not found" });
   }
 
-  const subfolder = type === 'bon' ? 'Bon' : 'Facture';
+  const subfolder = type === "bon" ? "Bon" : "Facture";
   const uploadPath = join(process.cwd(), UPLOAD_DIR, subfolder, invoice.numero);
 
   if (!existsSync(uploadPath)) {
@@ -70,7 +73,7 @@ export async function POST(
 
   const fileUrl = `/${subfolder}/${invoice.numero}/${file.name}`;
 
-  if (type === 'bon') {
+  if (type === "bon") {
     await prisma.bonCommande.upsert({
       where: { invoiceId },
       update: { url: fileUrl },
@@ -96,43 +99,43 @@ export async function POST(
 }
 
 export async function DELETE(
-    request: NextRequest,
-    { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
 ) {
-    const invoiceId = params.id;
-    const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type') as 'bon' | 'facture';
+  const invoiceId = (await params).id;
+  const { searchParams } = new URL(request.url);
+  const type = searchParams.get("type") as "bon" | "facture";
 
-    if (!type) {
-        return NextResponse.json({ success: false, message: 'Missing type' });
+  if (!type) {
+    return NextResponse.json({ success: false, message: "Missing type" });
+  }
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: { bonCommande: true, factureNormaliser: true },
+  });
+
+  if (!invoice) {
+    return NextResponse.json({ success: false, message: "Invoice not found" });
+  }
+
+  let fileToDelete = null;
+  if (type === "bon" && invoice.bonCommande) {
+    fileToDelete = invoice.bonCommande;
+    await prisma.bonCommande.delete({ where: { invoiceId } });
+  } else if (type === "facture" && invoice.factureNormaliser) {
+    fileToDelete = invoice.factureNormaliser;
+    await prisma.factureNormaliser.delete({ where: { invoiceId } });
+  }
+
+  if (fileToDelete) {
+    const filePath = join(process.cwd(), UPLOAD_DIR, fileToDelete.url);
+    if (existsSync(filePath)) {
+      rmSync(filePath);
     }
+  }
 
-    const invoice = await prisma.invoice.findUnique({
-        where: { id: invoiceId },
-        include: { bonCommande: true, factureNormaliser: true },
-    });
+  await updateInvoiceStatus(invoiceId);
 
-    if (!invoice) {
-        return NextResponse.json({ success: false, message: 'Invoice not found' });
-    }
-
-    let fileToDelete = null;
-    if (type === 'bon' && invoice.bonCommande) {
-        fileToDelete = invoice.bonCommande;
-        await prisma.bonCommande.delete({ where: { invoiceId } });
-    } else if (type === 'facture' && invoice.factureNormaliser) {
-        fileToDelete = invoice.factureNormaliser;
-        await prisma.factureNormaliser.delete({ where: { invoiceId } });
-    }
-
-    if (fileToDelete) {
-        const filePath = join(process.cwd(), UPLOAD_DIR, fileToDelete.url);
-        if (existsSync(filePath)) {
-            rmSync(filePath);
-        }
-    }
-
-    await updateInvoiceStatus(invoiceId);
-
-    return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true });
 }

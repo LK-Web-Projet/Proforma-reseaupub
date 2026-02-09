@@ -489,7 +489,7 @@ export default function FactureDetailPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {STATUT_FACTURE_OPTIONS.filter((option) =>
-                      ["Envoyer", "Annuler"].includes(option.value)
+                      ["Envoyer", "Annuler","Valider","Payer"].includes(option.value)
                     ).map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
@@ -620,7 +620,7 @@ export default function FactureDetailPage() {
                   }))
                 }
               >
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-50">
                   <SelectValue placeholder="Sélectionner un commercial" />
                 </SelectTrigger>
                 <SelectContent>

@@ -4,10 +4,10 @@ import prisma from '@/lib/prisma';
 // GET /api/clients/[id]
 export async function GET(
   request: Request,
-  context: { params: Promise<{ id: string }> }
+  {params}: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await context.params; // <-- attendre la résolution
+    const { id } = await params;
     const client = await prisma.client.findUnique({
       where: { id },
     });

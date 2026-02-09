@@ -45,15 +45,16 @@ export default function CashJournalPage() {
   const [loading, setLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<number | null>(null);
+  const [year, setYear] = useState(new Date().getFullYear().toString());
 
   const [addRegisterModalOpen, setAddRegisterModalOpen] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  async function fetchData() {
+  async function fetchData(currentYear: string) {
     setLoading(true);
     try {
-      const res = await fetch('/api/cash-journal');
+      const res = await fetch(`/api/cash-journal?year=${currentYear}`);
       const data = await res.json();
       setAllEntries(data.cashJournalEntries || []);
       setCashRegisters(data.cashRegisters || []);
@@ -65,8 +66,10 @@ export default function CashJournalPage() {
   }
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (year) {
+      fetchData(year);
+    }
+  }, [year]);
 
   const filteredEntries = useMemo(() => {
     if (selectedCashRegisterId === null) {
@@ -103,7 +106,7 @@ export default function CashJournalPage() {
 
       if (res.ok) {
         toast.success("Recalcul des soldes effectué avec succès.");
-        fetchData(); // Refresh data after recalculation
+        fetchData(year); // Refresh data after recalculation
       } else {
         const errorData = await res.json();
         toast.error(errorData.error || "Échec du recalcul des soldes.");
@@ -118,8 +121,23 @@ export default function CashJournalPage() {
 
   return (
     <div className="pt-8 ">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Journal de Caisse</h1>
+       <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold">Journal de Caisse</h1>
+          <div>
+            <select
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              className="border-gray-300 rounded-md shadow-sm p-2"
+              title="Sélectionnez une année"
+            >
+              <option value="2027">2027</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
+        </div>
         <div className="flex gap-2 ">
           <Button
             onClick={handleRecalculate}
@@ -136,7 +154,7 @@ export default function CashJournalPage() {
             {isRecalculating ? "Recalcul en cours..." : "Recalculer les soldes"}
           </Button>
           <AddEntryModal
-            onEntryAdded={fetchData}
+            onEntryAdded={() => fetchData(year)}
             cashRegisters={cashRegisters}
             selectedCashRegisterId={selectedCashRegisterId}
           />
@@ -152,7 +170,7 @@ export default function CashJournalPage() {
           onClick={() => startTransition(() => setSelectedCashRegisterId(null))}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Solde Global</CardTitle>
+            <CardTitle className="text-sm font-medium">Solde Global ({year})</CardTitle>
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -231,11 +249,11 @@ export default function CashJournalPage() {
                     <TableCell>
                       {new Date(entry.date_operation).toLocaleString("fr-FR")}
                     </TableCell>
-                    <TableCell className="max-w-[250px]">
+                    <TableCell className="max-w-62.5">
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <p className="truncate max-w-[150px] cursor-pointer">
+                            <p className="truncate max-w-37.5 cursor-pointer">
                               {entry.cashRegister.name}
                             </p>
                           </TooltipTrigger>
@@ -249,7 +267,7 @@ export default function CashJournalPage() {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <p className="truncate max-w-[250px] cursor-pointer">
+                            <p className="truncate max-w-62.5 cursor-pointer">
                               {entry.libelle}
                             </p>
                           </TooltipTrigger>
@@ -288,14 +306,14 @@ export default function CashJournalPage() {
                               href={att.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-500 hover:underline truncate max-w-[55px]"
+                              className="text-blue-500 hover:underline truncate max-w-13.75"
                             >
                               {att.fileName}
                             </a>
                           ))}
                         </div>
                       ) : (
-                        <UploadAttachmentModal cashJournalId={entry.id} onUploadComplete={fetchData} />
+                        <UploadAttachmentModal cashJournalId={entry.id} onUploadComplete={() => fetchData(year)} />
                       )}
                     </TableCell>
                   </TableRow>
@@ -307,7 +325,7 @@ export default function CashJournalPage() {
         </div>
       </Card>
 
-      <AddCashRegisterModal open={addRegisterModalOpen} onOpenChange={setAddRegisterModalOpen} onRegisterAdded={fetchData} />
+      <AddCashRegisterModal open={addRegisterModalOpen} onOpenChange={setAddRegisterModalOpen} onRegisterAdded={() => fetchData(year)} />
     </div>
   );
 }

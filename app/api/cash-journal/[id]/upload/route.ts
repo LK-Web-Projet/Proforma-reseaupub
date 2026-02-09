@@ -7,13 +7,13 @@ import prisma from "@/lib/prisma";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const cashJournalId = parseInt(params.id, 10);
+  const cashJournalId = await parseInt((await params).id, 10);
   if (isNaN(cashJournalId)) {
     return NextResponse.json(
       { error: "Invalid cash journal ID" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -29,7 +29,7 @@ export async function POST(
     "public",
     "Upload",
     "CashJournal",
-    String(cashJournalId)
+    String(cashJournalId),
   );
   if (!existsSync(uploadDir)) {
     mkdirSync(uploadDir, { recursive: true });
@@ -48,7 +48,7 @@ export async function POST(
       "Upload",
       "CashJournal",
       String(cashJournalId),
-      file.name
+      file.name,
     ).replace(/\\/g, "/");
 
     const attachment = await prisma.cashJournalAttachment.create({

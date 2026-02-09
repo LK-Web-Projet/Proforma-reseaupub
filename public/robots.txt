@@ -1,0 +1,16 @@
+# Robots.txt pour Proforma-Reseaupub
+
+# Autoriser tous les bots
+User-agent: *
+Allow: /
+
+# Bloquer les répertoires sensibles
+Disallow: /api/
+Disallow: /admin/
+Disallow: /.next/
+
+# Sitemap
+Sitemap: https://yourdomain.com/sitemap.xml
+
+# Délai de crawl (en secondes)
+Crawl-delay: 1

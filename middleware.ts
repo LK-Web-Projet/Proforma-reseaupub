@@ -2,10 +2,10 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// --- Routes publiques ---
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/"]);
+// --- Routes publiques (ne nécessitent pas d'auth) ---
+const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/", "/favicon.ico"]);
 
-// --- Origines autorisées depuis .env ---
+// --- Origines autorisées pour CORS depuis .env ---
 const allowedOrigins = process.env.NEXT_PUBLIC_ALLOWED_ORIGINS
   ? process.env.NEXT_PUBLIC_ALLOWED_ORIGINS.split(",")
   : [];
@@ -14,9 +14,18 @@ export default clerkMiddleware((auth, req: NextRequest) => {
   const origin = req.headers.get("origin") || "";
   const res = NextResponse.next();
 
-  // ----- Clerk -----
+  // ----- Authentification -----
   if (!isPublicRoute(req)) {
-    auth.protect();
+    try {
+      auth.protect(); // Vérifie si l'utilisateur est connecté
+    } catch {
+      // Si route API → renvoyer 401
+      if (req.nextUrl.pathname.startsWith("/api")) {
+        return new NextResponse("Unauthorized", { status: 401 });
+      }
+      // Sinon → rediriger vers la page de login
+      return NextResponse.redirect(new URL("/sign-in", req.url));
+    }
   }
 
   // ----- CORS -----
@@ -24,11 +33,11 @@ export default clerkMiddleware((auth, req: NextRequest) => {
     res.headers.set("Access-Control-Allow-Origin", origin);
     res.headers.set(
       "Access-Control-Allow-Methods",
-      "GET,POST,PUT,DELETE,OPTIONS"
+      "GET,POST,PUT,DELETE,OPTIONS",
     );
     res.headers.set(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
+      "Content-Type, Authorization",
     );
   }
 
@@ -39,7 +48,7 @@ export const config = {
   matcher: [
     // Toutes les pages sauf assets (_next, fichiers statiques)
     "/((?!_next|.*\\..*).*)",
-    // API
+    // Toutes les API
     "/(api|trpc)(.*)",
   ],
 };

@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-interface Params {
-  params: { id: string };
-}
-
 // GET /api/fournisseurs/[id] - Récupérer un fournisseur par ID
 export async function GET(req: Request, { params }: Params) {
   const { id } = await params;
@@ -91,7 +87,10 @@ export async function DELETE(req: Request, { params }: Params) {
     if (err.code === 'P2025') { // Record to delete not found
       return NextResponse.json({ message: 'Fournisseur non trouvé' }, { status: 404 });
     }
-    return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
+    return NextResponse.json(
+      { message: "Erreur interne du serveur" },
+      { status: 500 },
+    );
   }
 }
 

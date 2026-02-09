@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const cashRegisterId = searchParams.get('cashRegisterId');
+    const year = searchParams.get('year');
 
     const cashRegisters = await prisma.cashRegister.findMany({
       orderBy: {
@@ -14,31 +15,29 @@ export async function GET(request: Request) {
       },
     });
 
-    let cashJournalEntries;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {};
+
     if (cashRegisterId) {
-      cashJournalEntries = await prisma.cashJournal.findMany({
-        where: {
-          cashRegisterId: parseInt(cashRegisterId),
-        },
-        orderBy: {
-          id: 'asc',
-        },
-        include: {
-          cashRegister: { select: { name: true } },
-          attachments: true,
-        },
-      });
-    } else {
-      cashJournalEntries = await prisma.cashJournal.findMany({
-        orderBy: {
-          id: 'asc',
-        },
-        include: {
-          cashRegister: { select: { name: true } },
-          attachments: true,
-        },
-      });
+      where.cashRegisterId = parseInt(cashRegisterId);
     }
+    
+    const targetYear = year ? parseInt(year, 10) : new Date().getFullYear();
+    where.date_operation = {
+      gte: new Date(targetYear, 0, 1),
+      lt: new Date(targetYear + 1, 0, 1),
+    };
+
+    const cashJournalEntries = await prisma.cashJournal.findMany({
+      where,
+      orderBy: {
+        id: 'asc',
+      },
+      include: {
+        cashRegister: { select: { name: true } },
+        attachments: true,
+      },
+    });
 
     return NextResponse.json({ cashRegisters, cashJournalEntries });
   } catch (error) {
