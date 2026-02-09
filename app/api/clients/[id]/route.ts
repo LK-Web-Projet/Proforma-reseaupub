@@ -27,11 +27,11 @@ export async function GET(
 // PUT /api/clients/[id]
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const data = await request.json();
-    const { id } = params; 
+    const { id } = await params;
     const clientMisAJour = await prisma.client.update({
       where: { id: id },
       data,
@@ -46,10 +46,11 @@ export async function PUT(
 // DELETE /api/clients/[id]
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await prisma.client.delete({ where: { id: params.id } });
+    const { id } = await params;
+    await prisma.client.delete({ where: { id: id } });
     return new NextResponse(null, { status: 204 }); // No Content
   } catch (error) {
     console.error("Erreur lors de la suppression du client :", error);

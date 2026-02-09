@@ -7,6 +7,61 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+ 
+enum PaiementType {
+  PAIEMENT
+  DEPENSE
+}
+
+enum StatusFacture {
+  Brouillon
+  Envoyer
+  Valider
+  Annuler
+  Archiver
+  Payer
+  Solde
+}
+
+enum UniteDuree {
+  jour
+  heure
+  mois
+  semaine
+}
+
+enum Devise {
+  XOF
+  EUR
+  USD
+}
+
+enum OperationType {
+  RECETTE
+  DEPENSE
+  TRANSFERT
+}
+
+enum StatutFactureFournisseur {
+  EN_ATTENTE
+  PAYEE
+  ANNULEE
+}
+
+enum TypeUnite {
+  METRE_CARRE
+  UNITE
+  ROULEAU
+  METRE_LINEAIRE
+  FORFAIT
+}
+
+enum StatutCommandeFournisseur {
+  BROUILLON
+  VALIDEE
+  LIVREE
+  ANNULEE
+}
 
 model Client {
   id        String    @id @default(uuid())
@@ -161,6 +216,8 @@ model Fournisseur {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   factures        FactureFournisseur[]
+  produits        ProduitFournisseur[]
+  commandes       CommandeFournisseur[]
 }
 
 model FactureFournisseur {
@@ -176,42 +233,45 @@ model FactureFournisseur {
   fournisseur   Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
 }
 
-enum PaiementType {
-  PAIEMENT
-  DEPENSE
+model ProduitFournisseur {
+  id            String      @id @default(uuid())
+  designation   String
+  description   String?
+  prixUnitaire  Decimal     @db.Decimal(10, 2)
+  typeUnite     TypeUnite
+  fournisseurId String
+  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id])
+  lignesCommande LigneCommandeFournisseur[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
-enum StatusFacture {
-  Brouillon
-  Envoyer
-  Valider
-  Annuler
-  Archiver
-  Payer
-  Solde
+model CommandeFournisseur {
+  id            String                     @id @default(uuid())
+  numero        String                     @unique
+  dateCommande  DateTime                   @default(now())
+  statut        StatutCommandeFournisseur  @default(BROUILLON)
+  fournisseurId String
+  fournisseur   Fournisseur                @relation(fields: [fournisseurId], references: [id])
+  totalHT       Decimal                    @db.Decimal(10, 2)
+  lignes        LigneCommandeFournisseur[]
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
 }
 
-enum UniteDuree {
-  jour
-  heure
-  mois
-  semaine
+model LigneCommandeFournisseur {
+  id                   String              @id @default(uuid())
+  commandeId           String
+  commande             CommandeFournisseur @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  produitFournisseurId String
+  produitFournisseur   ProduitFournisseur  @relation(fields: [produitFournisseurId], references: [id])
+  designation          String
+  quantite             Int
+  largeur              Decimal?            @db.Decimal(10, 2)
+  hauteur              Decimal?            @db.Decimal(10, 2)
+  surface              Decimal?            @db.Decimal(10, 2)
+  prixUnitaire         Decimal             @db.Decimal(10, 2)
+  prixTotal            Decimal             @db.Decimal(10, 2)
 }
 
-enum Devise {
-  XOF
-  EUR
-  USD
-}
 
-enum OperationType {
-  RECETTE
-  DEPENSE
-  TRANSFERT
-}
-
-enum StatutFactureFournisseur {
-  EN_ATTENTE
-  PAYEE
-  ANNULEE
-}
