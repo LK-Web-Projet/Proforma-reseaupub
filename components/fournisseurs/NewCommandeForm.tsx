@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,7 +19,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2, Calculator } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { ProduitFournisseur } from "@prisma/client";
 
 interface NewCommandeFormProps {
@@ -41,7 +41,6 @@ interface LigneCommande {
 export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: NewCommandeFormProps) {
     const [produits, setProduits] = useState<ProduitFournisseur[]>([]);
     const [lignes, setLignes] = useState<LigneCommande[]>([]);
-    const [loadingProduits, setLoadingProduits] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [dateCommande, setDateCommande] = useState(new Date().toISOString().split('T')[0]);
 
@@ -57,7 +56,7 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
             } catch (error) {
                 console.error("Erreur chargement produits", error);
             } finally {
-                setLoadingProduits(false);
+                // setLoadingProduits(false); // Removed as loadingProduits is no longer used
             }
         };
         fetchProduits();
@@ -82,7 +81,7 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
         setLignes(newLignes);
     };
 
-    const updateLigne = (index: number, field: keyof LigneCommande, value: any) => {
+    const updateLigne = (index: number, field: keyof LigneCommande, value: string) => {
         const newLignes = [...lignes];
         const ligne = { ...newLignes[index] };
 
@@ -94,8 +93,10 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                 ligne.prixUnitaire = Number(prod.prixUnitaire);
                 ligne.typeUnite = prod.typeUnite;
             }
-        } else {
-            (ligne as any)[field] = value;
+        } else if (field === 'quantite' || field === 'largeur' || field === 'hauteur' || field === 'prixUnitaire') {
+            (ligne[field] as number | undefined) = value === '' ? undefined : Number(value);
+        } else if (field === 'designation' || field === 'typeUnite') {
+            (ligne[field] as string) = value;
         }
 
         newLignes[index] = ligne;

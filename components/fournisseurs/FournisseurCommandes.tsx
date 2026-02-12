@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Eye } from "lucide-react";
-import { CommandeFournisseur, StatutCommandeFournisseur } from "@prisma/client";
+import { CommandeFournisseur } from "@prisma/client";
 import { format } from "date-fns";
 import NewCommandeForm from "./NewCommandeForm";
 
