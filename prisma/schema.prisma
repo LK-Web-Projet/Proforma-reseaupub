@@ -7,7 +7,7 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
- 
+
 enum PaiementType {
   PAIEMENT
   DEPENSE
@@ -63,6 +63,22 @@ enum StatutCommandeFournisseur {
   ANNULEE
 }
 
+model EntrepriseConfig {
+  id           String   @id @default("singleton")
+  nom          String   @default("Reseaupub")
+  slogan       String?
+  adresse      String   @default("Etoile Rouge, Cotonou, Bénin")
+  telephone    String   @default("+229 01 69 81 30 30")
+  email        String   @default("contact@reseaupub.com")
+  emailFinance String   @default("finance@reseaupub.com")
+  siteWeb      String?
+  ifu          String   @default("0201710009974")
+  rccm         String?
+  nomDirecteur String   @default("Directeur Général")
+  logoPath     String   @default("rplogo.png")
+  updatedAt    DateTime @updatedAt
+}
+
 model Client {
   id        String    @id @default(uuid())
   nom       String    @unique
@@ -103,7 +119,7 @@ model Invoice {
   gestionnaires              InvoiceGestionnaire[]
   produits                   InvoiceProduit[]
   paiements                  Paiement[]
-  isTaxExempt                Boolean           @default(false)
+  isTaxExempt                Boolean               @default(false)
 }
 
 model BonCommande {
@@ -205,16 +221,16 @@ model CashJournalAttachment {
 }
 
 model Fournisseur {
-  id              String               @id @default(cuid())
+  id              String                @id @default(cuid())
   nom             String?
   prenom          String?
-  entreprise      String               @unique
+  entreprise      String                @unique
   contact         String
   domaineActivite String
   adresse         String
-  email           String               @unique
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  email           String                @unique
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
   factures        FactureFournisseur[]
   produits        ProduitFournisseur[]
   commandes       CommandeFournisseur[]
@@ -234,16 +250,16 @@ model FactureFournisseur {
 }
 
 model ProduitFournisseur {
-  id            String      @id @default(uuid())
-  designation   String
-  description   String?
-  prixUnitaire  Decimal     @db.Decimal(10, 2)
-  typeUnite     TypeUnite
-  fournisseurId String
-  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id])
+  id             String                     @id @default(uuid())
+  designation    String
+  description    String?
+  prixUnitaire   Decimal                    @db.Decimal(10, 2)
+  typeUnite      TypeUnite
+  fournisseurId  String
+  fournisseur    Fournisseur                @relation(fields: [fournisseurId], references: [id])
   lignesCommande LigneCommandeFournisseur[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 }
 
 model CommandeFournisseur {
@@ -273,5 +289,3 @@ model LigneCommandeFournisseur {
   prixUnitaire         Decimal             @db.Decimal(10, 2)
   prixTotal            Decimal             @db.Decimal(10, 2)
 }
-
-

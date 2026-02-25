@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-// Importation de la configuration de l'entreprise 
-import {Entreprise} from "@/components/Data";
+import { getEntrepriseConfig } from "@/lib/entreprise";
 
 export async function GET(request: Request) {
   try {
@@ -85,6 +84,9 @@ export async function POST(request: Request) {
 
     // Utilisation d'une transaction pour garantir l'intégrité des données
     const newInvoice = await prisma.$transaction(async (tx) => {
+    // 0. Récupérer la config entreprise depuis la DB
+      const entreprise = await getEntrepriseConfig();
+
       // 1. Gestion du client : trouver ou créer
       let client: { id: string; nom: string; adresse: string | null; email: string | null; telephone: string | null; } | null = await tx.client.findFirst({
         where: { nom: clientNom },
@@ -149,8 +151,9 @@ export async function POST(request: Request) {
           tva,
           totalTTC,
           resteAPayer: totalTTC, // Initialiser le reste à payer avec le total TTC
-          societeNom: Entreprise.nom,
-          societeIFU: Entreprise.IFU,
+          societeNom: entreprise.nom,
+          societeIFU: entreprise.ifu,
+          societeAdresse: entreprise.adresse,
           devise: devise || "XOF",
           paymentConditionPercentage: paymentConditionPercentage,
           info,

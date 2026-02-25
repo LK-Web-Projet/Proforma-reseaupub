@@ -27,8 +27,12 @@ export async function GET(
       );
     }
 
+    // Récupère la configuration de l'entreprise
+    const { getEntrepriseConfig } = await import("@/lib/entreprise");
+    const entreprise = await getEntrepriseConfig();
+
     // Génère le PDF de la facture en utilisant la fonction importée
-    const pdfBytes = await generateInvoicePdf(facture);
+    const pdfBytes = await generateInvoicePdf(facture as any, entreprise);
 
     // Renvoie le PDF sous forme de réponse avec les en-têtes appropriés
     return new NextResponse(Buffer.from(pdfBytes), {

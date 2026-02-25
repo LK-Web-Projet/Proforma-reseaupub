@@ -2,8 +2,24 @@ import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from "pdf-lib";
 import { Invoice, InvoiceProduit, Client, Devise } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
-import { Entreprise } from "@/components/Data";
 import writtenNumber from "written-number";
+
+// Type local pour éviter les dépendances de cache du client Prisma généré
+type EntrepriseConfig = {
+  id: string;
+  nom: string;
+  slogan: string | null;
+  adresse: string;
+  telephone: string;
+  email: string;
+  emailFinance: string;
+  siteWeb: string | null;
+  ifu: string;
+  rccm: string | null;
+  nomDirecteur: string;
+  logoPath: string;
+  updatedAt: Date;
+};
 
 type InvoiceWithDetails = Invoice & {
   client: Client;
@@ -11,8 +27,15 @@ type InvoiceWithDetails = Invoice & {
   devise: Devise;
 };
 
+const colorPrimary = rgb(0.937, 0.043, 0.325); // #ef0b53
+const colorLight = rgb(1, 0.95, 0.96);
+
+const cleanText = (text: string) => {
+  return text.replace(/\u202f/g, " ").replace(/\u00a0/g, " ");
+};
+
 const formatNumber = (num: number) => {
-  return new Intl.NumberFormat("fr-FR").format(num).replace(/\s/g, ' ');
+  return cleanText(new Intl.NumberFormat("fr-FR").format(num).replace(/\s/g, ' '));
 };
 
 function getLines(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
@@ -44,7 +67,8 @@ function getLines(text: string, font: PDFFont, fontSize: number, maxWidth: numbe
 }
 
 export async function generateInvoicePdf(
-  facture: InvoiceWithDetails
+  facture: InvoiceWithDetails,
+  entreprise: EntrepriseConfig
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   let page = pdfDoc.addPage([600, 800]);
@@ -63,11 +87,11 @@ export async function generateInvoicePdf(
       page = pdfDoc.addPage([600, 800]);
       pageCount++;
       y.value = height - 50;
-      await drawSubsequentPageHeader(pdfDoc, page);
+      await drawSubsequentPageHeader(pdfDoc, page, entreprise);
     }
   };
 
-  await drawHeader(pdfDoc, page, boldFont, width, facture);
+  await drawHeader(pdfDoc, page, boldFont, width, facture, entreprise);
   y.value -= 40;
 
   // Infos facture
@@ -98,8 +122,8 @@ export async function generateInvoicePdf(
   page.drawLine({
     start: { x: pageMargin, y: y.value },
     end: { x: width - pageMargin, y: y.value },
-    thickness: 1,
-    color: rgb(0.8, 0.8, 0.8),
+    thickness: 2,
+    color: colorPrimary,
   });
   y.value -= 20;
 
@@ -204,7 +228,6 @@ export async function generateInvoicePdf(
 
   if (facture.info) {
     y.value -= 10;
-    const blueColor = rgb(0.1, 0.1, 0.7); // A distinct blue color
     const titleFontSize = 12; // Larger for title
     const contentFontSize = 11; // Larger for content
     const infoTitle = 'Informations Complémentaires:';
@@ -218,13 +241,13 @@ export async function generateInvoicePdf(
 
     await checkNewPage(estimatedHeightNeeded);
 
-    // Draw title in bold and blue
-    drawText(page, boldFont, infoTitle, pageMargin, y.value, titleFontSize, 'left');
+    // Draw title in bold and primary color
+    drawText(page, boldFont, infoTitle, pageMargin, y.value, titleFontSize, 'left', colorPrimary);
     y.value -= (titleFontSize + 5); // spacing after title
-
-    // Draw content in bold and blue
+ 
+    // Draw content in bold and primary color
     for (const line of infoContentLines) {
-      drawText(page, font, line, pageMargin, y.value, contentFontSize, 'left', blueColor);
+      drawText(page, font, line, pageMargin, y.value, contentFontSize, 'left', colorPrimary);
       y.value -= (contentFontSize + 2); // spacing between content lines
     }
     y.value -= 20; // spacing after the whole block
@@ -252,11 +275,17 @@ async function drawHeader(
   page: PDFPage,
   font: PDFFont,
   pageWidth: number,
-  facture: InvoiceWithDetails
+  facture: InvoiceWithDetails,
+  entreprise: EntrepriseConfig
 ) {
-  const logoPath = path.join(process.cwd(), "public", "rplogo.png");
-  const logoImageBytes = fs.readFileSync(logoPath);
-  const logoImage = await pdfDoc.embedPng(logoImageBytes);
+  const logoFilename = entreprise.logoPath || "rplogo.png";
+  const logoFilePath = path.join(process.cwd(), "public", logoFilename);
+  const logoImageBytes = fs.readFileSync(logoFilePath);
+  // Détecter PNG ou JPEG
+  const isPng = logoFilename.toLowerCase().endsWith(".png") || logoImageBytes[0] === 0x89;
+  const logoImage = isPng
+    ? await pdfDoc.embedPng(logoImageBytes)
+    : await pdfDoc.embedJpg(logoImageBytes);
   const logoWidth = 120;
   const logoHeight = logoImage.height * (logoWidth / logoImage.width);
   page.drawImage(logoImage, {
@@ -270,21 +299,25 @@ async function drawHeader(
 
   const companyX = 40;
   let companyY = 700;
-  drawText(page, font, `Délivrée par : ${facture.societeNom ?? Entreprise.nom}`, companyX, companyY, 10);
+  drawText(page, font, `Délivrée par : ${facture.societeNom ?? entreprise.nom}`, companyX, companyY, 10);
   companyY -= 15;
-  drawText(page, font, `Adresse : ${facture.societeAdresse ?? Entreprise.adresse}`, companyX, companyY, 10);
+  drawText(page, font, `Adresse : ${facture.societeAdresse ?? entreprise.adresse}`, companyX, companyY, 10);
   companyY -= 15;
-  drawText(page, font, `IFU : ${facture.societeIFU ?? Entreprise.IFU}`, companyX, companyY, 10);
+  drawText(page, font, `IFU : ${facture.societeIFU ?? entreprise.ifu}`, companyX, companyY, 10);
   companyY -= 15;
-  drawText(page, font, "E-mail : finance@reseaupub.com", companyX, companyY, 10);
+  drawText(page, font, `E-mail : ${entreprise.emailFinance}`, companyX, companyY, 10);
   companyY -= 15;
-  drawText(page, font, "Téléphone : +229 01 69 81 30 30", companyX, companyY, 10);
+  drawText(page, font, `Téléphone : ${entreprise.telephone}`, companyX, companyY, 10);
 }
 
-async function drawSubsequentPageHeader(pdfDoc: PDFDocument, page: PDFPage) {
-  const logoPath = path.join(process.cwd(), "public", "rplogo.png");
-  const logoImageBytes = fs.readFileSync(logoPath);
-  const logoImage = await pdfDoc.embedPng(logoImageBytes);
+async function drawSubsequentPageHeader(pdfDoc: PDFDocument, page: PDFPage, entreprise?: EntrepriseConfig) {
+  const logoFilename = entreprise?.logoPath || "rplogo.png";
+  const logoFilePath = path.join(process.cwd(), "public", logoFilename);
+  const logoImageBytes = fs.readFileSync(logoFilePath);
+  const isPng = logoFilename.toLowerCase().endsWith(".png") || logoImageBytes[0] === 0x89;
+  const logoImage = isPng
+    ? await pdfDoc.embedPng(logoImageBytes)
+    : await pdfDoc.embedJpg(logoImageBytes);
   const logoWidth = 50;
   const logoHeight = logoImage.height * (logoWidth / logoImage.width);
   page.drawImage(logoImage, {
@@ -314,8 +347,8 @@ function drawTableRow(
       width: columnWidths[i],
       height: rowHeight,
       borderWidth: 1,
-      borderColor: rgb(0.8, 0.8, 0.8),
-      color: isHeader ? rgb(0.95, 0.95, 0.95) : rgb(1, 1, 1),
+      borderColor: colorPrimary,
+      color: isHeader ? colorLight : rgb(1, 1, 1),
     });
 
     if (i === 0 && designationLines) { // Designation column
@@ -342,11 +375,12 @@ function drawText(
   color = rgb(0, 0, 0)
 ) {
     let textX = x;
+    const sanitizedText = cleanText(text);
     if (align === 'right') {
-        const textWidth = font.widthOfTextAtSize(text, size);
+        const textWidth = font.widthOfTextAtSize(sanitizedText, size);
         textX = x - textWidth;
     }
-  page.drawText(text, { x: textX, y, size, font, color });
+    page.drawText(sanitizedText, { x: textX, y, size, font, color });
 }
 
 function centerText(

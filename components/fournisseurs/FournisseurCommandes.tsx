@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Plus, Eye } from "lucide-react";
 import { CommandeFournisseur } from "@prisma/client";
 import { format } from "date-fns";
+import { useRouter } from "next/navigation";
 import NewCommandeForm from "./NewCommandeForm";
 
 interface FournisseurCommandesProps {
@@ -25,6 +26,7 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
     const [commandes, setCommandes] = useState<CommandeFournisseur[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
+    const router = useRouter();
 
     const fetchCommandes = useCallback(async () => {
         setLoading(true);
@@ -115,7 +117,12 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
                                         }).format(Number(cmd.totalHT))}
                                     </TableCell>
                                     <TableCell className="text-center">
-                                        <Button variant="ghost" size="sm">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => router.push(`/fournisseur/${fournisseurId}/commandes/${cmd.id}`)}
+                                            title="Voir le détail"
+                                        >
                                             <Eye className="h-4 w-4" />
                                         </Button>
                                     </TableCell>

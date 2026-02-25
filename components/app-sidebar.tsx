@@ -22,6 +22,7 @@ import {
   Landmark,
   Wallet,
   FileDown,
+  Settings,
 } from "lucide-react";
 import {
   Collapsible,
@@ -112,6 +113,7 @@ const finance = [
     url: "/journal-caisse/export",
     icon: FileDown,
   },
+   
 ];
 
 export function AppSidebar() {
@@ -349,6 +351,18 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
+        <Link href="/parametres" >
+            <SidebarMenuButton>
+              <Settings className="w-5 h-5" />
+              <span className="font-bold">Paramètres</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 transition-transform"
+                )}
+              />
+            </SidebarMenuButton>
+
+        </Link>
         <div className="flex facture-center gap-2 pl-4">
           <SignedIn>
             <UserButton />

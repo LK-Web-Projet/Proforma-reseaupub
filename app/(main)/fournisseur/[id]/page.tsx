@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -32,7 +32,9 @@ export default function FournisseurDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatutFactureFournisseur | null>(null);
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params.id as string;
+  const defaultTab = searchParams.get("tab") ?? "factures";
 
   const fetchFournisseurDetails = useCallback(async () => {
     if (!id) return;
@@ -119,7 +121,7 @@ export default function FournisseurDetailsPage() {
     <div className="max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">{fournisseur.entreprise}</h1>
 
-      <Tabs defaultValue="factures" className="w-full">
+      <Tabs defaultValue={defaultTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-8">
           <TabsTrigger value="factures">Factures</TabsTrigger>
           <TabsTrigger value="catalogue">Catalogue Produits</TabsTrigger>

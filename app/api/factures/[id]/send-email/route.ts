@@ -48,8 +48,12 @@ export async function POST(
       });
     }
 
+    // Récupération de la configuration entreprise
+    const { getEntrepriseConfig } = await import("@/lib/entreprise");
+    const entreprise = await getEntrepriseConfig();
+
     // Génération du PDF
-    const pdfBytes = await generateInvoicePdf(facture);
+    const pdfBytes = await generateInvoicePdf(facture as any, entreprise);
 
     // Config du transporteur
     const transporter = nodemailer.createTransport({

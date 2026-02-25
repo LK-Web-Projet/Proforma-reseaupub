@@ -1,5 +1,3 @@
-export const Entreprise = {
-  nom: "reseaupub",
-  adresse: "Etoile Rouge , Cotonou, Bénin",
-  IFU: "0201710009974",
-};
+// Ce fichier est conservé pour compatibilité — les données entreprise sont maintenant
+// stockées en base de données et accessibles via GET /api/entreprise
+// Voir lib/entreprise.ts pour le helper serveur
