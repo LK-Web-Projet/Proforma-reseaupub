@@ -15,7 +15,7 @@ export async function GET(
     const { id } = await context.params; // <-- attendre la résolution
     const facture = await prisma.invoice.findUnique({
       where: { id }, // Utilise l'ID extrait des paramètres de la route pour la recherche
-      include: { client: true, produits: true },
+      include: { client: true, produits: true, devise: true },
     });
 
     // Si aucune facture n'est trouvée avec l'ID donné
@@ -32,7 +32,7 @@ export async function GET(
     const entreprise = await getEntrepriseConfig();
 
     // Génère le PDF de la facture en utilisant la fonction importée
-    const pdfBytes = await generateInvoicePdf(facture as any, entreprise);
+    const pdfBytes = await generateInvoicePdf(facture, entreprise);
 
     // Renvoie le PDF sous forme de réponse avec les en-têtes appropriés
     return new NextResponse(Buffer.from(pdfBytes), {

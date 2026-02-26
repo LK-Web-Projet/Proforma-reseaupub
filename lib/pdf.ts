@@ -21,8 +21,8 @@ type EntrepriseConfig = {
   updatedAt: Date;
 };
 
-type InvoiceWithDetails = Invoice & {
-  client: Client;
+export type InvoiceWithDetails = Invoice & {
+  client: Client | null;
   produits: InvoiceProduit[];
   devise: Devise;
 };

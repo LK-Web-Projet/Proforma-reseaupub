@@ -28,6 +28,7 @@ export async function POST(
       include: {
         client: true,
         produits: true,
+        devise: true,
         gestionnaires: {
           select: {
             gestionnaire: {
@@ -53,7 +54,7 @@ export async function POST(
     const entreprise = await getEntrepriseConfig();
 
     // Génération du PDF
-    const pdfBytes = await generateInvoicePdf(facture as any, entreprise);
+    const pdfBytes = await generateInvoicePdf(facture, entreprise);
 
     // Config du transporteur
     const transporter = nodemailer.createTransport({
