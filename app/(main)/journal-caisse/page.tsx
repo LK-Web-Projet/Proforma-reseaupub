@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddEntryModal } from '@/components/AddEntryModal';
 import { Button } from '@/components/ui/button';
-import { ArrowUpDown, Wallet, Plus, RefreshCcw } from 'lucide-react';
+import { ArrowUpDown, Wallet, Plus, RefreshCcw, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CashRegisterCard } from '@/components/CashRegisterCard';
 import { AddCashRegisterModal } from '@/components/AddCashRegisterModal';
@@ -14,6 +14,7 @@ import { AddCashRegisterModal } from '@/components/AddCashRegisterModal';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { UploadAttachmentModal } from '@/components/UploadAttachmentModal';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface CashJournalEntry {
   id: number;
@@ -37,6 +38,7 @@ interface CashRegister {
   name: string;
   balance: number;
   createdAt: string;
+  view: boolean;
 }
 
 export default function CashJournalPage() {
@@ -50,6 +52,32 @@ export default function CashJournalPage() {
   const [addRegisterModalOpen, setAddRegisterModalOpen] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+
+  const toggleRegisterVisibility = async (register: CashRegister) => {
+    try {
+      const newViewStatus = !register.view;
+      const res = await fetch(`/api/cash-registers/${register.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ view: newViewStatus }),
+      });
+
+      if (res.ok) {
+        setCashRegisters(prev =>
+          prev.map(r => r.id === register.id ? { ...r, view: newViewStatus } : r)
+        );
+        toast.success(`Visibilité de la caisse "${register.name}" mise à jour.`);
+      } else {
+        toast.error("Échec de la mise à jour de la visibilité.");
+      }
+    } catch (error) {
+      console.error("Failed to toggle visibility:", error);
+      toast.error("Une erreur est survenue.");
+    }
+  };
 
   async function fetchData(currentYear: string) {
     setLoading(true);
@@ -119,6 +147,10 @@ export default function CashJournalPage() {
     }
   };
 
+  const visibleRegisters = useMemo(() => {
+    return cashRegisters.filter(r => r.view);
+  }, [cashRegisters]);
+
   return (
     <div className="pt-8 ">
        <div className="flex items-center justify-between mb-4">
@@ -139,6 +171,39 @@ export default function CashJournalPage() {
           </div>
         </div>
         <div className="flex gap-2 ">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" title="Gérer la visibilité des caisses">
+                <Eye className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none mb-2">Visibilité des caisses</h4>
+                {cashRegisters.map((register) => (
+                  <div key={register.id} className="flex items-center justify-between py-1">
+                    <span className="text-sm truncate mr-2">{register.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => toggleRegisterVisibility(register)}
+                    >
+                      {!register.view ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+                {cashRegisters.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Aucune caisse disponible</p>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <Button
             onClick={handleRecalculate}
             disabled={isRecalculating}
@@ -183,13 +248,14 @@ export default function CashJournalPage() {
             </div>
           </CardContent>
         </Card>
-        {cashRegisters.map((register) => (
+        {visibleRegisters.map((register) => (
           <CashRegisterCard
             key={register.id}
             register={register}
             entries={allEntries}
             isSelected={selectedCashRegisterId === register.id}
             onClick={() => startTransition(() => setSelectedCashRegisterId(register.id))}
+            onHide={() => toggleRegisterVisibility(register)}
           />
         ))}
         <Card

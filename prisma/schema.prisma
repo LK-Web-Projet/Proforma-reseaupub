@@ -8,61 +8,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-enum PaiementType {
-  PAIEMENT
-  DEPENSE
-}
-
-enum StatusFacture {
-  Brouillon
-  Envoyer
-  Valider
-  Annuler
-  Archiver
-  Payer
-  Solde
-}
-
-enum UniteDuree {
-  jour
-  heure
-  mois
-  semaine
-}
-
-enum Devise {
-  XOF
-  EUR
-  USD
-}
-
-enum OperationType {
-  RECETTE
-  DEPENSE
-  TRANSFERT
-}
-
-enum StatutFactureFournisseur {
-  EN_ATTENTE
-  PAYEE
-  ANNULEE
-}
-
-enum TypeUnite {
-  METRE_CARRE
-  UNITE
-  ROULEAU
-  METRE_LINEAIRE
-  FORFAIT
-}
-
-enum StatutCommandeFournisseur {
-  BROUILLON
-  VALIDEE
-  LIVREE
-  ANNULEE
-}
-
 model EntrepriseConfig {
   id           String   @id @default("singleton")
   nom          String   @default("Reseaupub")
@@ -113,13 +58,13 @@ model Invoice {
   paymentConditionPercentage Int?
   resteAPayer                Decimal               @default(0.00)
   info                       String?
+  isTaxExempt                Boolean               @default(false)
   bonCommande                BonCommande?
   factureNormaliser          FactureNormaliser?
   client                     Client                @relation(fields: [clientId], references: [id])
   gestionnaires              InvoiceGestionnaire[]
   produits                   InvoiceProduit[]
   paiements                  Paiement[]
-  isTaxExempt                Boolean               @default(false)
 }
 
 model BonCommande {
@@ -193,6 +138,7 @@ model CashRegister {
   balance   Float         @default(0)
   createdAt DateTime      @default(now())
   journals  CashJournal[]
+  view Boolean @default(true)
 }
 
 model CashJournal {
@@ -231,9 +177,9 @@ model Fournisseur {
   email           String                @unique
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
+  commandes       CommandeFournisseur[]
   factures        FactureFournisseur[]
   produits        ProduitFournisseur[]
-  commandes       CommandeFournisseur[]
 }
 
 model FactureFournisseur {
@@ -256,10 +202,10 @@ model ProduitFournisseur {
   prixUnitaire   Decimal                    @db.Decimal(10, 2)
   typeUnite      TypeUnite
   fournisseurId  String
-  fournisseur    Fournisseur                @relation(fields: [fournisseurId], references: [id])
-  lignesCommande LigneCommandeFournisseur[]
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
+  lignesCommande LigneCommandeFournisseur[]
+  fournisseur    Fournisseur                @relation(fields: [fournisseurId], references: [id])
 }
 
 model CommandeFournisseur {
@@ -268,19 +214,17 @@ model CommandeFournisseur {
   dateCommande  DateTime                   @default(now())
   statut        StatutCommandeFournisseur  @default(BROUILLON)
   fournisseurId String
-  fournisseur   Fournisseur                @relation(fields: [fournisseurId], references: [id])
   totalHT       Decimal                    @db.Decimal(10, 2)
-  lignes        LigneCommandeFournisseur[]
   createdAt     DateTime                   @default(now())
   updatedAt     DateTime                   @updatedAt
+  fournisseur   Fournisseur                @relation(fields: [fournisseurId], references: [id])
+  lignes        LigneCommandeFournisseur[]
 }
 
 model LigneCommandeFournisseur {
   id                   String              @id @default(uuid())
   commandeId           String
-  commande             CommandeFournisseur @relation(fields: [commandeId], references: [id], onDelete: Cascade)
   produitFournisseurId String
-  produitFournisseur   ProduitFournisseur  @relation(fields: [produitFournisseurId], references: [id])
   designation          String
   quantite             Int
   largeur              Decimal?            @db.Decimal(10, 2)
@@ -288,4 +232,61 @@ model LigneCommandeFournisseur {
   surface              Decimal?            @db.Decimal(10, 2)
   prixUnitaire         Decimal             @db.Decimal(10, 2)
   prixTotal            Decimal             @db.Decimal(10, 2)
+  commande             CommandeFournisseur @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  produitFournisseur   ProduitFournisseur  @relation(fields: [produitFournisseurId], references: [id])
+}
+
+enum PaiementType {
+  PAIEMENT
+  DEPENSE
+}
+
+enum StatusFacture {
+  Brouillon
+  Envoyer
+  Valider
+  Annuler
+  Archiver
+  Payer
+  Solde
+}
+
+enum UniteDuree {
+  jour
+  heure
+  mois
+  semaine
+}
+
+enum Devise {
+  XOF
+  EUR
+  USD
+}
+
+enum OperationType {
+  RECETTE
+  DEPENSE
+  TRANSFERT
+}
+
+enum StatutFactureFournisseur {
+  EN_ATTENTE
+  PAYEE
+  ANNULEE
+}
+
+enum TypeUnite {
+  METRE_CARRE
+  UNITE
+  ROULEAU
+  METRE_LINEAIRE
+  FORFAIT
+}
+
+enum StatutCommandeFournisseur {
+  BROUILLON
+  VALIDEE
+  LIVREE
+  ANNULEE
 }
