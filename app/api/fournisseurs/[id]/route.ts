@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 // GET /api/fournisseurs/[id] - Récupérer un fournisseur par ID
-export async function GET(req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> },) {
   const { id } = await params;
   console.log(`[API] Fetching fournisseur details for id: ${id}`);
 
@@ -34,7 +34,7 @@ export async function GET(req: Request, { params }: Params) {
 }
 
 // PUT /api/fournisseurs/[id] - Mettre à jour un fournisseur
-export async function PUT(req: Request, { params }: Params) {
+export async function PUT(req: Request,{ params }: { params: Promise<{ id: string }> },) {
   const { id } = await params;
   console.log(`[API] Updating fournisseur for id: ${id}`);
 
@@ -70,7 +70,7 @@ export async function PUT(req: Request, { params }: Params) {
   }
 }
 // DELETE /api/fournisseurs/[id] - Supprimer un fournisseur
-export async function DELETE(req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> },) {
   const { id } = await params;
   console.log(`[API] Deleting fournisseur id: ${id}`);
 

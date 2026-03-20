@@ -360,20 +360,23 @@ export default function CommandeDetailPage() {
         setGeneratingPdf(true);
         try {
             const ent = entreprise ?? {
-                id: "singleton", 
-                nom: "Reseaupub", 
+                id: "singleton",
+                nom: "Reseaupub",
                 slogan: null,
-                adresse: "Etoile Rouge, Cotonou, Bénin", 
+                adresse: "Etoile Rouge, Cotonou, Bénin",
                 telephone: "+229 01 69 81 30 30",
-                email: "contact@reseaupub.com", 
+                email: "contact@reseaupub.com",
                 emailFinance: "finance@reseaupub.com",
-                ifu: "0201710009974", 
-                rccm: null, 
-                nomDirecteur: "Directeur Général", 
+                ifu: "0201710009974",
+                rccm: null,
+                nomDirecteur: "Directeur Général",
                 logoPath: "rplogo.png",
             };
             const pdfBytes = await generatePDF(commande, ent);
-            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+
+            // Correction TypeScript : Forcer le type avec `as unknown as BlobPart`
+            const blob = new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
+
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
@@ -475,7 +478,7 @@ export default function CommandeDetailPage() {
 
             {/* Informations Fournisseur */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 <Card className="md:col-span-2">
+                <Card className="md:col-span-2">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center gap-2 text-[#ef0b53]">
                             <Building2 className="h-4 w-4" />

@@ -28,7 +28,6 @@ export async function POST(
       include: {
         client: true,
         produits: true,
-        devise: true,
         gestionnaires: {
           select: {
             gestionnaire: {

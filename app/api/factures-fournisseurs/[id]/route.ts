@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 // PATCH /api/factures-fournisseurs/[id] - Mettre à jour le statut d'une facture
-export async function PATCH(req: NextRequest, { params }: Params) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> },) {
   const { id } = await params;
   console.log(`[API] Updating facture status for id: ${id}`);
 

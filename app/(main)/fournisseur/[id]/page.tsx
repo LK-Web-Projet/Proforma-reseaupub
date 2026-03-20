@@ -167,7 +167,7 @@ export default function FournisseurDetailsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(displayedFactures?.length || 0) === 0 ? (
+                {!displayedFactures || displayedFactures.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center h-24">
                       Aucune facture trouvée.

@@ -15,7 +15,7 @@ export async function GET(
     const { id } = await context.params; // <-- attendre la résolution
     const facture = await prisma.invoice.findUnique({
       where: { id }, // Utilise l'ID extrait des paramètres de la route pour la recherche
-      include: { client: true, produits: true, devise: true },
+      include: { client: true, produits: true },
     });
 
     // Si aucune facture n'est trouvée avec l'ID donné
