@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ArrowLeft, Download, Building2, Mail, Phone, MapPin, FileText } from "lucide-react";
-import { StatutCommandeFournisseur } from "@prisma/client";
+import type { StatutCommandeFournisseur } from "@prisma/client";
 
 interface ProduitFournisseur {
     id: string;
