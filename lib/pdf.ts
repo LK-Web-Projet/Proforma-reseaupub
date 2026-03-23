@@ -140,7 +140,7 @@ export async function generateInvoicePdf(
 
   // Tableau des produits
   const headers = ["Désignation", "Qte", "Durée", "Prix unitaire HT", "Montant HT"];
-  const columnWidths = [200, 30, 50, 100, 150];
+  const columnWidths = [200, 40, 50, 100, 150];
   const tableX = 40;
   const lineHeight = 30;
 
