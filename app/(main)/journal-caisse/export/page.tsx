@@ -127,8 +127,12 @@ export default function ExportCashJournalPage() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Journal de Caisse');
 
+    // Déterminer le nom de la caisse pour le fichier
+    const selectedRegister = cashRegisters.find(r => r.id.toString() === selectedCashRegisterId);
+    const registerName = selectedCashRegisterId === 'all' ? 'Tout' : (selectedRegister?.name.replace(/\s+/g, '_') || 'Inconnue');
+
     // Generate and download the Excel file
-    const fileName = `Export_Journal_Caisse_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = `Export_Journal_Caisse_${registerName}_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(workbook, fileName);
 
     toast.success("Exportation réussie !");

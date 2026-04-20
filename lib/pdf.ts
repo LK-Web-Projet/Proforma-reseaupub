@@ -399,4 +399,3 @@ function drawFooter(page: PDFPage, pageNum: number, font: PDFFont, pageWidth: nu
     const footerText = `Page ${pageNum}`;
     centerText(page, font, footerText, 30, 10, pageWidth);
 }
-

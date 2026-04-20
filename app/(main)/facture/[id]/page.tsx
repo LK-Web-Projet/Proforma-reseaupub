@@ -1306,7 +1306,7 @@ export default function FactureDetailPage() {
                 </SelectContent>
               </Select>
             </div>
-            {newPayment.methode !== "Espèces" && (
+            {newPayment.methode  && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <label htmlFor="cashRegister" className="text-right">
                   Caisse
