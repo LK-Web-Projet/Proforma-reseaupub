@@ -37,7 +37,6 @@ export async function GET(request: Request) {
       XOF: 1,
     };
 
-    // 1. Définition de la période
     let startDate: Date;
     let endDate: Date;
 
@@ -54,7 +53,6 @@ export async function GET(request: Request) {
       endDate = endOfYear(new Date(currentYear, 11, 31));
     }
 
-    // 2. Filtres pour les factures
     const invoiceWhere: {
       dateCreation: { gte: Date; lte: Date };
       clientId?: string;
@@ -73,7 +71,6 @@ export async function GET(request: Request) {
       };
     }
 
-    // 3. Récupération des données
     const [invoices, cashEntries, supplierInvoices] = await Promise.all([
       prisma.invoice.findMany({
         where: invoiceWhere,
@@ -100,15 +97,14 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    // 4. Traitement des statistiques
     const stats = {
       totalInvoices: invoices.length,
       invoiceStats: {
         brouillon: { count: 0, sum: 0 },
         envoyées: { count: 0, sum: 0 },
-        validées: { count: 0, sum: 0 },
-        payées: { count: 0, sum: 0 },
-        soldées: { count: 0, sum: 0 },
+        validées: { count: 0, sum: 0 }, // Total TTC
+        payées: { count: 0, sum: 0 },   // Montant réellement payé sur factures "Payer"
+        soldées: { count: 0, sum: 0 },  // Montant total (car soldé)
         annulées: { count: 0, sum: 0 },
         archivées: { count: 0, sum: 0 },
       },
@@ -118,7 +114,7 @@ export async function GET(request: Request) {
         balance: 0,
       },
       outstandingPayments: 0,
-      revenueRealized: 0, // Validées + Payées + Soldées
+      revenueRealized: 0, // Somme Validées (TTC) + Payées (Reel) + Soldées (TTC)
       topClients: [] as ClientStat[],
       topProducts: [] as ProductStat[],
       monthlyEvolution: [] as MonthlyStat[],
@@ -127,7 +123,6 @@ export async function GET(request: Request) {
     const clientsMap = new Map<string, ClientStat>();
     const productsMap = new Map<string, ProductStat>();
     
-    // Initialisation de l'évolution mensuelle
     const months = eachMonthOfInterval({ start: startDate, end: endDate });
     const monthlyData = new Map<string, MonthlyStat>();
     
@@ -140,14 +135,15 @@ export async function GET(request: Request) {
       });
     });
 
-    // Traitement des factures
     for (const invoice of invoices) {
       const rate = exchangeRates[invoice.devise] || 1;
       const totalXOF = Number(invoice.totalTTC) * rate;
       const resteXOF = Number(invoice.resteAPayer) * rate;
+      const payeXOF = totalXOF - resteXOF;
       const monthKey = format(invoice.dateCreation, 'yyyy-MM');
 
-      // Par statut
+      let amountToCountInSales = 0;
+
       switch (invoice.statut) {
         case StatusFacture.Brouillon:
           stats.invoiceStats.brouillon.count++;
@@ -160,20 +156,17 @@ export async function GET(request: Request) {
         case StatusFacture.Valider:
           stats.invoiceStats.validées.count++;
           stats.invoiceStats.validées.sum += totalXOF;
-          stats.revenueRealized += totalXOF;
-          if (monthlyData.has(monthKey)) monthlyData.get(monthKey)!.revenue += totalXOF;
+          amountToCountInSales = totalXOF;
           break;
         case StatusFacture.Payer:
           stats.invoiceStats.payées.count++;
-          stats.invoiceStats.payées.sum += totalXOF;
-          stats.revenueRealized += totalXOF;
-          if (monthlyData.has(monthKey)) monthlyData.get(monthKey)!.revenue += totalXOF;
+          stats.invoiceStats.payées.sum += payeXOF; // Uniquement le réel payé
+          amountToCountInSales = payeXOF;
           break;
         case StatusFacture.Solde:
           stats.invoiceStats.soldées.count++;
           stats.invoiceStats.soldées.sum += totalXOF;
-          stats.revenueRealized += totalXOF;
-          if (monthlyData.has(monthKey)) monthlyData.get(monthKey)!.revenue += totalXOF;
+          amountToCountInSales = totalXOF;
           break;
         case StatusFacture.Annuler:
           stats.invoiceStats.annulées.count++;
@@ -185,29 +178,37 @@ export async function GET(request: Request) {
           break;
       }
 
+      // Mise à jour du CA réalisé et évolution mensuelle si facture valide/payée/soldée
+      if ([StatusFacture.Valider, StatusFacture.Payer, StatusFacture.Solde].includes(invoice.statut)) {
+        stats.revenueRealized += amountToCountInSales;
+        if (monthlyData.has(monthKey)) {
+          monthlyData.get(monthKey)!.revenue += amountToCountInSales;
+        }
+
+        // Top Clients basé sur le CA réalisé
+        const clientName = invoice.client.nom;
+        const currentClient = clientsMap.get(clientName) || { name: clientName, amount: 0, count: 0 };
+        currentClient.amount += amountToCountInSales;
+        currentClient.count++;
+        clientsMap.set(clientName, currentClient);
+
+        // Top Produits basé sur la proportion payée/validée de la facture
+        const proportion = totalXOF > 0 ? amountToCountInSales / totalXOF : 0;
+        for (const prod of invoice.produits) {
+          const prodName = prod.designation;
+          const prodAmountRealized = Number(prod.montantTotal) * rate * proportion;
+          const currentProd = productsMap.get(prodName) || { name: prodName, amount: 0, quantity: 0 };
+          currentProd.amount += prodAmountRealized;
+          currentProd.quantity += prod.quantite;
+          productsMap.set(prodName, currentProd);
+        }
+      }
+
       if (invoice.statut !== StatusFacture.Annuler) {
         stats.outstandingPayments += resteXOF;
       }
-
-      // Top Clients
-      const clientName = invoice.client.nom;
-      const currentClient = clientsMap.get(clientName) || { name: clientName, amount: 0, count: 0 };
-      currentClient.amount += totalXOF;
-      currentClient.count++;
-      clientsMap.set(clientName, currentClient);
-
-      // Top Produits
-      for (const prod of invoice.produits) {
-        const prodName = prod.designation;
-        const prodAmount = Number(prod.montantTotal) * rate;
-        const currentProd = productsMap.get(prodName) || { name: prodName, amount: 0, quantity: 0 };
-        currentProd.amount += prodAmount;
-        currentProd.quantity += prod.quantite;
-        productsMap.set(prodName, currentProd);
-      }
     }
 
-    // Traitement du journal de caisse
     for (const entry of cashEntries) {
       const monthKey = format(entry.date_operation, 'yyyy-MM');
       if (entry.type === OperationType.RECETTE) {
@@ -218,20 +219,16 @@ export async function GET(request: Request) {
       }
     }
 
-    // Traitement des factures fournisseurs (dépenses additionnelles si payées)
     for (const f of supplierInvoices) {
       const monthKey = format(f.date, 'yyyy-MM');
       const amount = Number(f.montant);
       if (f.status === StatutFactureFournisseur.PAYEE) {
-        // On évite de double compter si c'est déjà dans le journal de caisse
-        // Mais ici on veut les dépenses globales engagées/payées
         if (monthlyData.has(monthKey)) monthlyData.get(monthKey)!.expenses += amount;
       }
     }
 
     stats.cashStats.balance = stats.cashStats.recettes - stats.cashStats.depenses;
 
-    // Finalisation des classements
     stats.topClients = Array.from(clientsMap.values())
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);

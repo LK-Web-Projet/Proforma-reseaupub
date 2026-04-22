@@ -373,11 +373,35 @@ export default function StatistiquesPage() {
           </TabsContent>
 
           <TabsContent value="sales" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <StatCard 
+                title="Ventes Validées" 
+                value={formatCurrency(stats.invoiceStats.validées.sum)} 
+                subValue={`${stats.invoiceStats.validées.count} factures (Total TTC)`}
+                icon={CheckCircle2}
+                colorClass="bg-blue-100 text-blue-700"
+              />
+              <StatCard 
+                title="Ventes Payées" 
+                value={formatCurrency(stats.invoiceStats.payées.sum)} 
+                subValue={`${stats.invoiceStats.payées.count} factures (Encaissements)`}
+                icon={Wallet}
+                colorClass="bg-indigo-100 text-indigo-700"
+              />
+              <StatCard 
+                title="Ventes Soldées" 
+                value={formatCurrency(stats.invoiceStats.soldées.sum)} 
+                subValue={`${stats.invoiceStats.soldées.count} factures (Encaissées)`}
+                icon={TrendingUp}
+                colorClass="bg-green-100 text-green-700"
+              />
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5 text-blue-500" /> Top 5 Clients
+                    <Users className="w-5 h-5 text-blue-500" /> Top 5 Clients (CA Réalisé)
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -399,7 +423,7 @@ export default function StatistiquesPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-purple-500" /> Top 5 Produits / Services
+                    <Package className="w-5 h-5 text-purple-500" /> Top 5 Produits (CA Réalisé)
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
