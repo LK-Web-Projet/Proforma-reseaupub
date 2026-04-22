@@ -1,11 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatistiquesPageSkeleton } from '@/components/StatistiquesPageSkeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line
+} from 'recharts';
+import { 
+  TrendingUp, TrendingDown, Users, Package, CreditCard, 
+  AlertCircle, CheckCircle2, FileText, Wallet, LucideIcon 
+} from 'lucide-react';
 
 type StatData = {
   count: number;
@@ -13,13 +21,26 @@ type StatData = {
 };
 
 type Stats = {
-  brouillon: StatData;
   totalInvoices: number;
-  validated: StatData;
-  sent: StatData;
-  cancelled: StatData;
-  archived: StatData;
-  payer: StatData;
+  invoiceStats: {
+    brouillon: StatData;
+    envoyées: StatData;
+    validées: StatData;
+    payées: StatData;
+    soldées: StatData;
+    annulées: StatData;
+    archivées: StatData;
+  };
+  cashStats: {
+    recettes: number;
+    depenses: number;
+    balance: number;
+  };
+  outstandingPayments: number;
+  revenueRealized: number;
+  topClients: Array<{ name: string; amount: number; count: number }>;
+  topProducts: Array<{ name: string; amount: number; quantity: number }>;
+  monthlyEvolution: Array<{ month: string; revenue: number; expenses: number }>;
 };
 
 type Client = {
@@ -33,13 +54,40 @@ type Gestionnaire = {
   prenom: string;
 };
 
-const StatCard = ({ title, value, subValue }: { title: string; value: number; subValue?: string }) => (
-  <div className="bg-white p-4 rounded-lg shadow-md">
-    <h3 className="text-lg font-semibold text-gray-600">{title}</h3>
-    <p className="text-3xl font-bold text-gray-900">{value}</p>
-    {subValue && <p className="text-sm text-gray-500">{subValue}</p>}
-  </div>
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  subValue?: string;
+  icon: LucideIcon;
+  colorClass?: string;
+}
+
+const StatCard = ({ title, value, subValue, icon: Icon, colorClass }: StatCardProps) => (
+  <Card>
+    <CardContent className="pt-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <h3 className="text-2xl font-bold">{value}</h3>
+          {subValue && <p className="text-xs text-muted-foreground mt-1">{subValue}</p>}
+        </div>
+        <div className={`p-3 rounded-full ${colorClass || 'bg-primary/10 text-primary'}`}>
+          <Icon className="w-6 h-6" />
+        </div>
+      </div>
+    </CardContent>
+  </Card>
 );
+
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'XOF',
+    maximumFractionDigits: 0
+  }).format(value);
+};
 
 export default function StatistiquesPage() {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -50,47 +98,51 @@ export default function StatistiquesPage() {
     gestionnaireId: '',
     startDate: '',
     endDate: '',
-    year: '',
+    year: new Date().getFullYear().toString(),
   });
   const [loading, setLoading] = useState(true);
 
-  const fetchClients = async () => {
-    const res = await fetch('/api/clients');
-    const data = await res.json();
-    if (!data.error) {
-      setClients(data);
-    }
-  };
-
-  const fetchGestionnaires = async () => {
-    const res = await fetch('/api/gestionnaires');
-    const data = await res.json();
-    if (!data.error) {
-      setGestionnaires(data);
-    }
-  };
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async (currentFilters = filters) => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filters.clientId) params.append('clientId', filters.clientId);
-    if (filters.gestionnaireId) params.append('gestionnaireId', filters.gestionnaireId);
-    if (filters.startDate) params.append('startDate', filters.startDate);
-    if (filters.endDate) params.append('endDate', filters.endDate);
-    if (filters.year) params.append('year', filters.year);
+    if (currentFilters.clientId) params.append('clientId', currentFilters.clientId);
+    if (currentFilters.gestionnaireId) params.append('gestionnaireId', currentFilters.gestionnaireId);
+    if (currentFilters.startDate) params.append('startDate', currentFilters.startDate);
+    if (currentFilters.endDate) params.append('endDate', currentFilters.endDate);
+    if (currentFilters.year) params.append('year', currentFilters.year);
 
-    const res = await fetch(`/api/statistiques?${params.toString()}`);
-    const data = await res.json();
-    setStats(data.error ? null : data);
-    setLoading(false);
-  };
+    try {
+      const res = await fetch(`/api/statistiques?${params.toString()}`);
+      const data = await res.json();
+      setStats(data.error ? null : data);
+    } catch (e) {
+      console.error(e);
+      setStats(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
 
   useEffect(() => {
-    fetchClients();
-    fetchGestionnaires();
-    fetchStats();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const initData = async () => {
+        try {
+            const [clientsRes, gestRes] = await Promise.all([
+                fetch('/api/clients'),
+                fetch('/api/gestionnaires')
+            ]);
+            const [clientsData, gestData] = await Promise.all([
+                clientsRes.json(),
+                gestRes.json()
+            ]);
+            if (!clientsData.error) setClients(clientsData);
+            if (!gestData.error) setGestionnaires(gestData);
+        } catch (e) {
+            console.error(e);
+        }
+        await fetchStats();
+    };
+    initData();
+  }, [fetchStats]);
 
   const handleFilterChange = (name: string, value: string) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -99,150 +151,280 @@ export default function StatistiquesPage() {
   const handleApplyFilters = () => {
     fetchStats();
   };
-  // variable pour enregistrer l'année actuel
- const currentYear = new Date().getFullYear();
- const startYear = 2016;
 
- // Génère un tableau [2016, 2017, ..., currentYear]
- const years = [];
- for (let y = startYear; y <= currentYear; y++) {
-   years.push(y);
- }
   const handleResetFilters = () => {
-    setFilters({
+    const currentYear = new Date().getFullYear().toString();
+    const newFilters = {
       clientId: '',
       gestionnaireId: '',
       startDate: '',
       endDate: '',
-      year: currentYear.toString(),
-    });
-    fetchStats();
+      year: currentYear,
+    };
+    setFilters(newFilters);
+    fetchStats(newFilters);
   };
+
+  const years = [];
+  const startYear = 2020;
+  const currentYear = new Date().getFullYear();
+  for (let y = startYear; y <= currentYear + 1; y++) {
+    years.push(y);
+  }
+
   const clientOptions = clients.map(c => ({ value: c.id, label: c.nom }));
   const gestionnaireOptions = gestionnaires.map(g => ({ value: g.id, label: `${g.prenom} ${g.nom}` }));
 
-  if (loading) {
-    return <StatistiquesPageSkeleton />;
-  }
+  if (loading) return <StatistiquesPageSkeleton />;
+
+  const statusDistribution = stats ? [
+    { name: 'Brouillon', value: stats.invoiceStats.brouillon.count },
+    { name: 'Envoyées', value: stats.invoiceStats.envoyées.count },
+    { name: 'Validées', value: stats.invoiceStats.validées.count },
+    { name: 'Payées', value: stats.invoiceStats.payées.count },
+    { name: 'Soldées', value: stats.invoiceStats.soldées.count },
+    { name: 'Annulées', value: stats.invoiceStats.annulées.count },
+  ].filter(s => s.value > 0) : [];
 
   return (
-    <div className="container mx-auto py-10">
-      <h1 className="text-3xl font-bold mb-6">Statistiques</h1>
+    <div className="container mx-auto py-10 space-y-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h1 className="text-4xl font-extrabold tracking-tight">Tableau de Bord</h1>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <TrendingUp className="w-4 h-4 text-green-500" />
+          <span>Données actualisées en temps réel</span>
+        </div>
+      </div>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Filtres</CardTitle>
+      <Card className="border-none shadow-sm bg-slate-50/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" /> Filtres d&apos;analyse
+          </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
-          <Combobox
-            options={clientOptions}
-            value={filters.clientId}
-            onChange={(value) =>
-              handleFilterChange(
-                "clientId",
-                value === filters.clientId ? "" : value
-              )
-            }
-            placeholder="Sélectionner un client"
-          />
-          <Combobox 
-            options={gestionnaireOptions}
-            value={filters.gestionnaireId}
-            onChange={(value) =>
-              handleFilterChange(
-                "gestionnaireId",
-                value === filters.gestionnaireId ? "" : value
-              )
-            }
-            placeholder="Sélectionner un commercial"
-          />
-          <Input
-            type="date"
-            value={filters.startDate}
-            onChange={(e) => handleFilterChange("startDate", e.target.value)}
-          />
-          <Input
-            type="date"
-            value={filters.endDate}
-            onChange={(e) => handleFilterChange("endDate", e.target.value)}
-          />
-          <select
-            aria-label="Sélectionner une année"
-            value={filters.year}
-            onChange={(e) => handleFilterChange("year", e.target.value)}
-            className="border rounded p-2"
-          >
-            <option value="">-- Sélectionner une année --</option>
-            {years.map((year) => (
-              <option key={year} value={year.toString()}>
-                {year}
-              </option>
-            ))}
-          </select>
-          <div className="flex space-x-2">
-            <Button onClick={handleApplyFilters}>Appliquer</Button>
-            <Button onClick={handleResetFilters} variant="outline">
-              Réinitialiser
-            </Button>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Client</label>
+            <Combobox
+              options={clientOptions}
+              value={filters.clientId}
+              onChange={(value) => handleFilterChange("clientId", value)}
+              placeholder="Tous les clients"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Commercial</label>
+            <Combobox 
+              options={gestionnaireOptions}
+              value={filters.gestionnaireId}
+              onChange={(value) => handleFilterChange("gestionnaireId", value)}
+              placeholder="Tous les commerciaux"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Année</label>
+            <select
+              aria-label="Sélectionner une année"
+              value={filters.year}
+              onChange={(e) => handleFilterChange("year", e.target.value)}
+              className="w-full h-10 border rounded-md px-3 bg-white text-sm"
+            >
+              <option value="">Toutes les années</option>
+              {years.reverse().map((year) => (
+                <option key={year} value={year.toString()}>{year}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2 lg:col-span-2">
+            <Button onClick={handleApplyFilters} className="w-full">Filtrer</Button>
+            <Button onClick={handleResetFilters} variant="outline" className="w-full">Reset</Button>
           </div>
         </CardContent>
       </Card>
 
       {stats ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard title="Total Factures" value={stats.totalInvoices}  />
-          <StatCard
-            title="Factures Validées"
-            value={stats.validated.count}
-            subValue={`${Number(stats.validated.sum).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: "XOF",
-            })} `}
-          />
-          <StatCard
-            title="Factures Envoyées"
-            value={stats.sent.count}
-            subValue={`${Number(stats.sent.sum).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: "XOF",
-            })} `}
-          />
-          <StatCard
-            title="Factures Annulées"
-            value={stats.cancelled.count}
-            subValue={`${Number(stats.cancelled.sum).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: "XOF",
-            })} `}
-            />
-          <StatCard
-            title="Factures Payées"
-            value={stats.payer.count}
-            subValue={`${Number(stats.payer.sum).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: "XOF",
-            })} `}
-          />
-          <StatCard
-            title="Factures Archivées"
-            value={stats.archived.count}
-            subValue={`${Number(stats.archived.sum).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: "XOF",
-            })} `}
-          />
-          <StatCard
-            title="Factures Brouillon"
-            value={stats.brouillon.count}
-            subValue={`${Number(stats.brouillon.sum).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: "XOF",
-            })} `}
-          />
-        </div>
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+            <TabsTrigger value="overview">Vue d&apos;ensemble</TabsTrigger>
+            <TabsTrigger value="financials">Trésorerie</TabsTrigger>
+            <TabsTrigger value="sales">Ventes</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard 
+                title="CA Réalisé" 
+                value={formatCurrency(stats.revenueRealized)} 
+                subValue="Factures Validées/Payées"
+                icon={TrendingUp}
+                colorClass="bg-green-100 text-green-700"
+              />
+              <StatCard 
+                title="Encours Client" 
+                value={formatCurrency(stats.outstandingPayments)} 
+                subValue="Reste à recouvrer"
+                icon={AlertCircle}
+                colorClass="bg-orange-100 text-orange-700"
+              />
+              <StatCard 
+                title="Recettes (Caisse)" 
+                value={formatCurrency(stats.cashStats.recettes)} 
+                subValue="Encaissements réels"
+                icon={Wallet}
+                colorClass="bg-blue-100 text-blue-700"
+              />
+              <StatCard 
+                title="Dépenses" 
+                value={formatCurrency(stats.cashStats.depenses)} 
+                subValue="Décaissements réels"
+                icon={TrendingDown}
+                colorClass="bg-red-100 text-red-700"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Évolution CA vs Dépenses</CardTitle>
+                </CardHeader>
+                <CardContent className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.monthlyEvolution}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="month" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value / 1000}k`} />
+                      <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                      <Legend />
+                      <Bar dataKey="revenue" name="Revenus" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="expenses" name="Dépenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Répartition des Factures</CardTitle>
+                </CardHeader>
+                <CardContent className="h-[300px] flex justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {statusDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="financials" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <StatCard 
+                title="Solde de Trésorerie" 
+                value={formatCurrency(stats.cashStats.balance)} 
+                subValue="Balance Recettes - Dépenses"
+                icon={CheckCircle2}
+                colorClass={stats.cashStats.balance >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}
+              />
+              <StatCard 
+                title="Nombre total de Factures" 
+                value={stats.totalInvoices} 
+                icon={FileText}
+              />
+              <StatCard 
+                title="Moyenne par Facture" 
+                value={formatCurrency(stats.totalInvoices > 0 ? stats.revenueRealized / stats.totalInvoices : 0)} 
+                icon={CreditCard}
+              />
+            </div>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Flux de Trésorerie Mensuel</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[400px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={stats.monthlyEvolution}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis tickFormatter={(value) => `${value / 1000}k`} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <Legend />
+                    <Line type="monotone" dataKey="revenue" name="Recettes" stroke="#10b981" strokeWidth={2} />
+                    <Line type="monotone" dataKey="expenses" name="Dépenses" stroke="#ef4444" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="sales" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-500" /> Top 5 Clients
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {stats.topClients.map((client, i) => (
+                      <div key={i} className="flex items-center justify-between border-b pb-2 last:border-0">
+                        <div>
+                          <p className="font-semibold">{client.name}</p>
+                          <p className="text-xs text-muted-foreground">{client.count} factures</p>
+                        </div>
+                        <p className="font-bold text-blue-600">{formatCurrency(client.amount)}</p>
+                      </div>
+                    ))}
+                    {stats.topClients.length === 0 && <p className="text-center text-muted-foreground">Aucun client trouvé</p>}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-purple-500" /> Top 5 Produits / Services
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {stats.topProducts.map((prod, i) => (
+                      <div key={i} className="flex items-center justify-between border-b pb-2 last:border-0">
+                        <div className="max-w-[70%]">
+                          <p className="font-semibold truncate">{prod.name}</p>
+                          <p className="text-xs text-muted-foreground">Qté: {prod.quantity}</p>
+                        </div>
+                        <p className="font-bold text-purple-600">{formatCurrency(prod.amount)}</p>
+                      </div>
+                    ))}
+                    {stats.topProducts.length === 0 && <p className="text-center text-muted-foreground">Aucun produit trouvé</p>}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       ) : (
-        <div className="text-center text-red-500 mt-10">
-          Erreur lors du chargement des données ou aucune donnée à afficher.
+        <div className="flex flex-col items-center justify-center min-h-[400px] border-2 border-dashed rounded-xl">
+          <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
+          <p className="text-xl font-medium text-muted-foreground">Aucune donnée disponible pour cette période</p>
+          <Button onClick={handleResetFilters} variant="link">Réinitialiser les filtres</Button>
         </div>
       )}
     </div>
