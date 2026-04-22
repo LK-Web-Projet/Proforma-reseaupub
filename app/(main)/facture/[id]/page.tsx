@@ -664,7 +664,7 @@ export default function FactureDetailPage() {
                 <CardContent className="pt-6 space-y-6">
                     <div>
                         <h3 className="text-2xl font-black mb-1">{facture.client?.nom}</h3>
-                        <Badge variant="outline" className="border-slate-700 text-slate-400 text-[10px] font-bold">IFU: {facture.societeIFU}</Badge>
+                        {/* <Badge variant="outline" className="border-slate-700 text-slate-400 text-[10px] font-bold">IFU: {facture.societeIFU}</Badge> */}
                     </div>
                     <div className="space-y-3">
                         <div className="flex items-center gap-3 text-sm text-slate-300">
