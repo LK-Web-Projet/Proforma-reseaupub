@@ -307,8 +307,10 @@ export default function FactureDetailPage() {
       produits[index] = { ...produits[index], designation: value, prixUnitaire: selected?.prixUnitaire || produits[index].prixUnitaire, produitId: selected?.id || '' };
     } else {
       const isNumeric = e.target.type === 'number';
-      // @ts-expect-error - dynamic key access
-      produits[index] = { ...produits[index], [name]: isNumeric ? parseFloat(value) : value };
+      const updatedProduct = { ...produits[index] };
+      // @ts-expect-error - Accès dynamique sécurisé par le type
+      updatedProduct[name] = isNumeric ? parseFloat(value) : value;
+      produits[index] = updatedProduct as Facture["produits"][number];
     }
     setFormData((prev) => ({ ...prev, produits }));
   };

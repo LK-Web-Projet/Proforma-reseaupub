@@ -32,10 +32,12 @@ export async function GET() {
         soldees: client.factures.filter(f => f.statut === StatusFacture.Solde).length,
       };
       
-      // On retire la liste brute des factures pour alléger le JSON
-      const { factures: _, ...clientData } = client;
       return {
-        ...clientData,
+        id: client.id,
+        nom: client.nom,
+        email: client.email,
+        telephone: client.telephone,
+        adresse: client.adresse,
         stats
       };
     });
