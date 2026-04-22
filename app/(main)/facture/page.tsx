@@ -31,7 +31,7 @@ function formatMoney(amount: number, currency: string) {
   return Number(amount).toLocaleString('fr-FR', {
     style: 'currency',
     currency: currency,
-    minimumFractionDigits: 2,
+    minimumFractionDigits: 0,
   });
 }
 
@@ -76,7 +76,6 @@ export default function Home() {
       if (dateMax) params.set('dateMax', dateMax);
     }
     if (clientId) params.set('clientId', clientId);
-    // On ne passe pas 'statut' ici pour avoir toutes les données nécessaires aux cartes
 
     fetch(`/api/factures?${params.toString()}`)
       .then((res) => res.json())
@@ -86,20 +85,31 @@ export default function Home() {
 
   // Calcul des statistiques pour les cartes (dynamique selon les filtres de base)
   const stats = useMemo(() => {
-    const statuses = ["Brouillon", "Envoyer", "Valider", "Payer", "Annuler", "Archiver", "Solde"];
-    const initialStats = statuses.reduce((acc, s) => {
-      acc[s] = 0;
-      return acc;
-    }, { "Total": 0 } as Record<string, number>);
+    const initialStats: Record<string, { total: number; paid: number; remaining: number }> = {
+      "Brouillon": { total: 0, paid: 0, remaining: 0 },
+      "Envoyer": { total: 0, paid: 0, remaining: 0 },
+      "Valider": { total: 0, paid: 0, remaining: 0 },
+      "Payer": { total: 0, paid: 0, remaining: 0 },
+      "Annuler": { total: 0, paid: 0, remaining: 0 },
+      "Archiver": { total: 0, paid: 0, remaining: 0 },
+      "Solde": { total: 0, paid: 0, remaining: 0 },
+      "Total": { total: 0, paid: 0, remaining: 0 }
+    };
 
     allFactures.forEach(f => {
       const rate = CONVERSION_RATES[f.devise] || 1;
-      const amountCFA = f.totalTTC * rate;
+      const totalTTC = Number(f.totalTTC) * rate;
+      const remaining = Number(f.resteAPayer) * rate;
+      const paid = totalTTC - remaining;
       
-      if (initialStats[f.statut] !== undefined) {
-        initialStats[f.statut] += amountCFA;
+      if (initialStats[f.statut]) {
+        initialStats[f.statut].total += totalTTC;
+        initialStats[f.statut].paid += paid;
+        initialStats[f.statut].remaining += remaining;
       }
-      initialStats["Total"] += amountCFA;
+      initialStats["Total"].total += totalTTC;
+      initialStats["Total"].paid += paid;
+      initialStats["Total"].remaining += remaining;
     });
 
     return initialStats;
@@ -115,14 +125,14 @@ export default function Home() {
   }, [allFactures, statut, objet]);
 
   const cards = [
-    { label: "Toutes", value: "", total: stats["Total"], icon: Wallet, color: "text-blue-600" },
-    { label: "Brouillon", value: "Brouillon", total: stats["Brouillon"], icon: XCircle, color: "text-gray-500" },
-    { label: "Envoyée", value: "Envoyer", total: stats["Envoyer"], icon: Send, color: "text-orange-500" },
-    { label: "Validée", value: "Valider", total: stats["Valider"], icon: CheckCircle, color: "text-purple-500" },
-    { label: "Payée", value: "Payer", total: stats["Payer"], icon: Banknote, color: "text-green-600" },
-    { label: "Soldée", value: "Solde", total: stats["Solde"], icon: Check, color: "text-emerald-600" },
-    { label: "Annulée", value: "Annuler", total: stats["Annuler"], icon: XCircle, color: "text-red-600" },
-    { label: "Archivée", value: "Archiver", total: stats["Archiver"], icon: Archive, color: "text-slate-600" },
+    { label: "Toutes", value: "", stats: stats["Total"], icon: Wallet, color: "text-blue-600" },
+    { label: "Brouillon", value: "Brouillon", stats: stats["Brouillon"], icon: XCircle, color: "text-gray-500" },
+    { label: "Envoyée", value: "Envoyer", stats: stats["Envoyer"], icon: Send, color: "text-orange-500" },
+    { label: "Validée", value: "Valider", stats: stats["Valider"], icon: CheckCircle, color: "text-purple-500" },
+    { label: "En cours de paiement", value: "Payer", stats: stats["Payer"], icon: Banknote, color: "text-green-600" },
+    { label: "Soldée", value: "Solde", stats: stats["Solde"], icon: Check, color: "text-emerald-600" },
+    { label: "Annulée", value: "Annuler", stats: stats["Annuler"], icon: XCircle, color: "text-red-600" },
+    { label: "Archivée", value: "Archiver", stats: stats["Archiver"], icon: Archive, color: "text-slate-600" },
   ];
 
   return (
@@ -148,8 +158,23 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <div className="text-lg font-bold">
-                {card.total.toLocaleString("fr-FR")} FCFA
+                {card.stats.total.toLocaleString("fr-FR")} FCFA
               </div>
+              
+              {/* Détails financiers pour la carte "Payer" ou si sélectionnée */}
+              {(card.value === "Payer" || (card.value === "" && card.stats.remaining > 0)) && (
+                <div className="mt-2 space-y-1">
+                  <div className="flex justify-between text-[10px] text-green-600 font-bold uppercase">
+                    <span>Payé:</span>
+                    <span>{card.stats.paid.toLocaleString("fr-FR")} FCFA</span>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-red-600 font-bold uppercase">
+                    <span>Reste:</span>
+                    <span>{card.stats.remaining.toLocaleString("fr-FR")} FCFA</span>
+                  </div>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground mt-1">
                 {allFactures.filter(f => card.value === "" || f.statut === card.value).length} facture(s)
               </p>
@@ -328,7 +353,7 @@ export default function Home() {
                   <TableCell className="text-right font-semibold">
                     {formatMoney(facture.totalTTC, facture.devise)}
                   </TableCell>
-                  <TableCell className="text-right font-semibold">
+                  <TableCell className="text-right font-semibold text-red-600">
                     {formatMoney(facture.resteAPayer, facture.devise)}
                   </TableCell>
                   <TableCell className="text-center">
@@ -351,7 +376,7 @@ export default function Home() {
                     >
                       {facture.statut === "Envoyer" ? "Envoyée" : 
                        facture.statut === "Valider" ? "Validée" : 
-                       facture.statut === "Payer" ? "Payée" : 
+                       facture.statut === "Payer" ? "En cours de paiement" : 
                        facture.statut === "Annuler" ? "Annulée" : 
                        facture.statut === "Archiver" ? "Archivée" : 
                        facture.statut === "Solde" ? "Soldée" : 
