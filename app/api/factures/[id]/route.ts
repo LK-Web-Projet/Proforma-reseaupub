@@ -170,7 +170,10 @@ async function updateFacture(id: string, body: unknown) {
           where: { invoiceId: id, type: 'PAIEMENT' },
         });
         const totalPaid = payments.reduce((acc, p) => acc + p.montant.toNumber(), 0);
-        const resteAPayer = totalTTC - totalPaid;
+        let resteAPayer = Math.round((totalTTC - totalPaid) * 100) / 100;
+
+        // ✅ Sécurité pour le XOF : si moins de 1, c'est soldé
+        if (resteAPayer < 1) resteAPayer = 0;
 
         updatedFactureData.resteAPayer = resteAPayer;
         updatedFactureData.totalHT = totalHT;
@@ -182,6 +185,8 @@ async function updateFacture(id: string, body: unknown) {
             updatedFactureData.statut = 'Solde';
             console.log(`Statut mis à jour à 'Solde' car resteAPayer=${resteAPayer}`);
           }
+        } else if (totalPaid > 0 && resteAPayer > 0) {
+          updatedFactureData.statut = 'Payer';
         }
 
         // Product updates only if they are provided

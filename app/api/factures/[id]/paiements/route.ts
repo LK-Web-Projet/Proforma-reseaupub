@@ -162,8 +162,15 @@ export async function POST(
         where: { id: invoiceId },
       });
       if (type === "PAIEMENT") {
-        const newResteAPayer =
-          parseFloat(updatedInvoice!.resteAPayer.toString()) - montantDecimal;
+        const currentReste = parseFloat(updatedInvoice!.resteAPayer.toString());
+        // ✅ Calcul avec arrondi pour éviter les résidus de virgule flottante
+        let newResteAPayer = Math.round((currentReste - montantDecimal) * 100) / 100;
+        
+        // ✅ Pour le XOF (et par sécurité), si le reste est inférieur à 1, on considère que c'est soldé
+        if (newResteAPayer < 1) {
+          newResteAPayer = 0;
+        }
+        
         updatedInvoice = await tx.invoice.update({
           where: { id: invoiceId },
           data: {
