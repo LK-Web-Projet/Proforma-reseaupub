@@ -518,7 +518,6 @@ export default function FactureDetailPage() {
                                                 <div className="flex items-center justify-center gap-2">
                                                     <Switch checked={p.includeduree || false} onCheckedChange={(v: boolean) => {
                                                         const prods = [...(formData.produits || [])];
-                                                        // @ts-expect-error - dynamic key access
                                                         prods[idx] = {...prods[idx], includeduree: v};
                                                         setFormData(prev => ({...prev, produits: prods as Facture["produits"]}));
                                                     }} className="scale-75" />
