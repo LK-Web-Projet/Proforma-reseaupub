@@ -179,7 +179,8 @@ export async function GET(request: Request) {
       }
 
       // Mise à jour du CA réalisé et évolution mensuelle si facture valide/payée/soldée
-      if ([StatusFacture.Valider, StatusFacture.Payer, StatusFacture.Solde].includes(invoice.statut)) {
+      const validStatuses: StatusFacture[] = [StatusFacture.Valider, StatusFacture.Payer, StatusFacture.Solde];
+      if (validStatuses.includes(invoice.statut)) {
         stats.revenueRealized += amountToCountInSales;
         if (monthlyData.has(monthKey)) {
           monthlyData.get(monthKey)!.revenue += amountToCountInSales;

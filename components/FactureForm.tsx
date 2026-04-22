@@ -377,8 +377,11 @@ export default function FactureForm() {
                       <TableCell className="align-top font-bold text-slate-700 pt-5">
                         {(() => {
                            const p = watchedProduits[index];
-                           let total = (p?.quantite || 0) * (p?.prixUnitaire || 0);
-                           if (p?.includeduree) total *= (p?.duree || 1);
+                           const qte = Number(p?.quantite) || 0;
+                           const pu = Number(p?.prixUnitaire) || 0;
+                           const duree = Number(p?.duree) || 1;
+                           let total = qte * pu;
+                           if (p?.includeduree) total *= duree;
                            return total.toLocaleString() + " " + watchedDevise;
                         })()}
                       </TableCell>
