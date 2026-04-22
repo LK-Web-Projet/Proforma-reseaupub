@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Table,
@@ -13,9 +13,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Eye, Filter } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -33,16 +35,24 @@ function formatMoney(amount: number, currency: string) {
   });
 }
 
+// Taux de conversion pour la synthèse (approximatifs pour USD)
+const CONVERSION_RATES: Record<string, number> = {
+  'EUR': 655.957,
+  'USD': 600,
+  'XAF': 1,
+  'XOF': 1,
+};
+
 export default function Home() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [factures, setFactures] = useState<any[]>([]);
+  const [allFactures, setAllFactures] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [clients, setClients] = useState<any[]>([]);
   const [clientId, setClientId] = useState('');
   const [dateMin, setDateMin] = useState('');
   const [dateMax, setDateMax] = useState('');
   const [objet, setObjet] = useState('');
-  const [statut, setStatut] = useState('');
+  const [statut, setStatut] = useState(''); // Utilisé pour filtrer la liste locale
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [loading, setLoading] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
@@ -55,7 +65,7 @@ export default function Home() {
       .catch(() => setClients([]));
   }, []);
 
-  // Charger les factures filtrées
+  // Charger les factures (sans filtre de statut pour permettre le calcul des stats de toutes les cartes)
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -66,136 +76,99 @@ export default function Home() {
       if (dateMax) params.set('dateMax', dateMax);
     }
     if (clientId) params.set('clientId', clientId);
-    if (objet) params.set('objet', objet);
-    if (statut) params.set('statut', statut);
+    // On ne passe pas 'statut' ici pour avoir toutes les données nécessaires aux cartes
 
     fetch(`/api/factures?${params.toString()}`)
       .then((res) => res.json())
-      .then(setFactures)
+      .then(setAllFactures)
       .finally(() => setLoading(false));
-  }, [clientId, dateMin, dateMax, objet, statut, year]);
+  }, [clientId, dateMin, dateMax, year]);
 
+  // Calcul des statistiques pour les cartes (dynamique selon les filtres de base)
+  const stats = useMemo(() => {
+    const statuses = ["Brouillon", "Envoyer", "Valider", "Payer", "Annuler", "Archiver", "Solde"];
+    const initialStats = statuses.reduce((acc, s) => {
+      acc[s] = 0;
+      return acc;
+    }, { "Total": 0 } as Record<string, number>);
+
+    allFactures.forEach(f => {
+      const rate = CONVERSION_RATES[f.devise] || 1;
+      const amountCFA = f.totalTTC * rate;
+      
+      if (initialStats[f.statut] !== undefined) {
+        initialStats[f.statut] += amountCFA;
+      }
+      initialStats["Total"] += amountCFA;
+    });
+
+    return initialStats;
+  }, [allFactures]);
+
+  // Filtrage final pour le tableau (Objet + Statut sélectionné via les cartes)
+  const filteredFactures = useMemo(() => {
+    return allFactures.filter(f => {
+      const matchStatut = statut === '' || f.statut === statut;
+      const matchObjet = objet === '' || f.objet.toLowerCase().includes(objet.toLowerCase());
+      return matchStatut && matchObjet;
+    });
+  }, [allFactures, statut, objet]);
+
+  const cards = [
+    { label: "Toutes", value: "", total: stats["Total"], icon: Wallet, color: "text-blue-600" },
+    { label: "Brouillon", value: "Brouillon", total: stats["Brouillon"], icon: XCircle, color: "text-gray-500" },
+    { label: "Envoyée", value: "Envoyer", total: stats["Envoyer"], icon: Send, color: "text-orange-500" },
+    { label: "Validée", value: "Valider", total: stats["Valider"], icon: CheckCircle, color: "text-purple-500" },
+    { label: "Payée", value: "Payer", total: stats["Payer"], icon: Banknote, color: "text-green-600" },
+    { label: "Soldée", value: "Solde", total: stats["Solde"], icon: Check, color: "text-emerald-600" },
+    { label: "Annulée", value: "Annuler", total: stats["Annuler"], icon: XCircle, color: "text-red-600" },
+    { label: "Archivée", value: "Archiver", total: stats["Archiver"], icon: Archive, color: "text-slate-600" },
+  ];
 
   return (
     <div className="w-full">
-      <div className="flex flex-wrap justify-between items-center  mb-6">
-        <h1 className="text-2xl font-bold mb-8">Liste des factures émises</h1>
+      <div className="flex flex-wrap justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold mb-4">Liste des factures émises</h1>
+      </div>
 
-        {/* Filtres et Recherche */}
-        <div className="w-full">
-          <div className="flex gap-4 mb-4">
-            <Button
-              onClick={() => setFiltersVisible(!filtersVisible)}
-              variant="outline"
-            >
-              <Filter className="mr-2 h-4 w-4" />
-              {filtersVisible ? "Masquer les filtres" : "Afficher les filtres"}
-            </Button>
-          </div>
-
-          {filtersVisible && (
-            <div className="mb-6 bg-white p-4 rounded-md shadow-sm border">
-              <h2 className="text-lg font-semibold mb-2">Filtres</h2>
-              <div className="flex gap-4 flex-wrap items-end">
-                 <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Année
-                  </label>
-                  <select
-                    value={year}
-                    onChange={(e) => {
-                      setYear(e.target.value);
-                      // Reset date fields when year is selected
-                      setDateMin("");
-                      setDateMax("");
-                    }}
-                    className="border-gray-300 rounded-md shadow-sm p-2"
-                    title="Sélectionnez une année"
-                  >
-                    <option value="">Toutes les années</option>
-                    <option value="2027">2027</option>
-                    <option value="2026">2026</option>
-                    <option value="2025">2025</option>
-                    <option value="2024">2024</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Client
-                  </label>
-                  <select
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    className="border-gray-300 rounded-md shadow-sm p-2"
-                    title="Sélectionnez un client"
-                  >
-                    <option value="">Tous</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nom}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Date min
-                  </label>
-                  <Input
-                    type="date"
-                    value={dateMin}
-                    onChange={(e) => {
-                      setDateMin(e.target.value);
-                      setYear(""); // Désactiver le filtre par année
-                    }}
-                    className="border-gray-300 rounded-md shadow-sm"
-                    title="Date minimale"
-                    disabled={!!year} // Désactiver si une année est sélectionnée
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Date max
-                  </label>
-                  <Input
-                    type="date"
-                    value={dateMax}
-                    onChange={(e) => {
-                      setDateMax(e.target.value);
-                      setYear(""); // Désactiver le filtre par année
-                    }}
-                    className="border-gray-300 rounded-md shadow-sm"
-                    title="Date maximale"
-                    disabled={!!year} // Désactiver si une année est sélectionnée
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Statut
-                  </label>
-                  <select
-                    value={statut}
-                    onChange={(e) => setStatut(e.target.value)}
-                    className="border-gray-300 rounded-md shadow-sm p-2"
-                    title="Sélectionnez un statut"
-                  >
-                    <option value="">Tous</option>
-                    <option value="Envoyer">Envoyée</option>
-                    <option value="Valider">Validée</option>
-                    <option value="Payer">Payée</option>
-                    <option value="Annuler">Annulée</option>
-                    <option value="Archiver">Archivée</option>
-                    <option value="Solde">Soldée</option> {/* NEW OPTION */}
-                  </select>
-                </div>
+      {/* Cartes de sélection / Filtres de statut */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        {cards.map((card) => (
+          <Card
+            key={card.label}
+            className={cn(
+              "cursor-pointer hover:shadow-lg transition-all border-2",
+              statut === card.value ? "border-primary bg-primary/5 shadow-md" : "border-transparent"
+            )}
+            onClick={() => setStatut(card.value)}
+          >
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{card.label}</CardTitle>
+              <card.icon className={cn("h-4 w-4", card.color)} />
+            </CardHeader>
+            <CardContent>
+              <div className="text-lg font-bold">
+                {card.total.toLocaleString("fr-FR")} FCFA
               </div>
-            </div>
-          )}
+              <p className="text-xs text-muted-foreground mt-1">
+                {allFactures.filter(f => card.value === "" || f.statut === card.value).length} facture(s)
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-          <div className="w-full">
-            <label htmlFor="search-objet" className="sr-only">
-              Rechercher par objet
-            </label>
+      {/* Filtres de recherche */}
+      <div className="w-full">
+        <div className="flex gap-4 mb-4">
+          <Button
+            onClick={() => setFiltersVisible(!filtersVisible)}
+            variant="outline"
+          >
+            <Filter className="mr-2 h-4 w-4" />
+            {filtersVisible ? "Masquer les filtres" : "Afficher les filtres"}
+          </Button>
+          <div className="flex-1">
             <Input
               id="search-objet"
               type="text"
@@ -206,9 +179,84 @@ export default function Home() {
             />
           </div>
         </div>
+
+        {filtersVisible && (
+          <div className="mb-6 bg-white p-4 rounded-md shadow-sm border">
+            <h2 className="text-lg font-semibold mb-2">Filtres avancés</h2>
+            <div className="flex gap-4 flex-wrap items-end">
+               <div>
+                <label className="block text-sm font-medium mb-1">
+                  Année
+                </label>
+                <select
+                  value={year}
+                  onChange={(e) => {
+                    setYear(e.target.value);
+                    setDateMin("");
+                    setDateMax("");
+                  }}
+                  className="border-gray-300 rounded-md shadow-sm p-2"
+                >
+                  <option value="">Toutes les années</option>
+                  <option value="2027">2027</option>
+                  <option value="2026">2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Client
+                </label>
+                <select
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  className="border-gray-300 rounded-md shadow-sm p-2"
+                >
+                  <option value="">Tous les clients</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nom}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Date min
+                </label>
+                <Input
+                  type="date"
+                  value={dateMin}
+                  onChange={(e) => {
+                    setDateMin(e.target.value);
+                    setYear("");
+                  }}
+                  className="border-gray-300 rounded-md shadow-sm"
+                  disabled={!!year}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Date max
+                </label>
+                <Input
+                  type="date"
+                  value={dateMax}
+                  onChange={(e) => {
+                    setDateMax(e.target.value);
+                    setYear("");
+                  }}
+                  className="border-gray-300 rounded-md shadow-sm"
+                  disabled={!!year}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="rounded-md   bg-white">
+      <div className="rounded-md bg-white border">
         <Table>
           <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
@@ -226,22 +274,22 @@ export default function Home() {
           <TableBody>
             {loading ? (
               <FactureTableSkeleton />
-            ) : factures.length === 0 ? (
+            ) : filteredFactures.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center h-24">
+                <TableCell colSpan={9} className="text-center h-24 text-muted-foreground">
                   Aucune facture trouvée.
                 </TableCell>
               </TableRow>
             ) : (
-              factures.map((facture) => (
-                <TableRow key={facture.id}>
+              filteredFactures.map((facture) => (
+                <TableRow key={facture.id} className="hover:bg-muted/50 transition-colors">
                   <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
-                  <TableCell className="font-mono">{facture.numero}</TableCell>
+                  <TableCell className="font-mono text-sm">{facture.numero}</TableCell>
                   <TableCell>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="truncate max-w-37.5 inline-block">
+                          <span className="truncate max-w-[150px] inline-block cursor-default">
                             {facture.client?.nom || "-"}
                           </span>
                         </TooltipTrigger>
@@ -255,7 +303,7 @@ export default function Home() {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="truncate max-w-37.5 inline-block">
+                          <span className="truncate max-w-[150px] inline-block cursor-default">
                             {facture.objet}
                           </span>
                         </TooltipTrigger>
@@ -265,7 +313,7 @@ export default function Home() {
                       </Tooltip>
                     </TooltipProvider>
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-center text-sm">
                     {facture.gestionnaires?.length > 0
                       ? facture.gestionnaires
                           .map(
@@ -296,20 +344,28 @@ export default function Home() {
                           ? "annuler"
                           : facture.statut === "Archiver"
                           ? "archiver"
-                          : facture.statut === "Solde" // NEW STATUS
-                          ? "success" // Assuming 'success' variant for 'Solde'
-                          : "brouillon" // Fallback to "brouillon" if no match
+                          : facture.statut === "Solde"
+                          ? "success"
+                          : "brouillon"
                       }
                     >
-                      {facture.statut}
+                      {facture.statut === "Envoyer" ? "Envoyée" : 
+                       facture.statut === "Valider" ? "Validée" : 
+                       facture.statut === "Payer" ? "Payée" : 
+                       facture.statut === "Annuler" ? "Annulée" : 
+                       facture.statut === "Archiver" ? "Archivée" : 
+                       facture.statut === "Solde" ? "Soldée" : 
+                       facture.statut}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     <Link
                       href={`/facture/${facture.id}`}
-                      className="text-primary font-extrabold hover:text-pink-500/80"
+                      className="text-primary hover:text-primary/80 transition-colors"
                     >
-                      <Eye />
+                      <Button variant="ghost" size="icon">
+                        <Eye className="h-4 w-4" />
+                      </Button>
                     </Link>
                   </TableCell>
                 </TableRow>
@@ -318,7 +374,6 @@ export default function Home() {
           </TableBody>
         </Table>
       </div>
-     
     </div>
   );
 }
