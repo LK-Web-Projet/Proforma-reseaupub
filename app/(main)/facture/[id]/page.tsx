@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,9 +14,17 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileText, Receipt, Upload, Trash2, PlusCircle } from "lucide-react";
+import { 
+    FileText, Receipt, Upload, Trash2, PlusCircle, 
+    Send, Download, Mail, Phone, MapPin, 
+    User, Briefcase, Calendar, ShieldCheck,
+    TrendingUp, TrendingDown, Clock, Ban,
+    History, Landmark, CheckCircle2, ChevronLeft,
+    AlertCircle, ExternalLink, Calculator, DollarSign,
+    Edit3, Save, X, Info, Package, Wallet, CheckSquare, Archive, LucideIcon
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +38,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { toast } from "sonner"; // Import toast
+import { toast } from "sonner";
 
 type Paiement = {
   id: string;
@@ -67,6 +75,7 @@ type Facture = {
   info?: string | null;
   isTaxExempt?: boolean | null;
   client: {
+    id: string;
     nom: string;
     email?: string;
     telephone?: string;
@@ -85,6 +94,7 @@ type Facture = {
     includeduree?: boolean;
   }>;
   gestionnaires: Array<{
+    gestionnaireId: string;
     gestionnaire: { prenom: string; nom: string };
   }>;
   bonCommande: { url: string } | null;
@@ -92,36 +102,36 @@ type Facture = {
   paymentConditionPercentage?: number | null;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const computeLineTotal = (p: any) => {
+const computeLineTotal = (p: Partial<Facture["produits"][number]>) => {
   const quantite = Number(p.quantite) || 0;
   const prixUnitaire = Number(p.prixUnitaire) || 0;
   const duree = Number(p.duree) || 1;
   const inclureDuree = p.includeduree ?? false;
-  return inclureDuree
-    ? quantite * prixUnitaire * duree
-    : quantite * prixUnitaire;
+  return inclureDuree ? quantite * prixUnitaire * duree : quantite * prixUnitaire;
 };
 
+const statusConfig: Record<string, { label: string; color: string; icon: LucideIcon }> = {
+    "Brouillon": { label: "Brouillon", color: "bg-slate-100 text-slate-700", icon: Clock },
+    "Envoyer": { label: "Envoyée", color: "bg-blue-100 text-blue-700", icon: Mail },
+    "Valider": { label: "Validée", color: "bg-indigo-100 text-indigo-700", icon: CheckCircle2 },
+    "Payer": { label: "En Paiement", color: "bg-orange-100 text-orange-700", icon: Wallet },
+    "Solde": { label: "Soldée", color: "bg-green-100 text-green-700", icon: CheckSquare },
+    "Annuler": { label: "Annulée", color: "bg-red-100 text-red-700", icon: Ban },
+    "Archiver": { label: "Archivée", color: "bg-gray-100 text-gray-700", icon: Archive },
+};
 
 export default function FactureDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const [facture, setFacture] = useState<Facture | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [sendStatus, setSendStatus] = useState<"success" | "error" | null>(
-    null
-  );
-  const [updateStatus, setUpdateStatus] = useState<"success" | "error" | null>(
-    null
-  );
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Facture> & { gestionnaireId?: string | null }>({});
 
   const [allGestionnaires, setAllGestionnaires] = useState<{id: string, nom: string, prenom: string}[]>([]);
   const [allProduits, setAllProduits] = useState<{id: string, nom: string, prixUnitaire: number}[]>([]);
-
 
   const [bonCommandeFile, setBonCommandeFile] = useState<File | undefined>();
   const [factureNormaliseeFile, setFactureNormaliseeFile] = useState<File | undefined>();
@@ -155,8 +165,12 @@ export default function FactureDetailPage() {
       ]);
 
       const data = await factureRes.json();
-      setFacture(data.error ? null : data);
-      setFormData(data.error ? {} : { ...data, gestionnaireId: data.gestionnaires?.[0]?.gestionnaireId });
+      if (!data.error) {
+        setFacture(data);
+        setFormData({ ...data, gestionnaireId: data.gestionnaires?.[0]?.gestionnaireId });
+      } else {
+        setFacture(null);
+      }
 
       const cashData = await cashRes.json();
       setCashRegisters(cashData.cashRegisters || []);
@@ -180,23 +194,16 @@ export default function FactureDetailPage() {
 
   useEffect(() => {
     fetchFacture();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [fetchFacture]);
 
   const handleSendEmail = async () => {
     setIsSending(true);
-    setSendStatus(null);
     try {
-      const response = await fetch(`/api/factures/${id}/send-email`, {
-        method: "POST",
-      });
-      if (response.ok) {
-        setSendStatus("success");
-      } else {
-        setSendStatus("error");
-      }
+      const response = await fetch(`/api/factures/${id}/send-email`, { method: "POST" });
+      if (response.ok) toast.success("E-mail envoyé avec succès !");
+      else toast.error("Erreur lors de l'envoi de l'e-mail.");
     } catch (error) {
-      setSendStatus("error");
+      toast.error("Erreur réseau lors de l'envoi.");
     } finally {
       setIsSending(false);
     }
@@ -205,18 +212,10 @@ export default function FactureDetailPage() {
   const handleUpdateFacture = async () => {
     if (!formData) return;
     setIsSaving(true);
-
     const totalHT = formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0;
-    const tva = totalHT * 0.18;
+    const tva = formData.isTaxExempt ? 0 : totalHT * 0.18;
     const totalTTC = totalHT + tva;
-
-    const updatedData = {
-      ...formData,
-      totalHT,
-      tva,
-      totalTTC,
-      produits: formData.produits?.map(p => ({...p, montantTotal: computeLineTotal(p)}))
-    }
+    const updatedData = { ...formData, totalHT, tva, totalTTC, produits: formData.produits?.map(p => ({...p, montantTotal: computeLineTotal(p)})) }
 
     try {
       const res = await fetch(`/api/factures/${id}`, {
@@ -228,18 +227,12 @@ export default function FactureDetailPage() {
       if (res.ok) {
         await fetchFacture();
         setIsEditing(false);
-        setUpdateStatus("success");
-        setTimeout(() => setUpdateStatus(null), 3000);
+        toast.success("Facture mise à jour avec succès !");
       } else {
-        const errorData = await res.json();
-        console.error("Failed to update facture:", errorData);
-        setUpdateStatus("error");
-        setTimeout(() => setUpdateStatus(null), 3000);
+        toast.error("Erreur lors de la mise à jour.");
       }
     } catch (error) {
-      console.error("Failed to update facture:", error);
-      setUpdateStatus("error");
-      setTimeout(() => setUpdateStatus(null), 3000);
+      toast.error("Erreur réseau.");
     } finally {
       setIsSaving(false);
     }
@@ -248,49 +241,51 @@ export default function FactureDetailPage() {
   const handleFileUpload = async (type: 'bon' | 'facture') => {
     const file = type === 'bon' ? bonCommandeFile : factureNormaliseeFile;
     if (!file) return;
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    type === 'bon' ? setIsUploadingBon(true) : setIsUploadingFacture(true);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('type', type);
+    if (type === 'bon') setIsUploadingBon(true); else setIsUploadingFacture(true);
+    const data = new FormData();
+    data.append('file', file);
+    data.append('type', type);
 
     try {
-      const res = await fetch(`/api/factures/${id}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
+      const res = await fetch(`/api/factures/${id}/upload`, { method: 'POST', body: data });
       if (res.ok) {
-        await fetchFacture(); // Refresh data
-      } else {
-        console.error(`Failed to upload ${type}`);
-      }
+        toast.success(`${type === 'bon' ? 'Bon de commande' : 'Facture'} uploadé !`);
+        await fetchFacture();
+      } else toast.error("Échec de l'upload.");
     } catch (error) {
-      console.error(`Failed to upload ${type}:`, error);
+      toast.error("Erreur réseau.");
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      type === 'bon' ? setIsUploadingBon(false) : setIsUploadingFacture(false);
+      if (type === 'bon') setIsUploadingBon(false); else setIsUploadingFacture(false);
+    }
+  };
+
+  const handleFileDelete = (type: 'bon' | 'facture') => {
+    setFileToDeleteType(type);
+    setIsDialogOpen(true);
+  };
+
+  const confirmDeleteFile = async () => {
+    if (!fileToDeleteType) return;
+    const type = fileToDeleteType;
+    if (type === 'bon') setIsDeletingBon(true); else setIsDeletingFacture(true);
+    setIsDialogOpen(false);
+    try {
+      const res = await fetch(`/api/factures/${id}/upload?type=${type}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success("Fichier supprimé !");
+        await fetchFacture();
+      } else toast.error("Échec de la suppression.");
+    } catch (error) {
+      toast.error("Erreur réseau.");
+    } finally {
+      if (type === 'bon') setIsDeletingBon(false); else setIsDeletingFacture(false);
+      setFileToDeleteType(null);
     }
   };
 
   const handleAddProduct = () => {
-    const newProduct = {
-      id: `temp-${Date.now()}`,
-      produitId: "",
-      designation: "",
-      quantite: 1,
-      prixUnitaire: 0,
-      duree: 1,
-      uniteDuree: "jour" as UniteDuree,
-      montantTotal: 0,
-      includeduree: false,
-    };
-    setFormData((prev) => ({
-      ...prev,
-      produits: [...(prev?.produits || []), newProduct],
-    }));
+    const newProduct = { id: `temp-${Date.now()}`, produitId: "", designation: "", quantite: 1, prixUnitaire: 0, duree: 1, uniteDuree: "jour" as UniteDuree, montantTotal: 0, includeduree: false };
+    setFormData((prev) => ({ ...prev, produits: [...(prev?.produits || []), newProduct] }));
   };
 
   const handleRemoveProduct = (index: number) => {
@@ -299,1130 +294,531 @@ export default function FactureDetailPage() {
     setFormData((prev) => ({ ...prev, produits: newProduits }));
   };
 
-  // Modified to open dialog
-  const handleFileDelete = (type: 'bon' | 'facture') => {
-    setFileToDeleteType(type);
-    setIsDialogOpen(true);
-  };
-
-  // New function for actual deletion after confirmation
-  const confirmDeleteFile = async () => {
-    if (!fileToDeleteType) return;
-
-    const type = fileToDeleteType;
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    type === 'bon' ? setIsDeletingBon(true) : setIsDeletingFacture(true);
-    setIsDialogOpen(false); // Close dialog immediately
-
-    try {
-      const res = await fetch(`/api/factures/${id}/upload?type=${type}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        await fetchFacture(); // Refresh data
-      } else {
-        console.error(`Failed to delete ${type}`);
-      }
-    } catch (error) {
-      console.error(`Failed to delete ${type}:`, error);
-    } finally {
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      type === 'bon' ? setIsDeletingBon(false) : setIsDeletingFacture(false);
-      setFileToDeleteType(null); // Reset
-    }
-  };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleProductChange = (index: number, e: React.ChangeEvent<HTMLInputElement> | { target: { name: string; value: string } }) => {
+  const handleProductChange = (index: number, e: { target: { name: string; value: string; type?: string } }) => {
     const { name, value } = e.target;
-    // Use the concrete produits type from Facture to avoid `any`
     const produits = [...(formData.produits || [])] as Facture["produits"];
-
     if (name === 'designation') {
-      const selectedProduit = allProduits.find(p => p.nom === value);
-      if (selectedProduit) {
-        produits[index] = {
-          ...produits[index],
-          designation: value,
-          prixUnitaire: selectedProduit.prixUnitaire,
-          produitId: selectedProduit.id,
-        } as Facture["produits"][number];
-      } else {
-        produits[index] = {
-          ...produits[index],
-          designation: value,
-          produitId: '',
-        } as Facture["produits"][number];
-      }
+      const selected = allProduits.find(p => p.nom === value);
+      produits[index] = { ...produits[index], designation: value, prixUnitaire: selected?.prixUnitaire || produits[index].prixUnitaire, produitId: selected?.id || '' };
     } else {
-      const isNumeric = (e.target as HTMLInputElement).type === 'number';
-      // dynamic property assignment may produce a type mismatch, so assert to the concrete product type
-      produits[index] = {
-        ...produits[index],
-        [name]: isNumeric ? parseFloat(value) : value,
-      } as unknown as Facture["produits"][number];
+      const isNumeric = e.target.type === 'number';
+      // @ts-expect-error - dynamic key access
+      produits[index] = { ...produits[index], [name]: isNumeric ? parseFloat(value) : value };
     }
-    
-    setFormData((prev) => ({ ...prev, produits }));
-  };
-
-  const handleProductSwitchChange = (index: number, name: string, value: boolean) => {
-    const produits = [...(formData.produits || [])];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    produits[index] = { ...produits[index], [name]: value } as any;
     setFormData((prev) => ({ ...prev, produits }));
   };
 
   const handleSaveOperation = async () => {
-    if (!newPayment.montant || newPayment.montant <= 0) {
-      setPaymentError("Le montant doit être supérieur à zéro.");
-      return;
-    }
+    if (!newPayment.montant || newPayment.montant <= 0) { setPaymentError("Montant requis."); return; }
     if (operationType === 'PAIEMENT' && facture && newPayment.montant > facture.resteAPayer) {
-      setPaymentError(`Le montant du paiement ne peut pas dépasser le reste à payer.`);
-      return;
+      setPaymentError(`Le montant dépasse le reste à payer.`); return;
     }
-
     setIsAddingPayment(true);
-    setPaymentError(null);
-
-    const formData = new FormData();
-    const paymentData = {
-      montant: Number(newPayment.montant),
-      methode: newPayment.methode,
-      reference: newPayment.reference,
-      notes: newPayment.notes,
-      datePaiement: newPayment.datePaiement ? new Date(newPayment.datePaiement) : undefined,
-      cashRegisterId: newPayment.methode === 'Espèces' && operationType === 'PAIEMENT' ? 1 : parseInt(selectedCashRegisterId, 10),
-      type: operationType,
+    const data = new FormData();
+    const paymentData = { 
+        montant: Number(newPayment.montant), 
+        methode: newPayment.methode, 
+        reference: newPayment.reference, 
+        notes: newPayment.notes, 
+        datePaiement: new Date(newPayment.datePaiement), 
+        cashRegisterId: newPayment.methode === 'Espèces' && operationType === 'PAIEMENT' ? 1 : parseInt(selectedCashRegisterId, 10),
+        type: operationType 
     };
-    formData.append('paymentData', JSON.stringify(paymentData));
-
-    if (paymentFiles) {
-      Array.from(paymentFiles).forEach(file => {
-        formData.append('files', file);
-      });
-    }
+    data.append('paymentData', JSON.stringify(paymentData));
+    if (paymentFiles) Array.from(paymentFiles).forEach(f => data.append('files', f));
 
     try {
-      const res = await fetch(`/api/factures/${id}/paiements`, {
-        method: 'POST',
-        body: formData,
-      });
-
+      const res = await fetch(`/api/factures/${id}/paiements`, { method: 'POST', body: data });
       if (res.ok) {
         setIsPaymentDialogOpen(false);
         setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
         setPaymentFiles(null);
+        toast.success("Opération enregistrée !");
         await fetchFacture();
-        toast.success(`Opération enregistrée avec succès !`);
       } else {
         const err = await res.json();
-        setPaymentError(err.error || "Une erreur est survenue.");
+        setPaymentError(err.error || "Erreur.");
       }
-    } catch (error) {
-      setPaymentError("Une erreur réseau est survenue.");
-    } finally {
-      setIsAddingPayment(false);
-    }
+    } catch (e) { setPaymentError("Erreur réseau."); }
+    finally { setIsAddingPayment(false); }
   };
 
-  if (loading) return <div className="flex justify-center items-center h-96">Chargement...</div>;
-  if (!facture) return <div className="text-center text-red-500 mt-10">Facture non trouvée.</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center min-h-[600px] space-y-4">
+        <TrendingUp className="w-12 h-12 text-primary animate-pulse" />
+        <p className="text-muted-foreground animate-pulse font-medium">Chargement de la mission...</p>
+    </div>
+  );
+  if (!facture) return <div className="text-center p-20 font-bold text-red-500">Facture introuvable.</div>;
 
-  const displayTotalHT = isEditing ? formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0 : Number(facture.totalHT);
-  const isExempt = isEditing ? formData.isTaxExempt : facture.isTaxExempt;
-  const displayTVA = isExempt ? 0 : displayTotalHT * 0.18;
-  const displayTotalTTC = displayTotalHT + displayTVA;
   const displayDevise = isEditing ? formData.devise : facture.devise;
+  const formatMoney = (val: number) => Number(val).toLocaleString("fr-FR", { style: "currency", currency: displayDevise || "XOF", maximumFractionDigits: 0 });
+  const status = statusConfig[facture.statut] || { label: facture.statut, color: "bg-gray-100", icon: FileText };
+
+  const currentTotalHT = isEditing ? (formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0) : Number(facture.totalHT);
+  const currentTVA = isEditing ? (formData.isTaxExempt ? 0 : currentTotalHT * 0.18) : Number(facture.tva);
+  const currentTotalTTC = currentTotalHT + currentTVA;
 
   return (
-    <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-8 my-10">
-      {/* En-tête facture */}
-      <div className="flex justify-between items-center mb-8 border-b pb-4">
-        <div>
-          <h1 className="text-3xl font-bold text-primary mb-2">
-            Facture Proforma
-          </h1>
-          <div className="text-gray-600">
-            N° <span className="font-mono">{facture.numero}</span>
-          </div>
-          <div className="text-sm text-gray-500">
-            Date : {new Date(facture.dateCreation).toLocaleDateString("fr-FR")}
-          </div>
-        </div>
-        <div className="text-right">
-          {facture.isTaxExempt && !isEditing && (
-            <Badge variant="secondary" className="text-md mb-2">
-              Exonéré de TVA
-            </Badge>
-          )}
-          {isEditing ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="isTaxExempt"
-                  checked={formData.isTaxExempt ?? false}
-                  onCheckedChange={(value) =>
-                    setFormData((prev) => ({ ...prev, isTaxExempt: value }))
-                  }
-                />
-                <label htmlFor="isTaxExempt">Exonérer de TVA</label>
-              </div>
-              <div className="flex gap-2">
-              {!facture.bonCommande && (
-                <Select
-                  name="statut"
-                  value={formData.statut}
-                  onValueChange={(value) =>
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    setFormData((prev) => ({ ...prev, statut: value as any }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Statut" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUT_FACTURE_OPTIONS.filter((option) =>
-                      ["Envoyer", "Annuler","Valider","Payer"].includes(option.value)
-                    ).map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <Select
-                name="devise"
-                value={formData.devise}
-                onValueChange={(value) =>
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  setFormData((prev) => ({ ...prev, devise: value as any }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Devise" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEVISE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                name="paymentConditionPercentage"
-                value={String(formData.paymentConditionPercentage ?? 0)}
-                onValueChange={(value) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    paymentConditionPercentage: Number(value),
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Acompte" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">Aucun acompte</SelectItem>
-                  <SelectItem value="10">10%</SelectItem>
-                  <SelectItem value="20">20%</SelectItem>
-                  <SelectItem value="30">30%</SelectItem>
-                  <SelectItem value="40">40%</SelectItem>
-                  <SelectItem value="50">50%</SelectItem>
-                  <SelectItem value="60">60%</SelectItem>
-                  <SelectItem value="70">70%</SelectItem>
-                  <SelectItem value="80">80%</SelectItem>
-                  <SelectItem value="90">90%</SelectItem>
-                  <SelectItem value="100">100%</SelectItem>
-                </SelectContent>
-              </Select>
-              </div>
-            </div>
-          ) : (
-            <Badge
-              className="text-md"
-              variant={
-                facture.statut === "Envoyer"
-                  ? "envoyer"
-                  : facture.statut === "Valider"
-                  ? "valider"
-                  : facture.statut === "Annuler"
-                  ? "annuler"
-                  : facture.statut === "Archiver"
-                  ? "archiver"
-                  : facture.statut === "Payer"
-                  ? "payer" // Using 'valider' style for 'Payer'
-                  : facture.statut === "Solde" // NEW STATUS
-                  ? "success" // Assuming 'success' variant for 'Solde' or similar
-                  : "default"
-              }
-            >
-              {facture.statut.toUpperCase()}
-            </Badge>
-          )}
-        </div>
-        <div className="text-right">
-          {!facture.bonCommande && !facture.factureNormaliser && (
-            <Button
-              onClick={() => setIsEditing(!isEditing)}
-              variant="outline"
-              disabled={
-                facture.statut === "Payer" || facture.statut === "Solde"
-              }
-            >
-              {isEditing ? "Annuler" : "Modifier"}
+    <div className="container mx-auto py-8 space-y-8 max-w-6xl">
+      {/* Top Bar Actions */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm sticky top-0 z-10">
+        <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full">
+                <ChevronLeft className="w-5 h-5" />
             </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Société & Client */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div>
-          <h2 className="font-semibold text-lg mb-2 text-primary">Émetteur</h2>
-          <div className="font-bold">{facture.societeNom}</div>
-          <div>IFU : {facture.societeIFU}</div>
-          {facture.societeAdresse && (
-            <div>Adresse : {facture.societeAdresse}</div>
-          )}
-        </div>
-        <div>
-          <h2 className="text-lg  text-primary font-bold underline">Client</h2>
-          <div className="font-medium">
-            Nom : {facture.client?.nom ?? "Client non défini"}
-          </div>
-          {facture.client?.email ? (
-            <div className="font-medium">Email : {facture.client.email}</div>
-          ) : (
-            <div className="font-medium text-red-500">
-              Email : email non défini
+            <div>
+                <div className="flex items-center gap-2 mb-1">
+                    <h1 className="text-2xl font-extrabold tracking-tight">Facture {facture.numero}</h1>
+                    {isEditing ? (
+                        <div className="flex items-center gap-2">
+                             <Select value={formData.statut} onValueChange={(v: StatutFacture) => setFormData(p => ({...p, statut: v}))}>
+                                <SelectTrigger className="h-8 w-32 font-bold"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {STATUT_FACTURE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                            <Select value={formData.devise} onValueChange={(v: Devise) => setFormData(p => ({...p, devise: v}))}>
+                                <SelectTrigger className="h-8 w-24"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {DEVISE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    ) : (
+                        <Badge className={`${status.color} border-transparent font-bold px-3 py-1`}>
+                            <status.icon className="w-3 h-3 mr-2" /> {status.label}
+                        </Badge>
+                    )}
+                </div>
+                <p className="text-xs text-muted-foreground font-medium flex items-center gap-2">
+                    <Calendar className="w-3 h-3" /> Créée le {new Date(facture.dateCreation).toLocaleDateString("fr-FR", { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
             </div>
-          )}
-          <div className="commercial items-center flex flex-wrap gap-2">
-            <h2 className="font-bold underline text-lg text-primary">
-              Commercial :
-            </h2>
-            {isEditing ? (
-              <Select
-                value={formData.gestionnaireId ?? ""}
-                onValueChange={(value) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    gestionnaireId: value === "null" ? null : value,
-                  }))
-                }
-              >
-                <SelectTrigger className="w-50">
-                  <SelectValue placeholder="Sélectionner un commercial" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="null">Aucun</SelectItem>
-                  {allGestionnaires.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.prenom} {g.nom}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <div className="font-medium">
-                {facture.gestionnaires?.length > 0
-                  ? facture.gestionnaires
-                      .map(
-                        (g) =>
-                          `${g.gestionnaire?.prenom} ${g.gestionnaire?.nom}`
-                      )
-                      .join(", ")
-                  : "-"}
-              </div>
+        </div>
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+            {!facture.bonCommande && !facture.factureNormaliser && (
+                <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "destructive" : "outline"} size="sm" disabled={["Payer", "Solde"].includes(facture.statut)}>
+                    {isEditing ? <><X className="w-4 h-4 mr-2" /> Annuler</> : <><Edit3 className="w-4 h-4 mr-2" /> Modifier</>}
+                </Button>
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* Objet */}
-      <div className="mb-6">
-        <span className="font-semibold text-primary">Objet :</span>{" "}
-        {isEditing ? (
-          <Input
-            name="objet"
-            value={formData.objet}
-            onChange={handleInputChange}
-            placeholder="Ex: Prestation de services"
-          />
-        ) : (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="truncate max-w-xs inline-block align-bottom">
-                  {facture.objet}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{facture.objet}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
-
-      {isEditing ? (
-        <div className="mb-6">
-          <label htmlFor="info" className="font-semibold text-primary">
-            Informations complémentaires :
-          </label>
-          <Textarea
-            id="info"
-            name="info"
-            value={formData.info ?? ""}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, info: e.target.value }))
-            }
-            placeholder="Informations additionnelles à afficher sur la facture..."
-          />
-        </div>
-      ) : (
-        facture.info && (
-          <div className="mb-6 p-4 bg-gray-50 rounded-md border">
-            <h3 className="font-semibold text-primary mb-2">
-              Informations complémentaires :
-            </h3>
-            <p className="text-sm whitespace-pre-wrap">{facture.info}</p>
-          </div>
-        )
-      )}
-
-      {facture.paymentConditionPercentage &&
-        facture.paymentConditionPercentage > 0 &&
-        !isEditing && (
-          <div className="mb-6">
-            <span className="font-semibold text-primary">
-              Condition de paiement :
-            </span>{" "}
-            {`Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est  requis afin de confirmer la commande et lancer la prestation.`}
-          </div>
-        )}
-
-      {/* Tableau des produits/services */}
-      <div className="overflow-x-auto mb-8">
-        <table className="min-w-full border rounded">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-4 py-2 text-left">Désignation</th>
-              <th className="px-4 py-2 text-center">Qté</th>
-              <th className="px-4 py-2 text-right">Prix U.</th>
-              <th className="px-4 py-2 text-center">Durée</th>
-              <th className="px-4 py-2 text-center">Unité</th>
-              <th className="px-4 py-2 text-center">Inclure Durée</th>
-              <th className="px-4 py-2 text-right">Total</th>
-              {isEditing && <th className="px-4 py-2"></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {(isEditing ? formData.produits : facture.produits)?.map(
-              (p, index) => (
-                <tr key={p.id} className="border-b">
-                  <td className="px-4 py-2">
-                    {isEditing ? (
-                      <>
-                        <Input
-                          name="designation"
-                          value={p.designation}
-                          onChange={(e) => handleProductChange(index, e)}
-                          list={`produits-list-${index}`}
-                          autoComplete="off"
-                          placeholder="Saisir ou rechercher..."
-                        />
-                        <datalist id={`produits-list-${index}`}>
-                          {allProduits.map((prod) => (
-                            <option key={prod.id} value={prod.nom} />
-                          ))}
-                        </datalist>
-                      </>
-                    ) : (
-                      p.designation
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    {isEditing ? (
-                      <Input
-                        name="quantite"
-                        type="number"
-                        value={p.quantite}
-                        onChange={(e) => handleProductChange(index, e)}
-                      />
-                    ) : (
-                      p.quantite
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    {isEditing ? (
-                      <Input
-                        name="prixUnitaire"
-                        type="number"
-                        value={p.prixUnitaire}
-                        onChange={(e) => handleProductChange(index, e)}
-                      />
-                    ) : (
-                      Number(p.prixUnitaire).toLocaleString("fr-FR", {
-                        style: "currency",
-                        currency: displayDevise,
-                      })
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    {isEditing ? (
-                      <Input
-                        name="duree"
-                        type="number"
-                        value={p.duree ?? 1}
-                        onChange={(e) => handleProductChange(index, e)}
-                      />
-                    ) : (
-                      p.duree ?? "-"
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    {isEditing ? (
-                      <Select
-                        name="uniteDuree"
-                        value={p.uniteDuree}
-                        onValueChange={(value) =>
-                          handleProductChange(index, {
-                            target: { name: "uniteDuree", value },
-                          } as { target: { name: string; value: string } })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Unité" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {UNITE_DUREE_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      p.uniteDuree ?? "-"
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    <Switch
-                      checked={p.includeduree}
-                      disabled={!isEditing}
-                      onCheckedChange={(value) =>
-                        handleProductSwitchChange(index, "includeduree", value)
-                      }
-                    />
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    {isEditing
-                      ? computeLineTotal(p).toLocaleString("fr-FR", {
-                          style: "currency",
-                          currency: displayDevise,
-                        })
-                      : Number(p.montantTotal).toLocaleString("fr-FR", {
-                          style: "currency",
-                          currency: displayDevise,
-                        })}
-                  </td>
-                  {isEditing && (
-                    <td className="px-4 py-2 text-center">
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleRemoveProduct(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </td>
-                  )}
-                </tr>
-              )
-            )}
-          </tbody>
-        </table>
-        {isEditing && (
-          <Button onClick={handleAddProduct} className="mt-4">
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Ajouter un produit
-          </Button>
-        )}
-      </div>
-      {/* Bouton PDF */}
-      <div className="flex justify-end mb-6 space-x-2">
-        <a
-          href={`/api/factures/${id}/pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded shadow hover:bg-primary/80 transition"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          Télécharger PDF
-        </a>
-        <button
-          onClick={handleSendEmail}
-          disabled={isSending}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded shadow hover:bg-blue-600 transition disabled:bg-blue-300"
-        >
-          {isSending ? "Envoi en cours..." : "Envoyer par e-mail"}
-        </button>
-        {isEditing && (
-          <Button onClick={handleUpdateFacture} disabled={isSaving}>
-            {isSaving ? "Enregistrement..." : "Enregistrer"}
-          </Button>
-        )}
-      </div>
-      {sendStatus === "success" && (
-        <p className="text-green-500 text-right">E-mail envoyé avec succès!</p>
-      )}
-      {sendStatus === "error" && (
-        <p className="text-red-500 text-right">
-          Erreur lors de l&apos;envoi de l&apos;e-mail.
-        </p>
-      )}
-      {updateStatus === "success" && (
-        <p className="text-green-500 text-right">
-          Facture mise à jour avec succès!
-        </p>
-      )}
-      {updateStatus === "error" && (
-        <p className="text-red-500 text-right">
-          Erreur lors de la mise à jour de la facture.
-        </p>
-      )}
-
-      {/* Totaux */}
-      <div className="flex flex-col items-end gap-2 mb-8">
-        <div>
-          Total HT :{" "}
-          <span className="font-semibold">
-            {Number(displayTotalHT).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: displayDevise,
-            })}
-          </span>
-        </div>
-        <div>
-          TVA (18%) :{" "}
-          <span className="font-semibold">
-            {Number(displayTVA).toLocaleString("fr-FR", {
-              style: "currency",
-              currency: displayDevise,
-            })}
-          </span>
-        </div>
-        <div className="text-xl font-bold text-primary">
-          Total TTC :{" "}
-          {Number(displayTotalTTC).toLocaleString("fr-FR", {
-            style: "currency",
-            currency: displayDevise,
-          })}
-        </div>
-        <div
-          className={`text-lg font-bold ${
-            facture.resteAPayer > 0 ? "text-orange-600" : "text-green-600"
-          }`}
-        >
-          Reste à Payer :{" "}
-          {Number(facture.resteAPayer).toLocaleString("fr-FR", {
-            style: "currency",
-            currency: displayDevise,
-          })}
-        </div>
-      </div>
-
-      {/* Historique des Paiements */}
-      <div className="mt-8 border-t pt-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-primary">
-            Flux Financiers
-          </h2>
-          <div className="flex gap-2">
-            {facture.resteAPayer > 0 && (
-              <Button
-                onClick={() => {
-                  setOperationType("PAIEMENT");
-                  setIsPaymentDialogOpen(true);
-                }}
-              >
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Ajouter un paiement
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              onClick={() => {
-                setOperationType("DEPENSE");
-                setIsPaymentDialogOpen(true);
-              }}
-            >
-              <PlusCircle className="h-4 w-4 mr-2" />
-              Ajouter une dépense
+            <Button asChild variant="outline" size="sm">
+                <a href={`/api/factures/${id}/pdf`} target="_blank"><Download className="w-4 h-4 mr-2" /> PDF</a>
             </Button>
-          </div>
+            <Button onClick={handleSendEmail} disabled={isSending} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                {isSending ? "Envoi..." : <><Send className="w-4 h-4 mr-2" /> Envoyer Email</>}
+            </Button>
+            {isEditing && (
+                <Button onClick={handleUpdateFacture} disabled={isSaving} size="sm" className="bg-green-600 hover:bg-green-700">
+                    <Save className="w-4 h-4 mr-2" /> {isSaving ? "Enregistrement..." : "Enregistrer"}
+                </Button>
+            )}
         </div>
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Libellé</TableHead>
-                  <TableHead className="text-right text-green-600">
-                    Entrée
-                  </TableHead>
-                  <TableHead className="text-right text-red-600">
-                    Sortie
-                  </TableHead>
-                  <TableHead>Preuves</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {facture.paiements && facture.paiements.length > 0 ? (
-                  facture.paiements.map((p) => (
-                    <TableRow key={p.id}>
-                      <TableCell>
-                        {new Date(p.datePaiement).toLocaleDateString("fr-FR")}
-                      </TableCell>
-                      <TableCell>
-                        {p.reference ||
-                          p.type.charAt(0) + p.type.slice(1).toLowerCase()}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-green-600">
-                        {p.type === "PAIEMENT"
-                          ? Number(p.montant).toLocaleString("fr-FR", {
-                              style: "currency",
-                              currency: displayDevise,
-                            })
-                          : ""}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-red-600">
-                        {p.type === "DEPENSE"
-                          ? Number(p.montant).toLocaleString("fr-FR", {
-                              style: "currency",
-                              currency: displayDevise,
-                            })
-                          : ""}
-                      </TableCell>
-                      <TableCell>
-                        {p.cashJournalEntry?.attachments &&
-                        p.cashJournalEntry.attachments.length > 0 ? (
-                          <div className="flex flex-col">
-                            {p.cashJournalEntry.attachments.map((att) => (
-                              <a
-                                key={att.id}
-                                href={att.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-500 hover:underline"
-                              >
-                                {att.fileName}
-                              </a>
-                            ))}
-                          </div>
-                        ) : (
-                          <span>-</span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+            {/* Mission Details */}
+            <Card className="border-none shadow-md">
+                <CardHeader className="bg-slate-50/50 border-b">
+                    <div className="flex justify-between items-center">
+                        <CardTitle className="flex items-center gap-2 text-lg text-primary">
+                            <Briefcase className="w-5 h-5" /> Objet de la Mission
+                        </CardTitle>
+                        {isEditing && (
+                             <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <Switch checked={formData.isTaxExempt || false} onCheckedChange={(v) => setFormData(p => ({...p, isTaxExempt: v}))} />
+                                    <span className="text-xs font-bold uppercase">Exonérer TVA</span>
+                                </div>
+                             </div>
                         )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center text-gray-500 py-4"
-                    >
-                      Aucune opération enregistrée.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-        <div className="mt-4 flex justify-end">
-          <Card className="w-full md:w-1/2 lg:w-1/3">
-            <CardHeader>
-              <CardTitle>Résumé Financier</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  Total des Paiements
-                </span>
-                <span className="font-medium text-green-600">
-                  {Number(
-                    facture.paiements
-                      .filter((p) => p.type === "PAIEMENT")
-                      .reduce((acc, p) => acc + Number(p.montant), 0)
-                  ).toLocaleString("fr-FR", {
-                    style: "currency",
-                    currency: displayDevise,
-                  })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  Total des Dépenses
-                </span>
-                <span className="font-medium text-red-600">
-                  {Number(
-                    facture.paiements
-                      .filter((p) => p.type === "DEPENSE")
-                      .reduce((acc, p) => acc + Number(p.montant), 0)
-                  ).toLocaleString("fr-FR", {
-                    style: "currency",
-                    currency: displayDevise,
-                  })}
-                </span>
-              </div>
-              <div className="flex justify-between border-t pt-2 mt-2">
-                <span className="font-bold">Marge</span>
-                <span className="font-bold">
-                  {Number(
-                    facture.paiements
-                      .filter((p) => p.type === "PAIEMENT")
-                      .reduce((acc, p) => acc + Number(p.montant), 0) -
-                      facture.paiements
-                        .filter((p) => p.type === "DEPENSE")
-                        .reduce((acc, p) => acc + Number(p.montant), 0)
-                  ).toLocaleString("fr-FR", {
-                    style: "currency",
-                    currency: displayDevise,
-                  })}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+                    </div>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-4">
+                    {isEditing ? (
+                        <div className="space-y-4">
+                            <Input value={formData.objet} name="objet" onChange={handleInputChange} className="text-lg font-bold" placeholder="Objet de la facture" />
+                            <Textarea value={formData.info || ""} onChange={(e) => setFormData(p => ({...p, info: e.target.value}))} placeholder="Notes additionnelles..." className="min-h-[100px]" />
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            <h2 className="text-xl font-bold text-slate-800 leading-tight">{facture.objet}</h2>
+                            {facture.info && (
+                                <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
+                                    <p className="text-sm text-blue-900 whitespace-pre-wrap italic">
+                                        <Info className="w-4 h-4 inline mr-2 mb-1" />
+                                        {facture.info}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Products Table */}
+            <Card className="border-none shadow-md overflow-hidden">
+                <CardHeader className="bg-slate-50/50 border-b flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-lg text-primary">
+                        <Package className="w-5 h-5" /> Prestations & Tarification
+                    </CardTitle>
+                    {isEditing && (
+                        <Button onClick={handleAddProduct} variant="outline" size="sm" className="bg-white">
+                            <PlusCircle className="w-4 h-4 mr-2" /> Ajouter
+                        </Button>
+                    )}
+                </CardHeader>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader className="bg-slate-50/30">
+                            <TableRow>
+                                <TableHead className="pl-6">Désignation</TableHead>
+                                <TableHead className="text-center w-20">Qté</TableHead>
+                                <TableHead className="text-right w-32">Prix Unit.</TableHead>
+                                <TableHead className="text-center w-32">Durée</TableHead>
+                                <TableHead className="text-right pr-6 w-32">Total</TableHead>
+                                {isEditing && <TableHead className="w-10"></TableHead>}
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {(isEditing ? formData.produits : facture.produits)?.map((p, idx) => (
+                                <TableRow key={p.id} className="group hover:bg-slate-50/50 transition-colors">
+                                    <TableCell className="pl-6 align-top">
+                                        {isEditing ? (
+                                            <div className="space-y-1">
+                                                <Input name="designation" value={p.designation} onChange={(e) => handleProductChange(idx, e)} list={`prods-${idx}`} />
+                                                <datalist id={`prods-${idx}`}>{allProduits.map(ap => <option key={ap.id} value={ap.nom} />)}</datalist>
+                                            </div>
+                                        ) : <span className="font-semibold text-slate-700">{p.designation}</span>}
+                                    </TableCell>
+                                    <TableCell className="text-center align-top">
+                                        {isEditing ? <Input type="number" name="quantite" value={p.quantite} onChange={(e) => handleProductChange(idx, e)} className="text-center px-1" /> : p.quantite}
+                                    </TableCell>
+                                    <TableCell className="text-right align-top">
+                                        {isEditing ? <Input type="number" name="prixUnitaire" value={p.prixUnitaire} onChange={(e) => handleProductChange(idx, e)} className="text-right px-1" /> : <span className="font-medium">{formatMoney(p.prixUnitaire)}</span>}
+                                    </TableCell>
+                                    <TableCell className="text-center align-top">
+                                        {isEditing ? (
+                                            <div className="space-y-2">
+                                                <div className="flex gap-1">
+                                                    <Input type="number" name="duree" value={p.duree || 1} onChange={(e) => handleProductChange(idx, e)} disabled={!p.includeduree} className="text-center h-8 px-1" />
+                                                    <Select value={p.uniteDuree} onValueChange={(v: string) => handleProductChange(idx, {target: {name: 'uniteDuree', value: v}})}>
+                                                        <SelectTrigger className="h-8 w-20 text-[10px]"><SelectValue /></SelectTrigger>
+                                                        <SelectContent>{UNITE_DUREE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <Switch checked={p.includeduree || false} onCheckedChange={(v: boolean) => {
+                                                        const prods = [...(formData.produits || [])];
+                                                        // @ts-expect-error - dynamic key access
+                                                        prods[idx] = {...prods[idx], includeduree: v};
+                                                        setFormData(prev => ({...prev, produits: prods as Facture["produits"]}));
+                                                    }} className="scale-75" />
+                                                    <span className="text-[10px] font-bold uppercase text-muted-foreground">Appliquer</span>
+                                                </div>
+                                            </div>
+                                        ) : (p.includeduree ? `${p.duree} ${p.uniteDuree}` : "-")}
+                                    </TableCell>
+                                    <TableCell className="text-right pr-6 align-top font-bold text-slate-900">
+                                        {isEditing ? formatMoney(computeLineTotal(p)) : formatMoney(p.montantTotal)}
+                                    </TableCell>
+                                    {isEditing && (
+                                        <TableCell className="pr-4 align-top">
+                                            <Button variant="ghost" size="icon" onClick={() => handleRemoveProduct(idx)} className="text-red-400 hover:text-red-600 hover:bg-red-50">
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        </TableCell>
+                                    )}
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            {/* Financial History */}
+            <Card className="border-none shadow-md">
+                <CardHeader className="bg-slate-50/50 border-b flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-lg text-primary">
+                        <History className="w-5 h-5" /> Historique des Flux
+                    </CardTitle>
+                    <div className="flex gap-2">
+                        {facture.resteAPayer > 0 && (
+                            <Button size="sm" onClick={() => { setOperationType("PAIEMENT"); setIsPaymentDialogOpen(true); }}>
+                                <PlusCircle className="w-4 h-4 mr-2" /> Paiement
+                            </Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => { setOperationType("DEPENSE"); setIsPaymentDialogOpen(true); }}>
+                            <PlusCircle className="w-4 h-4 mr-2" /> Dépense
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-slate-50/20">
+                                <TableHead className="pl-6">Date</TableHead>
+                                <TableHead>Libellé / Référence</TableHead>
+                                <TableHead className="text-right text-green-600">Encaissement</TableHead>
+                                <TableHead className="text-right text-red-600">Décaissement</TableHead>
+                                <TableHead className="text-center pr-6">Preuves</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {facture.paiements?.length > 0 ? facture.paiements.map(p => (
+                                <TableRow key={p.id}>
+                                    <TableCell className="pl-6 text-xs text-muted-foreground">{new Date(p.datePaiement).toLocaleDateString("fr-FR")}</TableCell>
+                                    <TableCell>
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-slate-700 text-sm">{p.reference || (p.type === 'PAIEMENT' ? 'Paiement Client' : 'Dépense liée')}</span>
+                                            <span className="text-[10px] text-muted-foreground uppercase">{p.methode || "-"}</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold text-green-600">{p.type === 'PAIEMENT' ? formatMoney(p.montant) : ""}</TableCell>
+                                    <TableCell className="text-right font-bold text-red-600">{p.type === 'DEPENSE' ? formatMoney(p.montant) : ""}</TableCell>
+                                    <TableCell className="text-center pr-6">
+                                        {p.cashJournalEntry?.attachments?.map(att => (
+                                            <Button key={att.id} asChild variant="ghost" size="icon" className="h-8 w-8 text-blue-500">
+                                                <a href={att.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
+                                            </Button>
+                                        )) || "-"}
+                                    </TableCell>
+                                </TableRow>
+                            )) : (
+                                <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground italic">Aucune opération financière enregistrée.</TableCell></TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            {/* Documents Section moved here */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3 border-b">
+                        <CardTitle className="text-xs font-bold uppercase flex items-center gap-2 text-slate-500">
+                            <FileText className="w-4 h-4 text-blue-500" /> Bon de Commande
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                        {facture.bonCommande ? (
+                            <div className="flex items-center justify-between p-3 bg-slate-900 rounded-xl group">
+                                <a href={`/Upload/Bon/${facture.numero}/${facture.bonCommande.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-blue-400">
+                                    <ExternalLink className="w-3 h-3" /> Visualiser le document
+                                </a>
+                                <Button variant="ghost" size="icon" onClick={() => handleFileDelete("bon")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <Input type="file" onChange={(e) => setBonCommandeFile(e.target.files?.[0])} className="text-[10px] h-9" />
+                                <Button onClick={() => handleFileUpload("bon")} disabled={!bonCommandeFile || isUploadingBon} size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                                    {isUploadingBon ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader le bon</>}
+                                </Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3 border-b">
+                        <CardTitle className="text-xs font-bold uppercase flex items-center gap-2 text-slate-500">
+                            <Receipt className="w-4 h-4 text-green-500" /> Facture Normalisée
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                        {facture.factureNormaliser ? (
+                            <div className="flex items-center justify-between p-3 bg-slate-900 rounded-xl group">
+                                <a href={`/Upload/Facture/${facture.numero}/${facture.factureNormaliser.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-green-400">
+                                    <ExternalLink className="w-3 h-3" /> Visualiser la facture
+                                </a>
+                                <Button variant="ghost" size="icon" onClick={() => handleFileDelete("facture")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <Input type="file" onChange={(e) => setFactureNormaliseeFile(e.target.files?.[0])} className="text-[10px] h-9" />
+                                <Button onClick={() => handleFileUpload("facture")} disabled={!factureNormaliseeFile || isUploadingFacture} size="sm" className="w-full bg-green-600 hover:bg-green-700">
+                                    {isUploadingFacture ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader la facture</>}
+                                </Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+
+        <div className="space-y-8">
+            {/* Client Info Card */}
+            <Card className="border-none shadow-md overflow-hidden bg-slate-900 text-slate-100">
+                <CardHeader className="pb-4 border-b border-white/10">
+                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                        <User className="w-4 h-4" /> Client
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-6">
+                    <div>
+                        <h3 className="text-2xl font-black mb-1">{facture.client?.nom}</h3>
+                        <Badge variant="outline" className="border-slate-700 text-slate-400 text-[10px] font-bold">IFU: {facture.societeIFU}</Badge>
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-3 text-sm text-slate-300">
+                            <div className="p-2 rounded-lg bg-white/5"><Mail className="w-4 h-4 text-blue-400" /></div>
+                            <span className="truncate">{facture.client?.email || "Non renseigné"}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-slate-300">
+                            <div className="p-2 rounded-lg bg-white/5"><Phone className="w-4 h-4 text-green-400" /></div>
+                            <span>{facture.client?.telephone || "Non renseigné"}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-slate-300">
+                            <div className="p-2 rounded-lg bg-white/5"><MapPin className="w-4 h-4 text-red-400" /></div>
+                            <span className="text-xs leading-snug">{facture.client?.adresse || "Non renseigné"}</span>
+                        </div>
+                    </div>
+                    <div className="pt-4 border-t border-white/10">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Suivi par</p>
+                        <div className="flex items-center gap-2">
+                            <div className="p-2 rounded-full bg-primary/20 text-primary"><ShieldCheck className="w-4 h-4" /></div>
+                            {isEditing ? (
+                                <Select value={formData.gestionnaireId || ""} onValueChange={(v) => setFormData(p => ({...p, gestionnaireId: v === "null" ? null : v}))}>
+                                    <SelectTrigger className="bg-slate-800 border-slate-700 h-8"><SelectValue /></SelectTrigger>
+                                    <SelectContent>{allGestionnaires.map(g => <SelectItem key={g.id} value={g.id}>{g.prenom} {g.nom}</SelectItem>)}</SelectContent>
+                                </Select>
+                            ) : <span className="font-bold text-sm">{facture.gestionnaires?.[0]?.gestionnaire.prenom} {facture.gestionnaires?.[0]?.gestionnaire.nom || "Non assigné"}</span>}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Financial Summary */}
+            <Card className="border-none shadow-lg bg-primary text-white overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-4 opacity-10"><Calculator className="w-20 h-20 rotate-12" /></div>
+                <CardHeader className="pb-2 border-b border-white/10">
+                    <CardTitle className="text-sm font-bold uppercase tracking-widest text-primary-foreground/70">Récapitulatif Financier</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-4">
+                    <div className="flex justify-between text-sm opacity-80">
+                        <span>Total HT</span>
+                        <span className="font-mono">{formatMoney(currentTotalHT)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm opacity-80">
+                        <span>TVA (18%)</span>
+                        <span className="font-mono">{formatMoney(currentTVA)}</span>
+                    </div>
+                    <div className="py-4 border-y border-white/10">
+                        <div className="flex justify-between items-end">
+                            <span className="text-xs font-bold uppercase opacity-60">Total TTC</span>
+                            <span className="text-3xl font-black tracking-tighter">{formatMoney(currentTotalTTC)}</span>
+                        </div>
+                    </div>
+                    <div className={`p-4 rounded-xl flex justify-between items-center ${facture.resteAPayer > 0 ? "bg-orange-500/20 border border-orange-500/50" : "bg-green-500/20 border border-green-500/50"}`}>
+                        <div>
+                            <p className="text-[10px] font-bold uppercase opacity-80">Reste à payer</p>
+                            <p className="text-xl font-black">{formatMoney(facture.resteAPayer)}</p>
+                        </div>
+                        {facture.resteAPayer > 0 ? <AlertCircle className="w-6 h-6 text-orange-200" /> : <CheckCircle2 className="w-6 h-6 text-green-200" />}
+                    </div>
+                    <div className="pt-2 flex justify-between items-center text-xs">
+                        <span className="opacity-70 italic">Marge nette générée</span>
+                        <span className="font-bold">{formatMoney(facture.paiements.filter(p => p.type === 'PAIEMENT').reduce((a, b) => a + Number(b.montant), 0) - facture.paiements.filter(p => p.type === 'DEPENSE').reduce((a, b) => a + Number(b.montant), 0))}</span>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
       </div>
 
-      {/* Documents Associés */}
-      <div className="mt-8 border-t pt-6">
-        <h2 className="text-xl font-semibold text-primary mb-4">
-          Documents Associés
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Bon de Commande Card */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 ">
-              <CardTitle className="text-lg font-medium flex items-center gap-2">
-                <FileText className="h-5 w-5 text-blue-500" /> Bon de Commande
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {facture.bonCommande ? (
-                <div className="flex items-center justify-around  border-3 rounded-lg p-2 bg-gray-900 cursor-pointer">
-                  <a
-                    href={`/Upload/Bon/${
-                      facture.numero
-                    }/${facture.bonCommande.url.split("/").pop()}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-100 font-bold flex items-center gap-1 h-full hover:text-pink-400"
-                  >
-                    <FileText className="h-4 w-4" /> Voir le bon de commande
-                  </a>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleFileDelete("bon")}
-                    disabled={isDeletingBon}
-                  >
-                    {isDeletingBon ? "..." : <Trash2 className="h-4 w-4" />}{" "}
-                    {isDeletingBon ? "" : ""}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <Input
-                    type="file"
-                    accept=".pdf,.doc,.docx,image/*,.png,.jpeg,.jpg"
-                    onChange={(e) => setBonCommandeFile(e.target.files?.[0])}
-                  />
-                  <Button
-                    onClick={() => handleFileUpload("bon")}
-                    disabled={!bonCommandeFile || isUploadingBon}
-                  >
-                    <Upload className="h-4 w-4 mr-1" />{" "}
-                    {isUploadingBon ? "Chargement..." : "Uploader"}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Facture Normalisée Card */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-lg font-medium flex items-center gap-2">
-                <Receipt className="h-5 w-5 text-green-500" /> Facture
-                (Normalisée, Chèque, etc.)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {facture.factureNormaliser ? (
-                <div className="flex items-center justify-around  border-3 rounded-lg p-2 bg-gray-900 cursor-pointer">
-                  <a
-                    href={`/Upload/Facture/${
-                      facture.numero
-                    }/${facture.factureNormaliser.url.split("/").pop()}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-100 font-bold flex items-center gap-1 h-full hover:text-pink-400"
-                  >
-                    <Receipt className="h-4 w-4" /> Voir la facture
-                  </a>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleFileDelete("facture")}
-                    disabled={isDeletingFacture}
-                  >
-                    {isDeletingFacture ? "..." : <Trash2 className="h-4 w-4" />}{" "}
-                    {isDeletingFacture ? "" : ""}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <Input
-                    type="file"
-                    accept=".pdf,.doc,.docx,image/*,.png,.jpeg,.jpg"
-                    onChange={(e) =>
-                      setFactureNormaliseeFile(e.target.files?.[0])
-                    }
-                  />
-                  <Button
-                    onClick={() => handleFileUpload("facture")}
-                    disabled={!factureNormaliseeFile || isUploadingFacture}
-                  >
-                    <Upload className="h-4 w-4 mr-1" />{" "}
-                    {isUploadingFacture ? "Chargement..." : "Uploader"}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-      {/* Footer */}
-      <div className="text-xs text-gray-400 text-center pt-4 border-t">
-        Facture générée le{" "}
-        {new Date(facture.dateCreation).toLocaleDateString("fr-FR")} &mdash;
-        Proforma Générateur
-      </div>
-
-      {/* Add Payment Dialog */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md border-none shadow-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {operationType === "PAIEMENT"
-                ? "Ajouter un paiement"
-                : "Ajouter une dépense"}
+            <DialogTitle className="text-2xl font-black text-primary flex items-center gap-2">
+              {operationType === "PAIEMENT" ? <><TrendingUp className="w-6 h-6 text-green-500" /> Nouvel Encaissement</> : <><TrendingDown className="w-6 h-6 text-red-500" /> Nouvelle Dépense</>}
             </DialogTitle>
-            <DialogDescription>
-              {operationType === "PAIEMENT"
-                ? "Enregistrez un nouveau versement pour la"
-                : "Enregistrez une nouvelle dépense liée à la"}{" "}
-              facture {facture.numero}.
-            </DialogDescription>
+            <DialogDescription>Enregistrez un mouvement financier lié à la facture {facture.numero}.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="montant" className="text-right">
-                Montant
-              </label>
-              <Input
-                id="montant"
-                type="number"
-                value={newPayment.montant}
-                onChange={(e) =>
-                  setNewPayment({
-                    ...newPayment,
-                    montant: parseFloat(e.target.value),
-                  })
-                }
-                className="col-span-3"
-              />
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-muted-foreground">Montant ({displayDevise})</label>
+                <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input type="number" value={newPayment.montant} onChange={(e) => setNewPayment({...newPayment, montant: parseFloat(e.target.value)})} className="pl-9 text-lg font-bold" />
+                </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="datePaiement" className="text-right">
-                Date
-              </label>
-              <Input
-                id="datePaiement"
-                type="date"
-                value={newPayment.datePaiement}
-                onChange={(e) =>
-                  setNewPayment({ ...newPayment, datePaiement: e.target.value })
-                }
-                className="col-span-3"
-              />
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Date</label>
+                    <Input type="date" value={newPayment.datePaiement} onChange={(e) => setNewPayment({ ...newPayment, datePaiement: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Méthode</label>
+                    <Select value={newPayment.methode} onValueChange={(v) => setNewPayment({ ...newPayment, methode: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Virement">Virement</SelectItem>
+                            <SelectItem value="Espèces">Espèces</SelectItem>
+                            <SelectItem value="Chèque">Chèque</SelectItem>
+                            <SelectItem value="MobileMoney">Mobile Money</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="methode" className="text-right">
-                Méthode
-              </label>
-              <Select
-                value={newPayment.methode}
-                onValueChange={(value) =>
-                  setNewPayment({ ...newPayment, methode: value })
-                }
-              >
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Méthode de paiement" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Virement">Virement</SelectItem>
-                  <SelectItem value="Espèces">Espèces</SelectItem>
-                  <SelectItem value="Chèque">Chèque</SelectItem>
-                  <SelectItem value="MobileMoney">Mobile Money</SelectItem>
-                  <SelectItem value="Autre">Autre</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {newPayment.methode  && (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="cashRegister" className="text-right">
-                  Caisse
-                </label>
-                <Select
-                  value={selectedCashRegisterId}
-                  onValueChange={setSelectedCashRegisterId}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Sélectionner une caisse" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {cashRegisters.map((register) => (
-                      <SelectItem
-                        key={register.id}
-                        value={register.id.toString()}
-                      >
-                        {register.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
+            <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-muted-foreground">Caisse de destination</label>
+                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
+                    <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
+                    <SelectContent>{cashRegisters.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
                 </Select>
-              </div>
-            )}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="files" className="text-right">
-                Preuve(s)
-              </label>
-              <Input
-                id="files"
-                type="file"
-                multiple
-                onChange={(e) => setPaymentFiles(e.target.files)}
-                className="col-span-3"
-              />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="reference" className="text-right">
-                Référence
-              </label>
-              {operationType === "DEPENSE" ? (
-                <Input
-                  id="reference"
-                  value={newPayment.reference}
-                  onChange={(e) =>
-                    setNewPayment({ ...newPayment, reference: e.target.value })
-                  }
-                  className="col-span-3"
-                  placeholder="Référence de la dépense"
-                />
-              ) : (
-                <Select
-                  value={newPayment.reference}
-                  onValueChange={(value) =>
-                    setNewPayment({ ...newPayment, reference: value })
-                  }
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Sélectionner une référence" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Paiement Total">
-                      Paiement Total
-                    </SelectItem>
-                    <SelectItem value="Avance">Avance</SelectItem>
-                    <SelectItem value="1ère tranche">1ère tranche</SelectItem>
-                    <SelectItem value="2eme Tranche">2eme Tranche</SelectItem>
-                    <SelectItem value="3e tranche">3e tranche</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+            <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-muted-foreground">Référence / Objet</label>
+                {operationType === "DEPENSE" ? (
+                    <Input value={newPayment.reference} onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })} placeholder="Ex: Achat consommables..." />
+                ) : (
+                    <Select value={newPayment.reference} onValueChange={(v) => setNewPayment({ ...newPayment, reference: v })}>
+                        <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Paiement Total">Paiement Total</SelectItem>
+                            <SelectItem value="Avance">Avance</SelectItem>
+                            <SelectItem value="1ère tranche">1ère tranche</SelectItem>
+                            <SelectItem value="2eme Tranche">2eme Tranche</SelectItem>
+                        </SelectContent>
+                    </Select>
+                )}
+            </div>
+            <div className="space-y-2">
+                <label className="text-xs font-bold uppercase text-muted-foreground">Pièce(s) jointe(s)</label>
+                <Input type="file" multiple onChange={(e) => setPaymentFiles(e.target.files)} className="text-[10px]" />
             </div>
           </div>
-          {paymentError && (
-            <p className="text-red-500 text-sm text-center">{paymentError}</p>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsPaymentDialogOpen(false)}
-            >
-              Annuler
-            </Button>
-            <Button onClick={handleSaveOperation} disabled={isAddingPayment}>
-              {isAddingPayment
-                ? "Enregistrement..."
-                : `Enregistrer l'${
-                    operationType === "PAIEMENT" ? "paiement" : "dépense"
-                  }`}
+          {paymentError && <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-600 text-xs font-medium flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {paymentError}</div>}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Annuler</Button>
+            <Button onClick={handleSaveOperation} disabled={isAddingPayment} className={operationType === "PAIEMENT" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}>
+              {isAddingPayment ? "Enregistrement..." : "Confirmer l'opération"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Confirmation Dialog for Deletion */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-sm border-none shadow-2xl">
           <DialogHeader>
-            <DialogTitle>Confirmer la suppression</DialogTitle>
-            <DialogDescription>
-              Êtes-vous sûr de vouloir supprimer ce fichier ? Cette action est
-              irréversible.
-            </DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-red-600"><AlertCircle className="w-5 h-5" /> Confirmation</DialogTitle>
+            <DialogDescription>Cette suppression est définitive. Souhaitez-vous continuer ?</DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Annuler
-              </Button>
-            </DialogClose>
-            <Button variant="destructive" onClick={confirmDeleteFile}>
-              Confirmer
-            </Button>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
+            <Button variant="destructive" onClick={confirmDeleteFile}>Supprimer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <div className="text-[10px] text-slate-400 text-center font-bold tracking-widest uppercase py-8 opacity-50">
+        Propulsé par Proforma Générateur &mdash; Réseaupub © {new Date().getFullYear()}
+      </div>
     </div>
   );
 }
