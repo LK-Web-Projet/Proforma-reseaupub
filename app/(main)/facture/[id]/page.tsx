@@ -23,7 +23,7 @@ import {
     TrendingUp, TrendingDown, Clock, Ban,
     History, Landmark, CheckCircle2, ChevronLeft,
     AlertCircle, ExternalLink, Calculator, DollarSign,
-    Edit3, Save, X, Info, Package, Wallet, CheckSquare, Archive, LucideIcon
+    Edit3, Save, X, Info, Package, Wallet, CheckSquare, Archive, Percent, LucideIcon
 } from "lucide-react";
 import {
   Dialog,
@@ -433,10 +433,25 @@ export default function FactureDetailPage() {
                             <Briefcase className="w-5 h-5" /> Objet de la Mission
                         </CardTitle>
                         {isEditing && (
-                             <div className="flex items-center gap-4">
+                             <div className="flex items-center gap-6">
                                 <div className="flex items-center gap-2">
                                     <Switch checked={formData.isTaxExempt || false} onCheckedChange={(v) => setFormData(p => ({...p, isTaxExempt: v}))} />
                                     <span className="text-xs font-bold uppercase">Exonérer TVA</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Percent className="w-4 h-4 text-muted-foreground" />
+                                    <Select 
+                                        value={String(formData.paymentConditionPercentage ?? 0)} 
+                                        onValueChange={(v) => setFormData(p => ({...p, paymentConditionPercentage: Number(v)}))}
+                                    >
+                                        <SelectTrigger className="h-8 w-20 font-bold"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((v) => (
+                                                <SelectItem key={v} value={String(v)}>{v}%</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <span className="text-xs font-bold uppercase">Acompte</span>
                                 </div>
                              </div>
                         )}
@@ -710,6 +725,12 @@ export default function FactureDetailPage() {
                         <span>TVA (18%)</span>
                         <span className="font-mono">{formatMoney(currentTVA)}</span>
                     </div>
+                    {(isEditing ? formData.paymentConditionPercentage : facture.paymentConditionPercentage) ? (
+                        <div className="flex justify-between text-xs font-bold text-yellow-200 bg-yellow-900/30 p-2 rounded-lg border border-yellow-700/50">
+                            <span className="flex items-center gap-1"><Percent className="w-3 h-3" /> Acompte requis ({(isEditing ? formData.paymentConditionPercentage : facture.paymentConditionPercentage)}%)</span>
+                            <span className="font-mono">{formatMoney(currentTotalTTC * ((isEditing ? formData.paymentConditionPercentage : facture.paymentConditionPercentage) || 0) / 100)}</span>
+                        </div>
+                    ) : null}
                     <div className="py-4 border-y border-white/10">
                         <div className="flex justify-between items-end">
                             <span className="text-xs font-bold uppercase opacity-60">Total TTC</span>

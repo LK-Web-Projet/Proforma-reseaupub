@@ -12,8 +12,18 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, TrendingDown, Users, Package, CreditCard, 
-  AlertCircle, CheckCircle2, FileText, Wallet, LucideIcon 
+  AlertCircle, CheckCircle2, FileText, Wallet, LucideIcon, Calendar as CalendarIcon
 } from 'lucide-react';
+import { DateRange } from "react-day-picker";
+import { format, startOfYear, endOfYear } from "date-fns";
+import { fr } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 type StatData = {
   count: number;
@@ -96,20 +106,25 @@ export default function StatistiquesPage() {
   const [filters, setFilters] = useState({
     clientId: '',
     gestionnaireId: '',
-    startDate: '',
-    endDate: '',
-    year: new Date().getFullYear().toString(),
+  });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: startOfYear(new Date()),
+    to: endOfYear(new Date()),
   });
   const [loading, setLoading] = useState(true);
 
-  const fetchStats = useCallback(async (currentFilters = filters) => {
+  const fetchStats = useCallback(async (currentFilters = filters, currentRange = dateRange) => {
     setLoading(true);
     const params = new URLSearchParams();
     if (currentFilters.clientId) params.append('clientId', currentFilters.clientId);
     if (currentFilters.gestionnaireId) params.append('gestionnaireId', currentFilters.gestionnaireId);
-    if (currentFilters.startDate) params.append('startDate', currentFilters.startDate);
-    if (currentFilters.endDate) params.append('endDate', currentFilters.endDate);
-    if (currentFilters.year) params.append('year', currentFilters.year);
+    
+    if (currentRange?.from) {
+      params.append('startDate', currentRange.from.toISOString());
+    }
+    if (currentRange?.to) {
+      params.append('endDate', currentRange.to.toISOString());
+    }
 
     try {
       const res = await fetch(`/api/statistiques?${params.toString()}`);
@@ -121,7 +136,7 @@ export default function StatistiquesPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, dateRange]);
 
   useEffect(() => {
     const initData = async () => {
@@ -142,7 +157,7 @@ export default function StatistiquesPage() {
         await fetchStats();
     };
     initData();
-  }, [fetchStats]);
+  }, []); // Exécuter seulement au montage
 
   const handleFilterChange = (name: string, value: string) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -153,29 +168,23 @@ export default function StatistiquesPage() {
   };
 
   const handleResetFilters = () => {
-    const currentYear = new Date().getFullYear().toString();
+    const defaultRange = {
+      from: startOfYear(new Date()),
+      to: endOfYear(new Date()),
+    };
     const newFilters = {
       clientId: '',
       gestionnaireId: '',
-      startDate: '',
-      endDate: '',
-      year: currentYear,
     };
     setFilters(newFilters);
-    fetchStats(newFilters);
+    setDateRange(defaultRange);
+    fetchStats(newFilters, defaultRange);
   };
-
-  const years = [];
-  const startYear = 2020;
-  const currentYear = new Date().getFullYear();
-  for (let y = startYear; y <= currentYear + 1; y++) {
-    years.push(y);
-  }
 
   const clientOptions = clients.map(c => ({ value: c.id, label: c.nom }));
   const gestionnaireOptions = gestionnaires.map(g => ({ value: g.id, label: `${g.prenom} ${g.nom}` }));
 
-  if (loading) return <StatistiquesPageSkeleton />;
+  if (loading && !stats) return <StatistiquesPageSkeleton />;
 
   const statusDistribution = stats ? [
     { name: 'Brouillon', value: stats.invoiceStats.brouillon.count },
@@ -202,7 +211,7 @@ export default function StatistiquesPage() {
             <TrendingUp className="w-5 h-5" /> Filtres d&apos;analyse
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
           <div className="space-y-2">
             <label className="text-xs font-medium">Client</label>
             <Combobox
@@ -221,21 +230,51 @@ export default function StatistiquesPage() {
               placeholder="Tous les commerciaux"
             />
           </div>
+          
           <div className="space-y-2">
-            <label className="text-xs font-medium">Année</label>
-            <select
-              aria-label="Sélectionner une année"
-              value={filters.year}
-              onChange={(e) => handleFilterChange("year", e.target.value)}
-              className="w-full h-10 border rounded-md px-3 bg-white text-sm"
-            >
-              <option value="">Toutes les années</option>
-              {years.reverse().map((year) => (
-                <option key={year} value={year.toString()}>{year}</option>
-              ))}
-            </select>
+            <label className="text-xs font-medium">Période</label>
+            <div className={cn("grid gap-2")}>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="date"
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10 bg-white",
+                      !dateRange && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateRange?.from ? (
+                      dateRange.to ? (
+                        <>
+                          {format(dateRange.from, "dd LLL y", { locale: fr })} -{" "}
+                          {format(dateRange.to, "dd LLL y", { locale: fr })}
+                        </>
+                      ) : (
+                        format(dateRange.from, "dd LLL y", { locale: fr })
+                      )
+                    ) : (
+                      <span>Sélectionner une période</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                    locale={fr}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 lg:col-span-2">
+
+          <div className="grid grid-cols-2 gap-2">
             <Button onClick={handleApplyFilters} className="w-full">Filtrer</Button>
             <Button onClick={handleResetFilters} variant="outline" className="w-full">Reset</Button>
           </div>

@@ -30,6 +30,7 @@ export async function GET(request: Request) {
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
     const yearParam = searchParams.get('year');
+    const monthParam = searchParams.get('month');
 
     const exchangeRates: Record<string, number> = {
       EUR: 655.957,
@@ -40,17 +41,32 @@ export async function GET(request: Request) {
     let startDate: Date;
     let endDate: Date;
 
-    if (startDateParam && endDateParam) {
+    if (startDateParam) {
       startDate = new Date(startDateParam);
+    } else if (yearParam) {
+      const year = parseInt(yearParam);
+      if (monthParam) {
+        const month = parseInt(monthParam);
+        startDate = new Date(year, month, 1);
+      } else {
+        startDate = startOfYear(new Date(year, 0, 1));
+      }
+    } else {
+      startDate = startOfYear(new Date());
+    }
+
+    if (endDateParam) {
       endDate = new Date(endDateParam);
     } else if (yearParam) {
       const year = parseInt(yearParam);
-      startDate = startOfYear(new Date(year, 0, 1));
-      endDate = endOfYear(new Date(year, 11, 31));
+      if (monthParam) {
+        const month = parseInt(monthParam);
+        endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      } else {
+        endDate = endOfYear(new Date(year, 11, 31));
+      }
     } else {
-      const currentYear = new Date().getFullYear();
-      startDate = startOfYear(new Date(currentYear, 0, 1));
-      endDate = endOfYear(new Date(currentYear, 11, 31));
+      endDate = endOfYear(new Date());
     }
 
     const invoiceWhere: {
