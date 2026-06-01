@@ -108,7 +108,7 @@ export default function Home() {
         initialStats[f.statut].remaining += remaining;
       }
       
-      if (f.statut !== "Brouillon") {
+      if (f.statut !== "Brouillon" && f.statut !== "Annuler" && f.statut !== "Archiver") {
         initialStats["Total"].total += totalTTC;
         initialStats["Total"].paid += paid;
         initialStats["Total"].remaining += remaining;
@@ -121,7 +121,7 @@ export default function Home() {
   // Filtrage final pour le tableau (Objet + Statut sélectionné via les cartes)
   const filteredFactures = useMemo(() => {
     return allFactures.filter(f => {
-      const matchStatut = statut === '' ? f.statut !== 'Brouillon' : f.statut === statut;
+      const matchStatut = statut === '' ? (f.statut !== 'Brouillon' && f.statut !== 'Annuler' && f.statut !== 'Archiver') : f.statut === statut;
       const matchObjet = objet === '' || f.objet.toLowerCase().includes(objet.toLowerCase());
       return matchStatut && matchObjet;
     });
@@ -179,7 +179,7 @@ export default function Home() {
               )}
 
               <p className="text-xs text-muted-foreground mt-1">
-                {allFactures.filter(f => card.value === "" ? f.statut !== "Brouillon" : f.statut === card.value).length} facture(s)
+                {allFactures.filter(f => card.value === "" ? (f.statut !== "Brouillon" && f.statut !== "Annuler" && f.statut !== "Archiver") : f.statut === card.value).length} facture(s)
               </p>
             </CardContent>
           </Card>
