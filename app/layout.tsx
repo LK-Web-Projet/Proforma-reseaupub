@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
+import { archiveOldInvoices } from "@/lib/archive-service";
 
 import Providers from "./providers";
 
@@ -27,6 +28,14 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Exécuter l'archivage automatique au chargement (Server Side)
+  // Comme c'est un Server Component, cela s'exécute côté serveur.
+  // L'archivage est idempotent, donc pas de soucis de répétition.
+  try {
+    await archiveOldInvoices();
+  } catch (error) {
+    console.error("Échec de l'archivage automatique au démarrage:", error);
+  }
   
   return (
     <ClerkProvider afterSignOutUrl="/sign-in">
