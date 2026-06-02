@@ -155,8 +155,7 @@ export async function GET(request: Request) {
       const rate = exchangeRates[invoice.devise] || 1;
       const totalXOF = Number(invoice.totalTTC) * rate;
       const resteXOF = Number(invoice.resteAPayer) * rate;
-      const payeXOF = totalXOF - resteXOF;
-      const monthKey = format(invoice.dateCreation, 'yyyy-MM');
+      const monthKey = format(new Date(invoice.dateCreation), "yyyy-MM");
 
       let isRevenueStatus = false;
       let amountToCountInSales = 0;

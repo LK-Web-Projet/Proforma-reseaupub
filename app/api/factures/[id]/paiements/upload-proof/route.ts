@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id: invoiceId } = await params;
+    await params; // Consomme params pour éviter d'autres warnings si nécessaire
     const formData = await request.formData();
 
     const paiementId = formData.get("paiementId") as string;
