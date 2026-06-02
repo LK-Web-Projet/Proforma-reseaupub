@@ -16,9 +16,7 @@ export async function archiveOldInvoices() {
         dateCreation: {
           lte: thirtyDaysAgo,
         },
-        statut: {
-          notIn: ['Archiver', 'Annuler'],
-        },
+        statut: 'Brouillon',
       },
       data: {
         statut: 'Archiver',

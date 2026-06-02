@@ -12,7 +12,7 @@ async function main() {
   const allInvoices = await prisma.invoice.findMany({
     include: {
       paiements: {
-        select: { montant: true },
+        select: { montant: true, type: true },
       },
     },
   });
@@ -27,19 +27,36 @@ async function main() {
     let newResteAPayer = invoice.totalTTC;
 
     if (invoice.paiements.length > 0) {
-      const totalPaid = invoice.paiements.reduce(
-        (sum: number, paiement: { montant: { toNumber: () => number; }; }) => sum + paiement.montant.toNumber(),
-        0
-      );
+      const totalPaid = invoice.paiements
+        .filter((p: { type: string }) => p.type === 'PAIEMENT')
+        .reduce(
+          (sum: number, paiement: { montant: { toNumber: () => number; }; }) => sum + paiement.montant.toNumber(),
+          0
+        );
       newResteAPayer = invoice.totalTTC.minus(totalPaid);
     }
 
-    if (invoice.resteAPayer.toNumber() !== newResteAPayer.toNumber()) {
+    const newResteAPayerNum = newResteAPayer.toNumber();
+    const totalTTCNum = invoice.totalTTC.toNumber();
+    let newStatus = invoice.statut;
+
+    if (newResteAPayerNum <= 0) {
+      newStatus = 'Solde';
+    } else if (newResteAPayerNum < totalTTCNum) {
+      newStatus = 'Payer';
+    } else if (newResteAPayerNum === totalTTCNum && (invoice.statut === 'Payer' || invoice.statut === 'Solde')) {
+      newStatus = 'Valider';
+    }
+
+    if (invoice.resteAPayer.toNumber() !== newResteAPayerNum || newStatus !== invoice.statut) {
       await prisma.invoice.update({
         where: { id: invoice.id },
-        data: { resteAPayer: newResteAPayer },
+        data: { 
+          resteAPayer: newResteAPayer,
+          statut: newStatus
+        },
       });
-      console.log(`Updated invoice ${invoice.numero}: resteAPayer updated.`);
+      console.log(`Updated invoice ${invoice.numero}: resteAPayer set to ${newResteAPayerNum}, status set to ${newStatus}`);
       updatedCount++;
     }
   }
