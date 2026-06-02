@@ -14,10 +14,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check } from 'lucide-react';
+import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -56,6 +57,9 @@ export default function Home() {
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [loading, setLoading] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
+  const [visibleCardLabels, setVisibleCardLabels] = useState<string[]>([
+    "Valider & payer", "Brouillon", "Envoyée", "Validée", "En cours de paiement", "Soldée"
+  ]);
 
   // Charger la liste des clients pour le filtre
   useEffect(() => {
@@ -128,7 +132,7 @@ export default function Home() {
   }, [allFactures, statut, objet]);
 
   const cards = [
-    { label: "Toutes", value: "", stats: stats["Total"], icon: Wallet, color: "text-blue-600" },
+    { label: "Valider & payer", value: "", stats: stats["Total"], icon: Wallet, color: "text-blue-600" },
     { label: "Brouillon", value: "Brouillon", stats: stats["Brouillon"], icon: XCircle, color: "text-gray-500" },
     { label: "Envoyée", value: "Envoyer", stats: stats["Envoyer"], icon: Send, color: "text-orange-500" },
     { label: "Validée", value: "Valider", stats: stats["Valider"], icon: CheckCircle, color: "text-purple-500" },
@@ -138,15 +142,53 @@ export default function Home() {
     { label: "Archivée", value: "Archiver", stats: stats["Archiver"], icon: Archive, color: "text-slate-600" },
   ];
 
+  const toggleCardVisibility = (label: string) => {
+    setVisibleCardLabels(prev => 
+      prev.includes(label) 
+        ? prev.filter(l => l !== label) 
+        : [...prev, label]
+    );
+  };
+
   return (
     <div className="w-full">
       <div className="flex flex-wrap justify-between items-center mb-6">
         <h1 className="text-2xl font-bold mb-4">Liste des factures émises</h1>
+        
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="icon" title="Gérer la visibilité des cartes">
+              <Eye className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56" align="end">
+            <div className="space-y-2">
+              <h4 className="font-medium leading-none mb-2">Visibilité des cartes</h4>
+              {cards.map((card) => (
+                <div key={card.label} className="flex items-center justify-between py-1">
+                  <span className="text-sm truncate mr-2">{card.label}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => toggleCardVisibility(card.label)}
+                  >
+                    {!visibleCardLabels.includes(card.label) ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Cartes de sélection / Filtres de statut */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        {cards.map((card) => (
+        {cards.filter(c => visibleCardLabels.includes(c.label)).map((card) => (
           <Card
             key={card.label}
             className={cn(

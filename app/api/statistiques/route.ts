@@ -158,6 +158,7 @@ export async function GET(request: Request) {
       const payeXOF = totalXOF - resteXOF;
       const monthKey = format(invoice.dateCreation, 'yyyy-MM');
 
+      let isRevenueStatus = false;
       let amountToCountInSales = 0;
 
       switch (invoice.statut) {
@@ -173,16 +174,19 @@ export async function GET(request: Request) {
           stats.invoiceStats.validées.count++;
           stats.invoiceStats.validées.sum += totalXOF;
           amountToCountInSales = totalXOF;
+          isRevenueStatus = true;
           break;
         case StatusFacture.Payer:
           stats.invoiceStats.payées.count++;
-          stats.invoiceStats.payées.sum += payeXOF; // Uniquement le réel payé
-          amountToCountInSales = payeXOF;
+          stats.invoiceStats.payées.sum += totalXOF; // CA = Total TTC
+          amountToCountInSales = totalXOF;
+          isRevenueStatus = true;
           break;
         case StatusFacture.Solde:
           stats.invoiceStats.soldées.count++;
           stats.invoiceStats.soldées.sum += totalXOF;
           amountToCountInSales = totalXOF;
+          isRevenueStatus = true;
           break;
         case StatusFacture.Annuler:
           stats.invoiceStats.annulées.count++;
@@ -195,34 +199,30 @@ export async function GET(request: Request) {
       }
 
       // Mise à jour du CA réalisé et évolution mensuelle si facture valide/payée/soldée
-      const validStatuses: StatusFacture[] = [StatusFacture.Valider, StatusFacture.Payer, StatusFacture.Solde];
-      if (validStatuses.includes(invoice.statut)) {
+      if (isRevenueStatus) {
         stats.revenueRealized += amountToCountInSales;
+        stats.outstandingPayments += resteXOF; // Reste à recouvrer sur ces factures
+
         if (monthlyData.has(monthKey)) {
           monthlyData.get(monthKey)!.revenue += amountToCountInSales;
         }
 
-        // Top Clients basé sur le CA réalisé
+        // Top Clients basé sur le CA réalisé (TTC)
         const clientName = invoice.client.nom;
         const currentClient = clientsMap.get(clientName) || { name: clientName, amount: 0, count: 0 };
         currentClient.amount += amountToCountInSales;
         currentClient.count++;
         clientsMap.set(clientName, currentClient);
 
-        // Top Produits basé sur la proportion payée/validée de la facture
-        const proportion = totalXOF > 0 ? amountToCountInSales / totalXOF : 0;
+        // Top Produits basé sur le CA réalisé (TTC)
         for (const prod of invoice.produits) {
           const prodName = prod.designation;
-          const prodAmountRealized = Number(prod.montantTotal) * rate * proportion;
+          const prodAmount = Number(prod.montantTotal) * rate;
           const currentProd = productsMap.get(prodName) || { name: prodName, amount: 0, quantity: 0 };
-          currentProd.amount += prodAmountRealized;
+          currentProd.amount += prodAmount;
           currentProd.quantity += prod.quantite;
           productsMap.set(prodName, currentProd);
         }
-      }
-
-      if (invoice.statut !== StatusFacture.Annuler) {
-        stats.outstandingPayments += resteXOF;
       }
     }
 
