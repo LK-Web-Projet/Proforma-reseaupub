@@ -149,6 +149,11 @@ export default function FactureDetailPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [operationType, setOperationType] = useState<'PAIEMENT' | 'DEPENSE'>('PAIEMENT');
 
+  const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
+  const [selectedPaiementId, setSelectedPaiementId] = useState<string | null>(null);
+  const [proofFiles, setProofFiles] = useState<FileList | null>(null);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+
   const [cashRegisters, setCashRegisters] = useState<{id: number, name: string}[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
@@ -313,6 +318,28 @@ export default function FactureDetailPage() {
       produits[index] = updatedProduct as Facture["produits"][number];
     }
     setFormData((prev) => ({ ...prev, produits }));
+  };
+
+  const handleUploadProof = async () => {
+    if (!selectedPaiementId || !proofFiles || proofFiles.length === 0) return;
+    setIsUploadingProof(true);
+    const data = new FormData();
+    data.append('paiementId', selectedPaiementId);
+    Array.from(proofFiles).forEach(f => data.append('files', f));
+
+    try {
+      const res = await fetch(`/api/factures/${id}/paiements/upload-proof`, { method: 'POST', body: data });
+      if (res.ok) {
+        setIsProofDialogOpen(false);
+        setProofFiles(null);
+        setSelectedPaiementId(null);
+        toast.success("Preuve(s) uploadée(s) !");
+        await fetchFacture();
+      } else {
+        toast.error("Échec de l'upload des preuves.");
+      }
+    } catch (e) { toast.error("Erreur réseau."); }
+    finally { setIsUploadingProof(false); }
   };
 
   const handleSaveOperation = async () => {
@@ -599,11 +626,26 @@ export default function FactureDetailPage() {
                                     <TableCell className="text-right font-bold text-green-600">{p.type === 'PAIEMENT' ? formatMoney(p.montant) : ""}</TableCell>
                                     <TableCell className="text-right font-bold text-red-600">{p.type === 'DEPENSE' ? formatMoney(p.montant) : ""}</TableCell>
                                     <TableCell className="text-center pr-6">
-                                        {p.cashJournalEntry?.attachments?.map(att => (
-                                            <Button key={att.id} asChild variant="ghost" size="icon" className="h-8 w-8 text-blue-500">
-                                                <a href={att.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
-                                            </Button>
-                                        )) || "-"}
+                                        <div className="flex items-center justify-center gap-1">
+                                            {p.cashJournalEntry?.attachments?.map(att => (
+                                                <Button key={att.id} asChild variant="ghost" size="icon" className="h-8 w-8 text-blue-500">
+                                                    <a href={att.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
+                                                </Button>
+                                            ))}
+                                            {(!p.cashJournalEntry?.attachments || p.cashJournalEntry.attachments.length === 0) && (
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                                                    onClick={() => {
+                                                        setSelectedPaiementId(p.id);
+                                                        setIsProofDialogOpen(true);
+                                                    }}
+                                                >
+                                                    <Upload className="w-4 h-4" />
+                                                </Button>
+                                            )}
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             )) : (
@@ -752,6 +794,29 @@ export default function FactureDetailPage() {
             </Card>
         </div>
       </div>
+
+      <Dialog open={isProofDialogOpen} onOpenChange={setIsProofDialogOpen}>
+        <DialogContent className="max-w-md">
+            <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                    <Upload className="w-5 h-5 text-primary" /> Ajouter des preuves
+                </DialogTitle>
+                <DialogDescription>Sélectionnez un ou plusieurs fichiers pour justifier cette transaction.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Fichiers (Images, PDF...)</label>
+                    <Input type="file" multiple onChange={(e) => setProofFiles(e.target.files)} />
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsProofDialogOpen(false)}>Annuler</Button>
+                <Button onClick={handleUploadProof} disabled={isUploadingProof || !proofFiles}>
+                    {isUploadingProof ? "Upload..." : "Confirmer l'envoi"}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent className="max-w-md border-none shadow-2xl">
