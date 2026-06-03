@@ -124,10 +124,27 @@ export default function Home() {
 
   // Filtrage final pour le tableau (Objet + Statut sélectionné via les cartes)
   const filteredFactures = useMemo(() => {
+    const searchTerms = objet.toLowerCase().trim().split(/\s+/).filter(t => t !== '');
+    
     return allFactures.filter(f => {
-      const matchStatut = statut === '' ? (f.statut !== 'Brouillon' && f.statut !== 'Annuler' && f.statut !== 'Archiver') : f.statut === statut;
-      const matchObjet = objet === '' || f.objet.toLowerCase().includes(objet.toLowerCase());
-      return matchStatut && matchObjet;
+      const matchStatut = statut === '' 
+        ? (f.statut !== 'Brouillon' && f.statut !== 'Annuler' && f.statut !== 'Archiver') 
+        : f.statut === statut;
+      
+      if (!matchStatut) return false;
+
+      if (searchTerms.length === 0) return true;
+
+      const clientNom = (f.client?.nom || "").toLowerCase();
+      const invoiceNumero = (f.numero || "").toLowerCase();
+      const invoiceObjet = (f.objet || "").toLowerCase();
+
+      // Vérifier si TOUS les mots clés sont présents dans au moins l'un des champs
+      return searchTerms.every(term => 
+        clientNom.includes(term) || 
+        invoiceNumero.includes(term) || 
+        invoiceObjet.includes(term)
+      );
     });
   }, [allFactures, statut, objet]);
 
@@ -244,7 +261,7 @@ export default function Home() {
               type="text"
               value={objet}
               onChange={(e) => setObjet(e.target.value)}
-              placeholder="Rechercher par objet..."
+              placeholder="Rechercher par objet, client, numéro..."
               className="w-full md:w-1/3"
             />
           </div>
@@ -303,7 +320,6 @@ export default function Home() {
                     setYear("");
                   }}
                   className="border-gray-300 rounded-md shadow-sm"
-                  disabled={!!year}
                 />
               </div>
               <div>
@@ -318,7 +334,6 @@ export default function Home() {
                     setYear("");
                   }}
                   className="border-gray-300 rounded-md shadow-sm"
-                  disabled={!!year}
                 />
               </div>
             </div>
