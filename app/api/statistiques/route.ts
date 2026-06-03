@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { StatusFacture, OperationType, StatutFactureFournisseur } from '@prisma/client';
+import { StatusFacture, OperationType } from '@prisma/client';
 import { format, eachMonthOfInterval, startOfYear, endOfYear } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
       };
     }
 
-    const [invoices, cashEntries, supplierInvoices] = await Promise.all([
+    const [invoices, cashEntries] = await Promise.all([
       prisma.invoice.findMany({
         where: invoiceWhere,
         include: {
@@ -98,14 +98,6 @@ export async function GET(request: Request) {
       prisma.cashJournal.findMany({
         where: {
           date_operation: {
-            gte: startDate,
-            lte: endDate,
-          },
-        },
-      }),
-      prisma.factureFournisseur.findMany({
-        where: {
-          date: {
             gte: startDate,
             lte: endDate,
           },
@@ -155,7 +147,6 @@ export async function GET(request: Request) {
       const rate = exchangeRates[invoice.devise] || 1;
       const totalXOF = Number(invoice.totalTTC) * rate;
       const resteXOF = Number(invoice.resteAPayer) * rate;
-      const monthKey = format(new Date(invoice.dateCreation), "yyyy-MM");
 
       let isRevenueStatus = false;
       let amountToCountInSales = 0;
@@ -197,14 +188,10 @@ export async function GET(request: Request) {
           break;
       }
 
-      // Mise à jour du CA réalisé et évolution mensuelle si facture valide/payée/soldée
+      // Mise à jour du CA réalisé (Top Clients / Top Produits)
       if (isRevenueStatus) {
         stats.revenueRealized += amountToCountInSales;
         stats.outstandingPayments += resteXOF; // Reste à recouvrer sur ces factures
-
-        if (monthlyData.has(monthKey)) {
-          monthlyData.get(monthKey)!.revenue += amountToCountInSales;
-        }
 
         // Top Clients basé sur le CA réalisé (TTC)
         const clientName = invoice.client.nom;
@@ -225,21 +212,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // Recettes et Dépenses basées STRICTEMENT sur le journal de caisse
     for (const entry of cashEntries) {
       const monthKey = format(entry.date_operation, 'yyyy-MM');
       if (entry.type === OperationType.RECETTE) {
         stats.cashStats.recettes += entry.montant;
+        if (monthlyData.has(monthKey)) {
+          monthlyData.get(monthKey)!.revenue += entry.montant;
+        }
       } else if (entry.type === OperationType.DEPENSE) {
         stats.cashStats.depenses += entry.montant;
-        if (monthlyData.has(monthKey)) monthlyData.get(monthKey)!.expenses += entry.montant;
-      }
-    }
-
-    for (const f of supplierInvoices) {
-      const monthKey = format(f.date, 'yyyy-MM');
-      const amount = Number(f.montant);
-      if (f.status === StatutFactureFournisseur.PAYEE) {
-        if (monthlyData.has(monthKey)) monthlyData.get(monthKey)!.expenses += amount;
+        if (monthlyData.has(monthKey)) {
+          monthlyData.get(monthKey)!.expenses += entry.montant;
+        }
       }
     }
 
