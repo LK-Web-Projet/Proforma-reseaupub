@@ -8,6 +8,14 @@ RUN npm ci
 COPY . .
 
 RUN npx prisma generate
+
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_build_placeholder
+ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
+ARG DIRECT_URL=postgresql://build:build@localhost:5432/build
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV DATABASE_URL=$DATABASE_URL
+ENV DIRECT_URL=$DIRECT_URL
+
 RUN npm run build
 
 # ── Runner ─────────────────────────────────────────────────────────────────────

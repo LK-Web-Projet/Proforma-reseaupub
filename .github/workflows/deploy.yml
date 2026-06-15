@@ -56,8 +56,15 @@ jobs:
             docker compose --compatibility -f ${{ env.COMPOSE_FILE }} pull ${{ env.SERVICE }}
             docker compose --compatibility -f ${{ env.COMPOSE_FILE }} up -d ${{ env.SERVICE }}
 
+  notify:
+    name: Notify Discord
+    runs-on: ubuntu-latest
+    needs: [build, deploy]
+    if: always()
+
+    steps:
       - name: Notify Discord — succès
-        if: success()
+        if: ${{ needs.build.result == 'success' && needs.deploy.result == 'success' }}
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -66,9 +73,10 @@ jobs:
           description: "Image : `${{ github.sha }}`"
 
       - name: Notify Discord — échec
-        if: failure()
+        if: ${{ needs.build.result == 'failure' || needs.deploy.result == 'failure' }}
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
           status: failure
           title: "Échec déploiement Proforma"
+          description: "Build: `${{ needs.build.result }}` | Deploy: `${{ needs.deploy.result }}`"
