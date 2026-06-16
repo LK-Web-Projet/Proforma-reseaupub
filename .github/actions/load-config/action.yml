@@ -1,0 +1,33 @@
+name: 'Load Centralized Config'
+description: 'Charge les variables CI/CD depuis .github/infra-config-centralized.yml'
+
+inputs:
+  config-path:
+    description: 'Chemin du fichier config (relatif a la racine du repo)'
+    required: false
+    default: '.github/infra-config-centralized.yml'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate config file exists
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.config-path }}" ]; then
+          echo "::error::Fichier ${{ inputs.config-path }} introuvable."
+          exit 1
+        fi
+
+    - name: Load config into GITHUB_ENV
+      shell: bash
+      run: |
+        CONFIG="${{ inputs.config-path }}"
+        while IFS= read -r line; do
+          [[ "$line" =~ ^#.*$ ]] && continue
+          [[ -z "$line" ]] && continue
+          KEY=$(echo "$line" | cut -d':' -f1 | xargs)
+          VALUE=$(echo "$line" | cut -d':' -f2- | xargs)
+          if [ -n "$KEY" ] && [ -n "$VALUE" ]; then
+            echo "$KEY=$VALUE" >> $GITHUB_ENV
+          fi
+        done < "$CONFIG"

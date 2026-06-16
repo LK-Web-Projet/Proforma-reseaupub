@@ -1,0 +1,19 @@
+# ============================================================================
+# PROFORMA — Centralized Infrastructure Configuration
+# ============================================================================
+# Toutes les variables CI/CD non-sensibles sont centralisees ici.
+# Chargees automatiquement par l'action load-config dans chaque job.
+#
+# Repository Secrets (variables sensibles uniquement) :
+#   GHCR_TOKEN, SSH_HOST, SSH_PRIVATE_KEY, DISCORD_WEBHOOK_URL
+# ============================================================================
+
+# === APP IDENTITY ===
+APP_NAME: proforma
+IMAGE: ghcr.io/lk-web-projet/proforma
+SERVICE: proforma
+COMPOSE_FILE: docker-compose.nextjs.yml
+INFRA_PATH: /srv/reseaupub-shared-project/reseaupub-infra
+
+# === CLERK (cle publique — pk_test_* — non sensible) ===
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_bWFqb3ItZWFyd2lnLTQxLmNsZXJrLmFjY291bnRzLmRldiQ
