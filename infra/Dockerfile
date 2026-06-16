@@ -14,6 +14,16 @@ ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 RUN npm run build
 
+# ── Prisma CLI (isolé) ───────────────────────────────────────────────────────
+# Installation propre du CLI Prisma seul, pour que npm résolve correctement
+# ses dépendances transitives (ex. "effect" requis par @prisma/config) sans
+# embarquer next/react/clerk ni les devDependencies du projet.
+FROM node:20-alpine AS prisma-cli
+WORKDIR /prisma
+COPY package.json ./
+RUN PRISMA_VERSION=$(node -p "const p=require('./package.json'); (p.dependencies?.prisma || p.devDependencies?.prisma).replace(/^[\^~]/, '')") \
+ && npm install --no-save prisma@${PRISMA_VERSION}
+
 # ── Runner ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -28,11 +38,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Prisma CLI + engines pour migrations au démarrage
-# node_modules complet requis : @prisma/config dépend de paquets à plat (ex. "effect")
-# non couverts par une copie sélective de prisma/ et @prisma/
+# Prisma CLI pour migrations au démarrage (deps résolues isolément, voir stage prisma-cli)
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=prisma-cli --chown=nextjs:nodejs /prisma/node_modules ./node_modules
 
 USER nextjs
 EXPOSE 3000
