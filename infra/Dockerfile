@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci
+RUN node -p "const p=require('./package.json'); (p.dependencies?.prisma || p.devDependencies?.prisma).replace(/^[\^~]/, '')" > /tmp/prisma-version
 
 COPY . .
 
@@ -18,11 +19,12 @@ RUN npm run build
 # Installation propre du CLI Prisma seul, pour que npm résolve correctement
 # ses dépendances transitives (ex. "effect" requis par @prisma/config) sans
 # embarquer next/react/clerk ni les devDependencies du projet.
+# Aucun package.json copié ici : sa présence forcerait npm à valider les peer
+# deps de tout le projet (react/next/clerk) et casserait l'install isolée.
 FROM node:20-alpine AS prisma-cli
 WORKDIR /prisma
-COPY package.json ./
-RUN PRISMA_VERSION=$(node -p "const p=require('./package.json'); (p.dependencies?.prisma || p.devDependencies?.prisma).replace(/^[\^~]/, '')") \
- && npm install --no-save prisma@${PRISMA_VERSION}
+COPY --from=builder /tmp/prisma-version ./prisma-version
+RUN npm install --no-save prisma@$(cat prisma-version)
 
 # ── Runner ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
