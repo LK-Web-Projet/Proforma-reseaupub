@@ -118,11 +118,44 @@ export default function CashJournalPage() {
   }, [filteredEntries, sortOrder]);
 
   const { totalRecettesGlobal, totalDepensesGlobal, soldeFinalGlobal } = useMemo(() => {
-    const totalRecettesGlobal = allEntries.filter((e) => e.type === 'RECETTE').reduce((acc, curr) => acc + curr.montant, 0);
-    const totalDepensesGlobal = allEntries.filter((e) => e.type === 'DEPENSE').reduce((acc, curr) => acc + curr.montant, 0);
-    const soldeFinalGlobal = totalRecettesGlobal - totalDepensesGlobal;
-    return { totalRecettesGlobal, totalDepensesGlobal, soldeFinalGlobal };
-  }, [allEntries]);
+    // Compute totals taking into account only visible cash registers and treating transfers as internal when both sides are visible
+    const visibleIds = new Set(cashRegisters.filter(r => r.view).map(r => r.id));
+
+    let totalRecettes = 0;
+    let totalDepenses = 0;
+
+    for (const e of allEntries) {
+      // only consider entries belonging to visible registers
+      if (!visibleIds.has(e.cashRegisterId)) continue;
+
+      if (e.type === 'RECETTE') {
+        // Detect transfer-generated recette: "Transfert depuis caisse ID X: ..."
+        const m = e.libelle.match(/Transfert depuis caisse ID (\d+)/i);
+        if (m) {
+          const sourceId = parseInt(m[1], 10);
+          // include only if source is NOT visible (external incoming)
+          if (!visibleIds.has(sourceId)) totalRecettes += e.montant;
+        } else {
+          totalRecettes += e.montant;
+        }
+      } else if (e.type === 'DEPENSE') {
+        // Detect transfer-generated depense: "Transfert vers caisse ID X: ..."
+        const m = e.libelle.match(/Transfert vers caisse ID (\d+)/i);
+        if (m) {
+          const destId = parseInt(m[1], 10);
+          // include only if destination is NOT visible (external outgoing)
+          if (!visibleIds.has(destId)) totalDepenses += e.montant;
+        } else {
+          totalDepenses += e.montant;
+        }
+      }
+    }
+
+    // Solde global = sum of balances of visible registers (this matches the cards display)
+    const solde = cashRegisters.filter(r => r.view).reduce((acc, r) => acc + (r.balance || 0), 0);
+
+    return { totalRecettesGlobal: totalRecettes, totalDepensesGlobal: totalDepenses, soldeFinalGlobal: solde };
+  }, [allEntries, cashRegisters]);
 
 
 
@@ -152,6 +185,25 @@ export default function CashJournalPage() {
     return cashRegisters.filter(r => r.view);
   }, [cashRegisters]);
 
+  // Replace transfer libelle IDs with register names for display
+  const getReadableLibelle = (libelle: string) => {
+    try {
+      // Matches patterns like: "Transfert vers caisse ID 5: ..." or "Transfert depuis caisse ID 3: ..."
+      const re = /(Transfert (?:vers|depuis) caisse ID )([0-9]+)(: ?)(.*)/i;
+      const m = libelle.match(re);
+      if (m) {
+        const id = parseInt(m[2], 10);
+        const reg = cashRegisters.find(r => r.id === id);
+        if (reg) {
+          return `${m[1]}${reg.name}${m[3]}${m[4]}`;
+        }
+      }
+    } catch (e) {
+      // ignore and return original
+    }
+    return libelle;
+  };
+
   return (
     <div className="pt-8 ">
        <div className="flex items-center justify-between mb-4">
@@ -164,6 +216,9 @@ export default function CashJournalPage() {
               className="border-gray-300 rounded-md shadow-sm p-2"
               title="Sélectionnez une année"
             >
+              <option value="2030">2030</option>
+              <option value="2029">2029</option>
+              <option value="2028">2028</option>
               <option value="2027">2027</option>
               <option value="2026">2026</option>
               <option value="2025">2025</option>
@@ -271,14 +326,28 @@ export default function CashJournalPage() {
       </div>
 
       <Card>
+        <div className="px-4 py-2 flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-3 h-3 bg-green-600 rounded-sm"></span>
+              <span>Recette (vert)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-3 h-3 bg-red-600 rounded-sm"></span>
+              <span>Dépense (rouge)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-3 h-3 bg-blue-600 rounded-sm"></span>
+              <span>Approvisionnement (bleu)</span>
+            </div>
+          </div>
         <div className="relative">
           {isPending && (
             <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-20">
               <RefreshCcw className="h-10 w-10 animate-spin text-primary" />
             </div>
           )}
-          <div className="overflow-auto max-h-[calc(100vh-250px)]">
-          <Table>
+          <div className="w-full overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
+          <Table className="min-w-[700px] w-full">
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead>
@@ -296,16 +365,15 @@ export default function CashJournalPage() {
                 <TableHead>Caisse</TableHead>
                 <TableHead>Libellé</TableHead>
                 <TableHead>Type d&apos;Entrée</TableHead>
-                <TableHead className="text-right">Entrée d’argent</TableHead>
-                <TableHead className="text-right">Dépense</TableHead>
+                <TableHead className="text-right">Montant</TableHead>
                 <TableHead className="text-right">Solde</TableHead>
-                <TableHead>Pièces jointes</TableHead>
+                <TableHead className="hidden md:table-cell">Fichier📄</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center">
+                  <TableCell colSpan={7} className="text-center">
                     Chargement...
                   </TableCell>
                 </TableRow>
@@ -324,11 +392,11 @@ export default function CashJournalPage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-62.5">
+                    <TableCell className="max-w-[250px]">
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <p className="truncate max-w-37.5 cursor-pointer">
+                            <p className="truncate max-w-[150px] cursor-pointer">
                               {entry.cashRegister.name}
                             </p>
                           </TooltipTrigger>
@@ -342,37 +410,42 @@ export default function CashJournalPage() {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <p className="truncate max-w-62.5 cursor-pointer">
-                              {entry.libelle}
+                            <p className="truncate max-w-[250px] cursor-pointer">
+                              {getReadableLibelle(entry.libelle)}
                             </p>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>{entry.libelle}</p>
+                            <p>{getReadableLibelle(entry.libelle)}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       {entry.type === "RECETTE"
                         ? entry.isApportDeCaisse
                           ? "Apport de Caisse"
                           : "Recette"
                         : ""}
                     </TableCell>
-                    <TableCell className="text-right text-green-600">
-                      {entry.type === "RECETTE" || entry.type === "TRANSFERT"
-                        ? `${entry.montant.toLocaleString("fr-FR")} FCFA`
-                        : ""}
-                    </TableCell>
-                    <TableCell className="text-right text-red-600">
-                      {entry.type === "DEPENSE" || entry.type === "TRANSFERT"
-                        ? `${entry.montant.toLocaleString("fr-FR")} FCFA`
-                        : ""}
+                    <TableCell className="text-right">
+                      {entry.type === "RECETTE" ? (
+                        entry.isApportDeCaisse ? (
+                          <span className="text-blue-600 font-bold">{`+${entry.montant.toLocaleString("fr-FR")} FCFA`}</span>
+                        ) : (
+                          <span className="text-green-600 font-bold">{`+${entry.montant.toLocaleString("fr-FR")} FCFA`}</span>
+                        )
+                      ) : entry.type === "DEPENSE" ? (
+                        <span className="text-red-600 font-bold">{`-${entry.montant.toLocaleString("fr-FR")} FCFA`}</span>
+                      ) : entry.type === "TRANSFERT" ? (
+                        <span className="text-purple-600 font-bold">{`${entry.montant.toLocaleString("fr-FR")} FCFA`}</span>
+                      ) : (
+                        ''
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {entry.solde.toLocaleString("fr-FR")} FCFA
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       {entry.attachments && entry.attachments.length > 0 ? (
                         <div className="flex flex-col">
                           {entry.attachments.map((att) => (
@@ -381,7 +454,7 @@ export default function CashJournalPage() {
                               href={att.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-500 hover:underline truncate max-w-13.75"
+                              className="text-blue-500 hover:underline truncate max-w-[120px]"
                             >
                               {att.fileName}
                             </a>
