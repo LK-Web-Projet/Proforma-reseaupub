@@ -51,6 +51,7 @@ type Stats = {
   topClients: Array<{ name: string; amount: number; count: number }>;
   topProducts: Array<{ name: string; amount: number; quantity: number }>;
   monthlyEvolution: Array<{ month: string; revenue: number; expenses: number }>;
+  proformaEvolution: Array<{ month: string; revenue: number; expenses: number }>;
 };
 
 type Client = {
@@ -481,6 +482,25 @@ export default function StatistiquesPage() {
                 </CardContent>
               </Card>
             </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Analyse des Paiements et Dépenses (Proforma)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[400px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.proformaEvolution}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="month" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value / 1000}k`} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <Legend />
+                    <Bar dataKey="revenue" name="Entrées Proforma" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="expenses" name="Dépenses Proforma" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       ) : (
