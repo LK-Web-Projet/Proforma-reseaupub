@@ -114,12 +114,12 @@ export default function StatistiquesPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  const fetchStats = useCallback(async (currentFilters = filters, currentRange = dateRange) => {
+  const fetchStats = useCallback(async (currentFilters: { clientId?: string; gestionnaireId?: string; }, currentRange?: DateRange) => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (currentFilters.clientId) params.append('clientId', currentFilters.clientId);
-    if (currentFilters.gestionnaireId) params.append('gestionnaireId', currentFilters.gestionnaireId);
-    
+    if (currentFilters?.clientId) params.append('clientId', currentFilters.clientId);
+    if (currentFilters?.gestionnaireId) params.append('gestionnaireId', currentFilters.gestionnaireId);
+
     if (currentRange?.from) {
       params.append('startDate', currentRange.from.toISOString());
     }
@@ -137,7 +137,7 @@ export default function StatistiquesPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, dateRange]);
+  }, []);
 
   useEffect(() => {
     const initData = async () => {
@@ -155,7 +155,10 @@ export default function StatistiquesPage() {
         } catch (e) {
             console.error(e);
         }
-        await fetchStats();
+        // Use explicit initial filters/range to avoid missing-deps ESLint warning
+        const initialFilters = { clientId: '', gestionnaireId: '' };
+        const initialRange = { from: startOfYear(new Date()), to: endOfYear(new Date()) };
+        await fetchStats(initialFilters, initialRange);
     };
     initData();
   }, []); // Exécuter seulement au montage
@@ -165,7 +168,7 @@ export default function StatistiquesPage() {
   };
 
   const handleApplyFilters = () => {
-    fetchStats();
+    fetchStats(filters, dateRange);
   };
 
   const handleResetFilters = () => {
