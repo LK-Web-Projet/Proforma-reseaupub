@@ -87,7 +87,30 @@ export async function GET(request: Request) {
       };
     }
 
-    const [invoices, cashEntries] = await Promise.all([
+    const paiementWhere: {
+      datePaiement: { gte: Date; lte: Date };
+      invoice?: {
+        clientId?: string;
+        gestionnaires?: { some: { gestionnaireId: string } };
+      };
+    } = {
+      datePaiement: {
+        gte: startDate,
+        lte: endDate,
+      },
+    };
+
+    if (clientId) {
+      paiementWhere.invoice = { clientId };
+    }
+    if (gestionnaireId) {
+      paiementWhere.invoice = {
+        ...paiementWhere.invoice,
+        gestionnaires: { some: { gestionnaireId } },
+      };
+    }
+
+    const [invoices, cashEntries, invoicePaiements] = await Promise.all([
       prisma.invoice.findMany({
         where: invoiceWhere,
         include: {
@@ -103,6 +126,16 @@ export async function GET(request: Request) {
           },
         },
       }),
+      prisma.paiement.findMany({
+        where: paiementWhere,
+        include: {
+          invoice: {
+            include: {
+              client: true
+            }
+          }
+        }
+      })
     ]);
 
     const stats = {
@@ -110,9 +143,9 @@ export async function GET(request: Request) {
       invoiceStats: {
         brouillon: { count: 0, sum: 0 },
         envoyées: { count: 0, sum: 0 },
-        validées: { count: 0, sum: 0 }, // Total TTC
-        payées: { count: 0, sum: 0 },   // Montant réellement payé sur factures "Payer"
-        soldées: { count: 0, sum: 0 },  // Montant total (car soldé)
+        validées: { count: 0, sum: 0 },   // Total TTC
+        payées: { count: 0, sum: 0 },     // Montant réellement payé sur factures "Payer"
+        soldées: { count: 0, sum: 0 },    // Montant total (car soldé)
         annulées: { count: 0, sum: 0 },
         archivées: { count: 0, sum: 0 },
       },
@@ -126,18 +159,26 @@ export async function GET(request: Request) {
       topClients: [] as ClientStat[],
       topProducts: [] as ProductStat[],
       monthlyEvolution: [] as MonthlyStat[],
+      proformaEvolution: [] as MonthlyStat[],
     };
 
     const clientsMap = new Map<string, ClientStat>();
     const productsMap = new Map<string, ProductStat>();
-    
+
     const months = eachMonthOfInterval({ start: startDate, end: endDate });
     const monthlyData = new Map<string, MonthlyStat>();
-    
+    const proformaMonthlyData = new Map<string, MonthlyStat>();
+
     months.forEach(month => {
       const key = format(month, 'yyyy-MM');
+      const label = format(month, 'MMM yyyy', { locale: fr });
       monthlyData.set(key, {
-        month: format(month, 'MMM yyyy', { locale: fr }),
+        month: label,
+        revenue: 0,
+        expenses: 0,
+      });
+      proformaMonthlyData.set(key, {
+        month: label,
         revenue: 0,
         expenses: 0,
       });
@@ -228,6 +269,20 @@ export async function GET(request: Request) {
       }
     }
 
+    // Statistiques liées aux Paiements (Proforma)
+    for (const paiement of invoicePaiements) {
+      const monthKey = format(paiement.datePaiement, 'yyyy-MM');
+      const amount = Number(paiement.montant);
+
+      if (proformaMonthlyData.has(monthKey)) {
+        if (paiement.type === 'PAIEMENT') {
+          proformaMonthlyData.get(monthKey)!.revenue += amount;
+        } else if (paiement.type === 'DEPENSE') {
+          proformaMonthlyData.get(monthKey)!.expenses += amount;
+        }
+      }
+    }
+
     stats.cashStats.balance = stats.cashStats.recettes - stats.cashStats.depenses;
 
     stats.topClients = Array.from(clientsMap.values())
@@ -239,6 +294,7 @@ export async function GET(request: Request) {
       .slice(0, 5);
 
     stats.monthlyEvolution = Array.from(monthlyData.values());
+    stats.proformaEvolution = Array.from(proformaMonthlyData.values());
 
     return NextResponse.json(stats);
   } catch (error) {

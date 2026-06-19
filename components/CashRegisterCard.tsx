@@ -17,6 +17,7 @@ interface CashJournalEntry {
   cashRegisterId: number;
   cashRegister: { name: string };
   isApportDeCaisse?: boolean;
+  createdAt: string;
 }
 
 interface CashRegister {

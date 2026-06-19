@@ -31,6 +31,7 @@ interface CashJournalEntry {
     url: string;
     fileName: string;
   }[];
+  createdAt: string;
 }
 
 interface CashRegister {
@@ -291,7 +292,7 @@ export default function CashJournalPage() {
                     <ArrowUpDown className="ml-2 h-4 w-4" />
                   </Button>
                 </TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Date Opé. / Saisie</TableHead>
                 <TableHead>Caisse</TableHead>
                 <TableHead>Libellé</TableHead>
                 <TableHead>Type d&apos;Entrée</TableHead>
@@ -304,7 +305,7 @@ export default function CashJournalPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center">
+                  <TableCell colSpan={9} className="text-center">
                     Chargement...
                   </TableCell>
                 </TableRow>
@@ -312,8 +313,16 @@ export default function CashJournalPage() {
                 sortedEntries.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell>{entry.id}</TableCell>
-                    <TableCell>
-                      {new Date(entry.date_operation).toLocaleString("fr-FR")}
+                    <TableCell className="whitespace-nowrap">
+                      <div className="flex flex-col text-xs md:text-sm gap-0.5">
+                        <span className="font-semibold" title="Date d'opération">
+                          {new Date(entry.date_operation).toLocaleString("fr-FR")}
+                        </span>
+                        <span className="text-[10px] md:text-xs text-muted-foreground flex items-center gap-1" title="Date de saisie dans le système">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          Saisie : {new Date(entry.createdAt).toLocaleString("fr-FR")}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="max-w-62.5">
                       <TooltipProvider>
