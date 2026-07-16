@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { StatusFacture } from "@prisma/client";
+import { sendProformaValidatedNotification } from "@/lib/email/proformaValidation";
 
 // ---------- Schéma de validation ----------
 const productSchema = z.object({
@@ -107,6 +108,8 @@ async function updateFacture(id: string, body: unknown) {
   console.log("Validation réussie. Données validées:", validation.data);
   const { statut, produits, devise, paymentConditionPercentage, objet, gestionnaireId, info, isTaxExempt } = validation.data;
 
+  let previousStatut: StatusFacture | undefined;
+
   try {
     // Start a transaction
     const updatedFacture = await prisma.$transaction(async (tx) => {
@@ -114,6 +117,7 @@ async function updateFacture(id: string, body: unknown) {
       const updatedFactureData: any = {};
       const currentInvoice = await tx.invoice.findUnique({ where: { id } });
       if (!currentInvoice) throw new Error("Facture non trouvée pour la mise à jour");
+      previousStatut = currentInvoice.statut;
 
       if (statut) {
         updatedFactureData.statut = statut;
@@ -247,6 +251,21 @@ async function updateFacture(id: string, body: unknown) {
     });
 
     console.log("Mise à jour de la facture réussie.");
+
+    // Envoi de la notification interne uniquement lors du passage au statut "Valider"
+    if (
+      statut === "Valider" &&
+      previousStatut !== "Valider" &&
+      updatedFacture.statut === "Valider"
+    ) {
+      sendProformaValidatedNotification(updatedFacture).catch((emailError) => {
+        console.error(
+          "Erreur lors de l'envoi de la notification de validation de proforma :",
+          emailError
+        );
+      });
+    }
+
     return NextResponse.json(updatedFacture);
 
   } catch (error: Error | unknown) {
