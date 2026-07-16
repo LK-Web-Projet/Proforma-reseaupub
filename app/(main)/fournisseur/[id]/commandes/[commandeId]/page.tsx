@@ -365,7 +365,7 @@ export default function CommandeDetailPage() {
                 slogan: null,
                 adresse: "Etoile Rouge, Cotonou, Bénin",
                 telephone: "+229 01 69 81 30 30",
-                email: "contact@reseaupub.com",
+                email: "info@reseaupub.com",
                 emailFinance: "finance@reseaupub.com",
                 ifu: "0201710009974",
                 rccm: null,
