@@ -154,7 +154,7 @@ export default function FactureDetailPage() {
   const [proofFiles, setProofFiles] = useState<FileList | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
 
-  const [cashRegisters, setCashRegisters] = useState<{id: number, name: string}[]>([]);
+  const [cashRegisters, setCashRegisters] = useState<{id: number, name: string, view?: boolean}[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
 
@@ -178,9 +178,12 @@ export default function FactureDetailPage() {
       }
 
       const cashData = await cashRes.json();
-      setCashRegisters(cashData.cashRegisters || []);
-      if (cashData.cashRegisters?.length > 0) {
-        setSelectedCashRegisterId(cashData.cashRegisters[0].id.toString());
+      const registers = cashData.cashRegisters || [];
+      setCashRegisters(registers);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const visibleRegisters = registers.filter((r: any) => r.view !== false);
+      if (visibleRegisters.length > 0) {
+        setSelectedCashRegisterId(visibleRegisters[0].id.toString());
       }
 
       const gestionnairesData = await gestionnairesRes.json();
@@ -856,7 +859,7 @@ export default function FactureDetailPage() {
                 <label className="text-xs font-bold uppercase text-muted-foreground">Caisse de destination</label>
                 <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
                     <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
-                    <SelectContent>{cashRegisters.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
+                    <SelectContent>{cashRegisters.filter(r => r.view !== false).map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
                 </Select>
             </div>
             <div className="space-y-2">
