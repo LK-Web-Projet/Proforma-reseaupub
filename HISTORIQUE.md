@@ -24,6 +24,26 @@ Ce qui a été demandé et pourquoi.
 
 ## Journal
 
+## 2026-07-17 — Masquage des caisses non visibles dans le formulaire de paiement
+
+**Demande / Contexte**
+Dans la page de détail d'une facture (`app/(main)/facture/[id]/page.tsx`), le formulaire d'ajout d'un paiement/dépense affiche la liste des caisses d'enregistrement. Il fallait masquer les caisses dont le champ `view` (modèle `CashRegister` dans `prisma/schema.prisma`, `view Boolean @default(true)`) est à `false`.
+
+**Modifications apportées**
+- `app/(main)/facture/[id]/page.tsx` :
+  - Le type du state `cashRegisters` inclut désormais `view?: boolean`.
+  - À la récupération des caisses (`fetchFacture`), la sélection par défaut (`selectedCashRegisterId`) choisit la première caisse **visible** (`view !== false`) plutôt que la première de la liste brute.
+  - Le `<Select>` de « Caisse de destination » dans le dialogue de paiement filtre désormais `cashRegisters` sur `r.view !== false` avant de générer les options.
+
+**Erreurs rencontrées & solutions**
+Aucune. L'API `/api/cash-journal` (utilisée aussi par le journal de caisse pour la gestion des caisses) n'a pas été modifiée — le filtrage est fait côté client, uniquement pour ce formulaire de paiement, afin de ne pas casser l'affichage des caisses masquées ailleurs (ex: page d'administration des caisses).
+
+**À tester / points d'attention**
+- Créer/marquer une caisse avec `view = false` en base et vérifier qu'elle n'apparaît plus dans le sélecteur de caisse du formulaire de paiement, mais reste utilisable ailleurs si nécessaire.
+- Le filtrage est uniquement côté UI : l'API `/api/factures/[id]/paiements` accepte toujours un `cashRegisterId` de caisse masquée si on le forge manuellement (non bloqué côté serveur).
+
+---
+
 ## 2026-07-16 — Ajout du nom du client dans l'objet de l'email de validation
 
 **Demande / Contexte**
