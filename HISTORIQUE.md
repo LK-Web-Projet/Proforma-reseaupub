@@ -24,6 +24,73 @@ Ce qui a été demandé et pourquoi.
 
 ## Journal
 
+## 2026-07-19 — Affichage des campagnes liées sur la fiche proforma
+
+**Demande / Contexte**
+Sur la page de détail d'une proforma, afficher le nom ainsi que les dates de début/fin de la ou des campagne(s) camptrack liées à cette proforma (utilise la route `/api/factures/[id]/campagnes` codée juste avant).
+
+**Modifications apportées**
+- `app/(main)/facture/[id]/page.tsx` :
+  - Nouveau type `Campagne` (`id`, `nom`, `statut`, `dateDebut`, `dateFin`).
+  - Nouveau state `campagnes`, alimenté en parallèle des autres fetchs dans `fetchFacture` via `GET /api/factures/${id}/campagnes`.
+  - Nouvelle carte « Campagne(s) liée(s) » dans la colonne de droite (entre la carte Client et le Récapitulatif Financier) : liste le nom de chaque campagne + `dateDebut → dateFin` formatées en `fr-FR`. Affiche un message « Aucune campagne liée pour le moment. » si la liste est vide.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `eslint` passent sans erreur.
+
+**À tester / points d'attention**
+- Non vérifié visuellement dans le navigateur (la page est protégée par Clerk, pas de session dispo depuis cet environnement) — à vérifier manuellement que la carte s'affiche bien et que les dates sont lisibles, une fois une vraie campagne liée à une proforma côté camptrack.
+- Comme `getCampagnesForProforma` ne lève jamais d'exception (retourne toujours `[]` en cas de souci), la carte affichera simplement « Aucune campagne liée » si camptrack est injoignable — pas d'erreur visible pour l'utilisateur, mais pas d'indication non plus qu'il y a un problème de configuration. À surveiller si besoin de diagnostiquer plus tard.
+
+---
+
+## 2026-07-19 — Appel sortant proforma → camptrack (récupération des campagnes liées)
+
+**Demande / Contexte**
+Suite à l'intégration entrante (camptrack → proforma), camptrack a mis en place le sens inverse : une route `GET /api/integration/campagnes?id_proforma=xxx` chez camptrack qui retourne les campagnes liées à une proforma donnée, protégée par une clé (`CAMPTRACK_INTEGRATION_API_KEY`, même pattern que `lib/integrationAuth.ts` côté proforma). Il fallait coder, côté proforma, l'appel sortant vers cette route.
+
+**Modifications apportées**
+- `.env` : ajout de `CAMPTRACK_INTEGRATION_API_KEY` (fournie par camptrack, à garder identique des deux côtés) et `CAMPTRACK_API_URL=http://localhost:3001` (URL locale de camptrack ; à changer pour l'URL HTTPS de prod le moment venu).
+- `lib/camptrackClient.ts` (nouveau) : `getCampagnesForProforma(proformaId)` — appelle `GET ${CAMPTRACK_API_URL}/api/integration/campagnes?id_proforma=...` avec le header `Authorization: Bearer ${CAMPTRACK_INTEGRATION_API_KEY}`. Ne lève jamais d'exception : retourne un tableau vide et logue l'erreur si camptrack est injoignable, mal configuré ou répond en erreur (pour ne jamais faire planter une page/API de cette app à cause d'un souci côté camptrack).
+- `app/api/factures/[id]/campagnes/route.ts` (nouveau) : `GET` — vérifie que la facture existe puis délègue à `getCampagnesForProforma`. Protégé par Clerk comme le reste de `/api/factures/*` (route destinée à être appelée par le frontend authentifié, pas par camptrack).
+
+**Erreurs rencontrées & solutions**
+- Premier test avec un script `tsx` placé dans `/tmp` (hors du repo) → `Cannot find module '../lib/camptrackClient'` car le chemin relatif ne pointait plus vers le bon dossier. Solution : placer le script de test temporaire dans `scripts/` (à l'intérieur du repo) le temps du test, puis le supprimer.
+- Aucune erreur de code sinon. `tsc --noEmit` et `eslint` passent sans erreur.
+
+**À tester / points d'attention**
+- Testé en conditions réelles avec camptrack démarré en local sur le port 3001 : sans clé → 401 ; avec la clé → 200 `[]` (liste vide, cohérent car aucune campagne n'est encore liée à la proforma de test utilisée). Le round-trip complet (lecture des env vars + appel HTTP + parsing JSON) fonctionne.
+- `app/api/factures/[id]/campagnes/route.ts` n'est pas encore branché dans l'UI (page facture) — à faire quand on voudra afficher les campagnes liées sur la fiche proforma.
+- Penser à mettre à jour `CAMPTRACK_API_URL` avec la vraie URL HTTPS de camptrack lors du déploiement en production (actuellement `http://localhost:3001`, valable seulement en local).
+
+---
+
+## 2026-07-19 — API d'intégration serveur-à-serveur avec l'app « Campagnes »
+
+**Demande / Contexte**
+Le projet a une app sœur pour la gestion des campagnes publicitaires. Objectif : que cette app campagnes puisse (1) lister/consulter les proformas validées de cette app-ci pour les associer à une campagne, et (2) rechercher/créer un client en réutilisant la même base client plutôt que d'en dupliquer une. Les deux apps sont sur le même VPS avec chacune une URL HTTPS ; à terme elles pourraient être sur des serveurs séparés — la solution devait fonctionner dans les deux cas.
+
+**Modifications apportées**
+- `lib/integrationAuth.ts` (nouveau) : helper `verifyIntegrationKey(request)` qui vérifie le header `Authorization: Bearer <clé>` contre `process.env.INTEGRATION_API_KEY`, avec comparaison à temps constant (`crypto.timingSafeEqual`) pour éviter les attaques par timing. Retourne une `NextResponse` 401/500 ou `null` si OK.
+- `middleware.ts` : les routes `/api/integration/*` sont ajoutées à `isPublicRoute` (exemptées de `auth.protect()` de Clerk, qui est pensé pour des sessions utilisateur navigateur, pas pour des appels serveur-à-serveur). La sécurité de ces routes est assurée par `verifyIntegrationKey` appelé au début de chaque handler.
+- `app/api/integration/proformas/route.ts` (nouveau) : `GET` — liste les proformas, filtrées par `?statut=` (défaut `Valider`), avec client, gestionnaires et produits (désignation, quantité, prix, durée).
+- `app/api/integration/proformas/[id]/route.ts` (nouveau) : `GET` — détail d'une proforma précise par id (404 si absente).
+- `app/api/integration/clients/route.ts` (nouveau) : `GET ?search=` — recherche de clients existants (nom ou email, insensible à la casse).
+- `app/api/integration/clients/find-or-create/route.ts` (nouveau) : `POST` — upsert d'un client sur le champ unique `nom` (schéma Prisma `Client.nom @unique`). Retourne toujours l'`id` canonique du client, à stocker côté app campagnes.
+- `.env` : ajout de `INTEGRATION_API_KEY` (générée avec `openssl rand -hex 32`), à dupliquer à l'identique dans le `.env` de l'app campagnes. Jamais commitée (`.env*` est dans `.gitignore`).
+
+**Erreurs rencontrées & solutions**
+- Aucune erreur de code. `tsc --noEmit` et `eslint` passent sans erreur sur tous les nouveaux fichiers.
+- ⚠️ Point d'attention découvert en testant en local : le `.env` local a `DATABASE_URL` pointé sur la base **PROD** (la section DEV DATABASE est commentée). Le test de l'endpoint `find-or-create` a donc créé un vrai client de test (« TEST INTEGRATION CLIENT ») dans la base de production. Il a été supprimé immédiatement après vérification via un script Prisma ponctuel. **Il faudrait décommenter/configurer une vraie base DEV pour les tests locaux futurs**, afin d'éviter d'écrire accidentellement dans la prod.
+
+**À tester / points d'attention**
+- Tests manuels effectués en local avec `curl` : sans clé → 401 ; mauvaise clé → 401 ; bonne clé → 200 avec les données attendues sur les 4 endpoints (`proformas`, `proformas/:id` non testé explicitement mais suit le même pattern, `clients?search=`, `clients/find-or-create`).
+- Reste à faire côté app campagnes : appeler ces endpoints avec la même `INTEGRATION_API_KEY` en header `Authorization: Bearer`, stocker `proformaId`/`numero` + `clientId` comme références (pas de duplication des données financières).
+- Si les deux apps finissent sur des serveurs séparés : rien à changer dans le code, seulement possibilité d'ajouter en plus une restriction par IP publique au niveau Nginx en couche supplémentaire (optionnel).
+- Réfléchir à une politique de rotation de `INTEGRATION_API_KEY` si elle venait à fuiter.
+
+---
+
 ## 2026-07-17 — Masquage des caisses non visibles dans le formulaire de paiement
 
 **Demande / Contexte**

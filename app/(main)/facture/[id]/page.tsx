@@ -23,7 +23,8 @@ import {
     TrendingUp, TrendingDown, Clock, Ban,
     History, Landmark, CheckCircle2, ChevronLeft,
     AlertCircle, ExternalLink, Calculator, DollarSign,
-    Edit3, Save, X, Info, Package, Wallet, CheckSquare, Archive, Percent, LucideIcon
+    Edit3, Save, X, Info, Package, Wallet, CheckSquare, Archive, Percent, LucideIcon,
+    Megaphone
 } from "lucide-react";
 import {
   Dialog,
@@ -39,6 +40,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
+
+type Campagne = {
+  id: string;
+  nom: string;
+  statut: string;
+  dateDebut: string;
+  dateFin: string;
+};
 
 type Paiement = {
   id: string;
@@ -155,6 +164,7 @@ export default function FactureDetailPage() {
   const [isUploadingProof, setIsUploadingProof] = useState(false);
 
   const [cashRegisters, setCashRegisters] = useState<{id: number, name: string, view?: boolean}[]>([]);
+  const [campagnes, setCampagnes] = useState<Campagne[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
 
@@ -162,11 +172,12 @@ export default function FactureDetailPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const [factureRes, cashRes, gestionnairesRes, produitsRes] = await Promise.all([
+      const [factureRes, cashRes, gestionnairesRes, produitsRes, campagnesRes] = await Promise.all([
         fetch(`/api/factures/${id}`),
         fetch('/api/cash-journal'),
         fetch('/api/gestionnaires'),
         fetch('/api/produits'),
+        fetch(`/api/factures/${id}/campagnes`),
       ]);
 
       const data = await factureRes.json();
@@ -191,6 +202,9 @@ export default function FactureDetailPage() {
 
       const produitsData = await produitsRes.json();
       setAllProduits(produitsData.error ? [] : produitsData);
+
+      const campagnesData = await campagnesRes.json();
+      setCampagnes(Array.isArray(campagnesData) ? campagnesData : []);
 
     } catch (error) {
       console.error("Failed to fetch initial data", error);
@@ -752,6 +766,32 @@ export default function FactureDetailPage() {
                             ) : <span className="font-bold text-sm">{facture.gestionnaires?.[0]?.gestionnaire.prenom} {facture.gestionnaires?.[0]?.gestionnaire.nom || "Non assigné"}</span>}
                         </div>
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* Campagnes liées */}
+            <Card className="border-none shadow-md">
+                <CardHeader className="bg-slate-50/50 border-b">
+                    <CardTitle className="flex items-center gap-2 text-lg text-primary">
+                        <Megaphone className="w-5 h-5" /> Campagne{campagnes.length > 1 ? "s" : ""} liée{campagnes.length > 1 ? "s" : ""}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-6">
+                    {campagnes.length > 0 ? (
+                        <div className="space-y-3">
+                            {campagnes.map((c) => (
+                                <div key={c.id} className="p-3 bg-slate-50 rounded-xl border">
+                                    <p className="font-bold text-sm text-slate-800">{c.nom}</p>
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                        <Calendar className="w-3 h-3" />
+                                        {new Date(c.dateDebut).toLocaleDateString("fr-FR")} → {new Date(c.dateFin).toLocaleDateString("fr-FR")}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-muted-foreground italic">Aucune campagne liée pour le moment.</p>
+                    )}
                 </CardContent>
             </Card>
 

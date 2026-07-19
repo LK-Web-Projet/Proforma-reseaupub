@@ -3,7 +3,14 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // --- Routes publiques (ne nécessitent pas d'auth) ---
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/", "/favicon.ico"]);
+// Les routes /api/integration/* sont pour les appels serveur-à-serveur (autre app),
+// elles ne sont pas protégées par Clerk mais par une clé API (voir lib/integrationAuth.ts)
+const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/",
+  "/favicon.ico",
+  "/api/integration(.*)",
+]);
 
 // --- Origines autorisées pour CORS depuis .env ---
 const allowedOrigins = process.env.NEXT_PUBLIC_ALLOWED_ORIGINS
