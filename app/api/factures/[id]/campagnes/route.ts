@@ -23,5 +23,6 @@ export async function GET(
   }
 
   const campagnes = await getCampagnesForProforma(id);
+
   return NextResponse.json(campagnes);
 }

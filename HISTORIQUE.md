@@ -24,6 +24,63 @@ Ce qui a été demandé et pourquoi.
 
 ## Journal
 
+## 2026-07-20 — Correction définitive du mapping des champs camptrack (bug réel identifié)
+
+**Demande / Contexte**
+En conditions réelles (une vraie campagne liée à une proforma), la carte « Campagne(s) liée(s) » affichait un nom et un numéro vides, une date invalide (« Invalid Date »), et la console listait un warning React « Each child in a list should have a unique key prop » sur `FactureDetailPage`.
+
+**Cause réelle**
+Vérification faite directement dans le code source de l'app camptrack (`c:\Users\HP\Desktop\Dev\camptrack-reseaupub\app\api\integration\campagnes\route.ts`, disponible en local) : sa route `/api/integration/campagnes` interroge la table `Campagne` avec les vrais noms de colonnes (`id_campagne`, `nom_campagne`, etc.) **mais remappe déjà la réponse JSON en camelCase** (`{ id, nom, numero, statut, dateDebut, dateFin }`) avant de la renvoyer. Les entrées précédentes du journal (2026-07-19 et plus tôt le 2026-07-20) avaient supposé à tort que camptrack renvoyait les noms de colonnes bruts, et `lib/camptrackClient.ts` + la route interne remappaient donc `c.id_campagne`, `c.nom_campagne`, etc. — des champs qui n'existent pas dans la réponse réelle, donc toujours `undefined`. Ce bug n'avait jamais été détecté car le seul test précédent portait sur une liste vide (aucune campagne liée), qui masque un mauvais nom de champ.
+
+**Modifications apportées**
+- `lib/camptrackClient.ts` : le type `CamptrackCampagne` reflète maintenant la vraie forme de la réponse camptrack (`id`, `nom`, `numero`, `statut`, `dateDebut`, `dateFin`, en camelCase).
+- `app/api/factures/[id]/campagnes/route.ts` : suppression du remapping devenu inutile (et faux) — la route renvoie désormais directement le résultat de `getCampagnesForProforma` (`return NextResponse.json(campagnes)`), sans transformation, puisque camptrack fournit déjà le format attendu par le frontend.
+- `app/(main)/facture/[id]/page.tsx` : aucun changement nécessaire, le type `Campagne` utilisait déjà ce format camelCase.
+
+**Erreurs rencontrées & solutions**
+Le warning « missing key prop » était un symptôme du même bug : `c.id` étant toujours `undefined` (mauvais nom de champ), toutes les clés de la liste `campagnes.map(...)` étaient identiques/`undefined`. Résolu par la correction du mapping ci-dessus (plus besoin de changement sur le `key={c.id}` lui-même). `tsc --noEmit` et `eslint` passent sans erreur.
+
+**À tester / points d'attention**
+- Recharger la fiche proforma ayant une vraie campagne liée côté camptrack et vérifier que le nom, le numéro et les dates s'affichent correctement, et que le warning React a disparu.
+- Retenir la leçon pour la suite : toujours valider un contrat d'API d'intégration avec un jeu de données non vide des deux côtés avant de le considérer comme testé.
+
+---
+
+## 2026-07-20 — Normalisation des champs camptrack au niveau de la route interne
+
+**Demande / Contexte**
+Plutôt que d'exposer les noms de champs bruts de camptrack (`id_campagne`, `nom_campagne`, `numero_campagne`, `status`, `date_debut`, `date_fin`) jusqu'au frontend, la conversion doit se faire dans la route interne `app/api/factures/[id]/campagnes/route.ts`, qui renvoie des champs propres en camelCase au frontend.
+
+**Modifications apportées**
+- `app/api/factures/[id]/campagnes/route.ts` : la réponse mappe désormais chaque campagne camptrack vers `{ id, nom, numero, statut, dateDebut, dateFin }` avant de la renvoyer.
+- `app/(main)/facture/[id]/page.tsx` : le type `Campagne` et l'affichage dans la carte « Campagne(s) liée(s) » repassent sur les noms de champs camelCase (`id`, `nom`, `numero`, `statut`, `dateDebut`, `dateFin`), cohérents avec la nouvelle réponse de la route interne.
+- `lib/camptrackClient.ts` reste inchangé (garde les noms de champs bruts `id_campagne`/`nom_campagne`/etc., qui reflètent fidèlement le contrat réel de l'API camptrack) — la conversion se fait uniquement à la frontière entre la route interne et le frontend.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `eslint` passent sans erreur.
+
+**À tester / points d'attention**
+- Toujours pas re-testé avec camptrack réellement démarré (arrêté au moment de ce changement) — à revérifier dès que possible avec une vraie campagne liée.
+
+---
+
+## 2026-07-20 — Correction des champs camptrack + affichage du numéro de campagne
+
+**Demande / Contexte**
+Les noms de champs réels renvoyés par l'API camptrack (`id_campagne`, `nom_campagne`, `numero_campagne`, `status`, `date_debut`, `date_fin`) sont différents de ceux supposés initialement (`id`, `nom`, `statut`, `dateDebut`, `dateFin`). Il fallait corriger le typage en conséquence et ajouter l'affichage du numéro de campagne sur la fiche proforma.
+
+**Modifications apportées**
+- `lib/camptrackClient.ts` : le type `CamptrackCampagne` utilise désormais les vrais noms de champs (`id_campagne`, `nom_campagne`, `numero_campagne`, `status`, `date_debut`, `date_fin`).
+- `app/(main)/facture/[id]/page.tsx` : le type `Campagne` est aligné sur les mêmes champs. La carte « Campagne(s) liée(s) » affiche maintenant le numéro de campagne (`numero_campagne`) dans un badge à côté du nom, en plus des dates de début/fin.
+
+**Erreurs rencontrées & solutions**
+Aucune erreur de code, juste un décalage de nommage entre l'hypothèse initiale et le vrai contrat d'API — corrigé après clarification de l'utilisateur. `tsc --noEmit` et `eslint` passent sans erreur.
+
+**À tester / points d'attention**
+- Round-trip non re-testé avec camptrack (serveur local arrêté au moment de ce changement) — à revérifier visuellement dès que camptrack est relancé en local ou en prod, avec une vraie campagne liée à une proforma.
+
+---
+
 ## 2026-07-19 — Affichage des campagnes liées sur la fiche proforma
 
 **Demande / Contexte**

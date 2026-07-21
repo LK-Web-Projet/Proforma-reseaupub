@@ -44,6 +44,7 @@ import { toast } from "sonner";
 type Campagne = {
   id: string;
   nom: string;
+  numero: string;
   statut: string;
   dateDebut: string;
   dateFin: string;
@@ -781,7 +782,10 @@ export default function FactureDetailPage() {
                         <div className="space-y-3">
                             {campagnes.map((c) => (
                                 <div key={c.id} className="p-3 bg-slate-50 rounded-xl border">
-                                    <p className="font-bold text-sm text-slate-800">{c.nom}</p>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="font-bold text-sm text-slate-800">{c.nom}</p>
+                                        <Badge variant="outline" className="text-[10px] font-bold shrink-0">{c.numero}</Badge>
+                                    </div>
                                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                         <Calendar className="w-3 h-3" />
                                         {new Date(c.dateDebut).toLocaleDateString("fr-FR")} → {new Date(c.dateFin).toLocaleDateString("fr-FR")}

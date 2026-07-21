@@ -1,6 +1,7 @@
 export type CamptrackCampagne = {
   id: string;
   nom: string;
+  numero: string;
   statut: string;
   dateDebut: string;
   dateFin: string;
