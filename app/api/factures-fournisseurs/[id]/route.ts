@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
-import { saveFactureFournisseurPieceJointe } from "@/lib/uploadFactureFournisseur";
+import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
 
 // PATCH /api/factures-fournisseurs/[id]
 // - Corps JSON { status } : changement rapide du statut (utilisé par le sélecteur inline des listes).
@@ -185,6 +185,11 @@ export async function PATCH(
           { status: 404 },
         );
       }
+    }
+
+    const fsMessage = describeFsError(error);
+    if (fsMessage) {
+      return NextResponse.json({ message: fsMessage }, { status: 500 });
     }
 
     return NextResponse.json(

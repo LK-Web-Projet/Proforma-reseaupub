@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
-import { saveFactureFournisseurPieceJointe } from "@/lib/uploadFactureFournisseur";
+import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
 
 // GET /api/factures-fournisseurs - Récupérer toutes les factures fournisseurs
 export async function GET(req: NextRequest) {
@@ -178,6 +178,11 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
+    }
+
+    const fsMessage = describeFsError(error);
+    if (fsMessage) {
+      return NextResponse.json({ message: fsMessage }, { status: 500 });
     }
 
     return NextResponse.json(
