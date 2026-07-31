@@ -22,6 +22,44 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-07-31 — Refonte UI/UX de la sidebar + loader de navigation par lien
+
+**Demande / Contexte**
+Demande de revoir un peu l'UI/UX de la sidebar, et surtout d'ajouter un indicateur de chargement quand une section/lien est cliqué, le temps que la page se charge — pour éviter que l'utilisateur pense que rien ne se passe.
+
+**Modifications apportées**
+- `components/app-sidebar.tsx` :
+  - Nouveau composant interne `NavLink` (+ `NavLinkIcon`) factorisant les 5 blocs de rendu de liens quasi identiques (Proforma, Client, Fournisseurs, Commercial, Finance, Paramètres) qui dupliquaient le même JSX.
+  - Loader de navigation : `NavLinkIcon` utilise le hook `useLinkStatus()` de `next/link` (Next.js 15) pour détecter qu'un lien précis est en cours de navigation, et remplace son icône par un spinner (`Loader2` animé) pendant ce temps — retour visuel immédiat au clic, sans dépendance externe.
+  - Style des liens revu : l'ancien `hover:bg-pink-600 hover:text-pink-600` (bug — texte rose sur fond rose, donc invisible au survol) remplacé par un survol gris neutre ; l'état actif, auparavant un bloc noir plein (`bg-gray-900 text-white`) assez brut, devient un fond teinté primaire discret (`bg-primary/10 text-primary font-medium`), plus cohérent avec le reste de l'admin.
+  - En-tête de la sidebar simplifié : suppression d'un `<div>` vide résiduel, ajout d'un petit badge "RP" à côté du titre pour ancrer visuellement la marque, texte compacté.
+  - Le lien "Paramètres" du footer (qui n'utilisait pas le même style que les autres liens, avec un chevron statique sans fonction) utilise maintenant le même composant `NavLink` que le reste du menu.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier que le spinner apparaît bien uniquement sur le lien cliqué (pas sur tous les liens en même temps) et disparaît une fois la nouvelle page affichée.
+- `useLinkStatus` reflète la navigation Next.js (chargement du module de la route + transition) : pour les pages qui font ensuite leur propre fetch de données côté client (pattern `useEffect` + `fetch` déjà en place ailleurs dans l'app), le loader de la sidebar peut disparaître avant la fin du chargement des données de la page — c'est un comportement normal, les tableaux affichent déjà leur propre état "Chargement..." pour cette partie.
+
+---
+
+## 2026-07-31 — Pastille animée sur les badges de statut des proformas
+
+**Demande / Contexte**
+Les badges de statut du tableau `/facture` n'avaient pas la pastille clignotante (`animate-ping`) déjà utilisée sur les factures fournisseurs pour signaler les statuts encore "actifs"/modifiables.
+
+**Modifications apportées**
+- `app/(main)/facture/page.tsx` : `FactureStatusBadge` reçoit désormais `animate={!["Solde", "Annuler", "Archiver"].includes(facture.statut)}` — la pastille clignote pour les statuts encore en circulation (Brouillon, Envoyée, Validée, Payer), et reste fixe pour les statuts terminaux (Soldée, Annulée, Archivée), par cohérence avec le comportement déjà en place sur `/fournisseur/factures` (clignote = encore modifiable, fixe = verrouillé/terminé).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier visuellement que la pastille clignote bien pour Brouillon/Envoyée/Validée/Payer et reste statique pour Soldée/Annulée/Archivée.
+
+---
+
 ## 2026-07-31 — Cartes de statut des proformas : design neutre façon SaaS
 
 **Demande / Contexte**

@@ -418,6 +418,7 @@ export default function Home() {
                   <TableCell className="text-center">
                     <FactureStatusBadge
                       status={facture.statut}
+                      animate={!["Solde", "Annuler", "Archiver"].includes(facture.statut)}
                       percentPaid={
                         facture.statut === "Payer" && Number(facture.totalTTC) > 0
                           ? Math.round(((Number(facture.totalTTC) - Number(facture.resteAPayer)) / Number(facture.totalTTC)) * 100)

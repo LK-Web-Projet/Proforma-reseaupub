@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { SignedIn, UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import {
   Building2,
   Calendar,
@@ -23,6 +23,8 @@ import {
   Wallet,
   FileDown,
   Settings,
+  Loader2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Collapsible,
@@ -111,8 +113,47 @@ const finance = [
    
 ];
 
-export function AppSidebar() {
+interface NavItem {
+  title: string;
+  url: string;
+  icon: LucideIcon;
+}
+
+// Affiche l'icône du lien, remplacée par un loader pendant la navigation vers ce lien.
+// useLinkStatus() ne fonctionne que dans un descendant du <Link> correspondant.
+function NavLinkIcon({ icon: Icon }: { icon: LucideIcon }) {
+  const { pending } = useLinkStatus();
+  if (pending) {
+    return <Loader2 className="w-4 h-4 shrink-0 animate-spin" />;
+  }
+  return <Icon className="w-4 h-4 shrink-0" />;
+}
+
+function NavLink({ item }: { item: NavItem }) {
   const pathname = usePathname();
+  const isActive = pathname === item.url;
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild>
+        <Link
+          href={item.url}
+          className={cn(
+            "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+            isActive
+              ? "bg-primary/10 text-primary font-medium"
+              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          )}
+        >
+          <NavLinkIcon icon={item.icon} />
+          <span className="truncate">{item.title}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+export function AppSidebar() {
   const { user, isLoaded, isSignedIn } = useUser();
   const role = user?.organizationMemberships?.[0]?.role ?? "no-role";
 
@@ -135,14 +176,20 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between p-2">
-      <SidebarHeader className="flex flex-col items-start justify-between mb-4 gap-2">
-        <div className="relative"></div>
-        <h1 className="text-lg font-bold">Finance reseaupub</h1>
-        <p className="text-sm text-gray-500">
-          Gestion de factures proforma & Finance
-        </p>
+      <SidebarHeader className="mb-2 gap-1">
+        <div className="flex items-center gap-2 px-1">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-sm">
+            RP
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-sm font-bold truncate">Finance reseaupub</h1>
+            <p className="text-xs text-gray-500 truncate">
+              Proforma &amp; Finance
+            </p>
+          </div>
+        </div>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="gap-1">
         <Collapsible
           open={isFactureOpen}
           onOpenChange={setIsFactureOpen}
@@ -163,23 +210,7 @@ export function AppSidebar() {
           <CollapsibleContent>
             <SidebarMenu className="space-y-1 pl-2">
               {facture.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      key={item.title}
-                      href={item.url}
-                      className={cn(
-                        "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                        pathname === item.url
-                          ? "bg-gray-900 text-white"
-                          : "text-gray-600"
-                      )}
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <NavLink key={item.title} item={item} />
               ))}
             </SidebarMenu>
           </CollapsibleContent>
@@ -200,23 +231,7 @@ export function AppSidebar() {
           <CollapsibleContent>
             <SidebarMenu className="space-y-1 pl-2">
               {client.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link
-                      key={item.title}
-                      href={item.url}
-                      className={cn(
-                        "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                        pathname === item.url
-                          ? "bg-gray-900 text-white"
-                          : "text-gray-600"
-                      )}
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <NavLink key={item.title} item={item} />
               ))}
             </SidebarMenu>
           </CollapsibleContent>
@@ -241,23 +256,7 @@ export function AppSidebar() {
             <CollapsibleContent>
               <SidebarMenu className="space-y-1 pl-2">
                 {fournisseur.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <Link
-                        key={item.title}
-                        href={item.url}
-                        className={cn(
-                          "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                          pathname === item.url
-                            ? "bg-gray-900 text-white"
-                            : "text-gray-600"
-                        )}
-                      >
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavLink key={item.title} item={item} />
                 ))}
               </SidebarMenu>
             </CollapsibleContent>
@@ -283,23 +282,7 @@ export function AppSidebar() {
             <CollapsibleContent>
               <SidebarMenu className="space-y-1 pl-2">
                 {Commercial.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <Link
-                        key={item.title}
-                        href={item.url}
-                        className={cn(
-                          "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                          pathname === item.url
-                            ? "bg-gray-900 text-white"
-                            : "text-gray-600"
-                        )}
-                      >
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavLink key={item.title} item={item} />
                 ))}
               </SidebarMenu>
             </CollapsibleContent>
@@ -322,23 +305,7 @@ export function AppSidebar() {
             <CollapsibleContent>
               <SidebarMenu className="space-y-1 pl-2">
                 {finance.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <Link
-                        key={item.title}
-                        href={item.url}
-                        className={cn(
-                          "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                          pathname === item.url
-                            ? "bg-gray-900 text-white"
-                            : "text-gray-600"
-                        )}
-                      >
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavLink key={item.title} item={item} />
                 ))}
               </SidebarMenu>
             </CollapsibleContent>
@@ -346,18 +313,9 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <Link href="/parametres" >
-            <SidebarMenuButton>
-              <Settings className="w-5 h-5" />
-              <span className="font-bold">Paramètres</span>
-              <ChevronRight
-                className={cn(
-                  "ml-auto w-4 h-4 transition-transform"
-                )}
-              />
-            </SidebarMenuButton>
-
-        </Link>
+        <SidebarMenu>
+          <NavLink item={{ title: "Paramètres", url: "/parametres", icon: Settings }} />
+        </SidebarMenu>
         <div className="flex facture-center gap-2 pl-4">
           <SignedIn>
             <UserButton />
