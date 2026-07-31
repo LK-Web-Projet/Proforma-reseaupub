@@ -40,6 +40,15 @@ import {
 } from "@/components/ui/sidebar";
 
 // Menu facture.
+const dashboard = [
+  {
+    title: "Tableau de bors",
+    url: "/dashboard",
+    icon: BarChart,
+  },
+ 
+];
+
 const facture = [
   {
     title: "Home",
@@ -148,6 +157,28 @@ export function AppSidebar() {
         </p>
       </SidebarHeader>
       <SidebarContent>
+        {role === "org:admin" && (
+          <SidebarMenu>
+            {dashboard.map((item) => (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild>
+                  <Link
+                    href={item.url}
+                    className={cn(
+                      "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
+                      pathname === item.url
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-600"
+                    )}
+                  >
+                    <item.icon />
+                    <span className="font-bold">{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        )}
         <Collapsible
           open={isFactureOpen}
           onOpenChange={setIsFactureOpen}
