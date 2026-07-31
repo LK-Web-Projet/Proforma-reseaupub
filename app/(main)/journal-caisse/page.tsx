@@ -198,7 +198,7 @@ export default function CashJournalPage() {
           return `${m[1]}${reg.name}${m[3]}${m[4]}`;
         }
       }
-    } catch (e) {
+    } catch {
       // ignore and return original
     }
     return libelle;
