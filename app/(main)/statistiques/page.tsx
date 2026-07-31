@@ -155,13 +155,12 @@ export default function StatistiquesPage() {
         } catch (e) {
             console.error(e);
         }
-        // Use explicit initial filters/range to avoid missing-deps ESLint warning
         const initialFilters = { clientId: '', gestionnaireId: '' };
         const initialRange = { from: startOfYear(new Date()), to: endOfYear(new Date()) };
         await fetchStats(initialFilters, initialRange);
     };
     initData();
-  }, []); // Exécuter seulement au montage
+  }, [fetchStats]); // fetchStats est stable (useCallback avec deps []), donc exécuté seulement au montage
 
   const handleFilterChange = (name: string, value: string) => {
     setFilters(prev => ({ ...prev, [name]: value }));
