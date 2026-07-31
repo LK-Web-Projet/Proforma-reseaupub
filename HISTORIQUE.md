@@ -22,6 +22,28 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-07-31 — Messages d'erreur explicites pour les échecs d'écriture disque (upload pièce jointe fournisseur)
+
+**Demande / Contexte**
+Sur le VPS de production, l'upload de pièce jointe sur une facture fournisseur renvoie « Erreur interne du serveur », alors que l'upload de documents sur d'autres fonctionnalités (proforma) n'a jamais posé ce problème. Impossible de diagnostiquer sans accès aux logs serveur.
+
+**Analyse**
+Le code d'upload des factures fournisseurs (`lib/uploadFactureFournisseur.ts`, `mkdir` + `writeFile` dans `public/Upload/FactureFournisseur`) est fonctionnellement identique aux autres routes d'upload du projet (`app/api/factures/[id]/upload/route.ts` écrit dans `public/Upload/Bon|Facture/...` de la même façon). Aucune différence de code trouvée qui expliquerait un échec spécifique à ce dossier. L'hypothèse la plus probable est donc **environnementale** : le dossier `public/Upload/FactureFournisseur` sur le VPS a pu être créé (ou son parent `public/Upload`) avec des droits/propriétaire différents des autres sous-dossiers déjà utilisés (`Bon`, `Facture`, `CashJournal`), empêchant le process Node d'y créer le fichier (`EACCES`), ou un souci d'espace disque (`ENOSPC`). Le message générique masquait jusqu'ici la vraie cause.
+
+**Modifications apportées**
+- `lib/uploadFactureFournisseur.ts` : nouvelle fonction `describeFsError(error)` qui traduit les codes d'erreur `fs` Node (`EACCES`/`EPERM`, `ENOSPC`, `EROFS`, `ENOENT`) en message explicite.
+- `app/api/factures-fournisseurs/route.ts` et `app/api/factures-fournisseurs/[id]/route.ts` : les blocs `catch` vérifient désormais `describeFsError(error)` avant de retomber sur le message générique — si l'échec vient bien du système de fichiers, le message reçu par le frontend (et affiché dans le toast) sera explicite (ex: « Le serveur n'a pas la permission d'écrire le fichier... »).
+
+**Erreurs rencontrées & solutions**
+Aucune erreur de code. `tsc --noEmit` et `next lint` passent sans erreur. Le vrai correctif dépend de la cause réelle sur le VPS, qui reste à confirmer (voir points d'attention).
+
+**À tester / points d'attention**
+- Reproduire l'upload qui échoue sur le VPS et noter le message exact désormais affiché : il devrait indiquer clairement si c'est un problème de permissions, d'espace disque, ou de dossier introuvable.
+- Sur le VPS, vérifier via SSH : `ls -la public/Upload` (propriétaire/droits de `Upload` et de `FactureFournisseur` s'il existe déjà) et comparer avec l'utilisateur sous lequel tourne le process Next.js (`whoami` dans le contexte du service PM2/systemd/Docker). Si `FactureFournisseur` n'existe pas encore et que `Upload` n'autorise pas la création de sous-dossiers par cet utilisateur, c'est la cause la plus probable.
+- Vérifier aussi l'espace disque disponible (`df -h`) et les logs du process (`pm2 logs` / `journalctl` / `docker logs`) pour voir la stack trace complète déjà loguée par `console.error`.
+
+---
+
 ## 2026-07-31 — Refonte UI/UX de la sidebar + loader de navigation par lien
 
 **Demande / Contexte**
