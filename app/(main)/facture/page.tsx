@@ -10,12 +10,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
+import { FactureStatusBadge } from '@/components/FactureStatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -58,7 +58,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [visibleCardLabels, setVisibleCardLabels] = useState<string[]>([
-    "Valider & payer", "Brouillon", "Envoyée", "Validée", "En cours de paiement", "Soldée"
+    "Valider & payer", "Brouillon", "Envoyée", "Validée", "Paiement en cours", "Soldée"
   ]);
 
   // Charger la liste des clients pour le filtre
@@ -149,14 +149,14 @@ export default function Home() {
   }, [allFactures, statut, objet]);
 
   const cards = [
-    { label: "Valider & payer", value: "", stats: stats["Total"], icon: Wallet, color: "text-blue-600" },
-    { label: "Brouillon", value: "Brouillon", stats: stats["Brouillon"], icon: XCircle, color: "text-gray-500" },
-    { label: "Envoyée", value: "Envoyer", stats: stats["Envoyer"], icon: Send, color: "text-orange-500" },
-    { label: "Validée", value: "Valider", stats: stats["Valider"], icon: CheckCircle, color: "text-purple-500" },
-    { label: "En cours de paiement", value: "Payer", stats: stats["Payer"], icon: Banknote, color: "text-green-600" },
-    { label: "Soldée", value: "Solde", stats: stats["Solde"], icon: Check, color: "text-emerald-600" },
-    { label: "Annulée", value: "Annuler", stats: stats["Annuler"], icon: XCircle, color: "text-red-600" },
-    { label: "Archivée", value: "Archiver", stats: stats["Archiver"], icon: Archive, color: "text-slate-600" },
+    { label: "Valider & payer", value: "", stats: stats["Total"], icon: Wallet },
+    { label: "Brouillon", value: "Brouillon", stats: stats["Brouillon"], icon: XCircle },
+    { label: "Envoyée", value: "Envoyer", stats: stats["Envoyer"], icon: Send },
+    { label: "Validée", value: "Valider", stats: stats["Valider"], icon: CheckCircle },
+    { label: "Paiement en cours", value: "Payer", stats: stats["Payer"], icon: Banknote },
+    { label: "Soldée", value: "Solde", stats: stats["Solde"], icon: Check },
+    { label: "Annulée", value: "Annuler", stats: stats["Annuler"], icon: XCircle },
+    { label: "Archivée", value: "Archiver", stats: stats["Archiver"], icon: Archive },
   ];
 
   const toggleCardVisibility = (label: string) => {
@@ -204,45 +204,44 @@ export default function Home() {
       </div>
 
       {/* Cartes de sélection / Filtres de statut */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        {cards.filter(c => visibleCardLabels.includes(c.label)).map((card) => (
-          <Card
-            key={card.label}
-            className={cn(
-              "cursor-pointer hover:shadow-lg transition-all border-2",
-              statut === card.value ? "border-primary bg-primary/5 shadow-md" : "border-transparent"
-            )}
-            onClick={() => setStatut(card.value)}
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{card.label}</CardTitle>
-              <card.icon className={cn("h-4 w-4", card.color)} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-lg font-bold">
-                {card.stats.total.toLocaleString("fr-FR")} FCFA
-              </div>
-              
-              {/* Détails financiers pour la carte "Payer" ou si sélectionnée */}
-              {(card.value === "Payer" || (card.value === "" && card.stats.remaining > 0)) && (
-                <div className="mt-2 space-y-1">
-                  <div className="flex justify-between text-[10px] text-green-600 font-bold uppercase">
-                    <span>Payé:</span>
-                    <span>{card.stats.paid.toLocaleString("fr-FR")} FCFA</span>
-                  </div>
-                  <div className="flex justify-between text-[10px] text-red-600 font-bold uppercase">
-                    <span>Reste:</span>
-                    <span>{card.stats.remaining.toLocaleString("fr-FR")} FCFA</span>
-                  </div>
-                </div>
+      <div className="grid gap-2.5 mb-8 grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
+        {cards.filter(c => visibleCardLabels.includes(c.label)).map((card) => {
+          const count = allFactures.filter(f => card.value === "" ? (f.statut !== "Brouillon" && f.statut !== "Annuler" && f.statut !== "Archiver") : f.statut === card.value).length;
+          const showBreakdown = card.value === "Payer" || (card.value === "" && card.stats.remaining > 0);
+          const isActive = statut === card.value;
+          return (
+            <Card
+              key={card.label}
+              className={cn(
+                "cursor-pointer transition-all py-0 gap-0 shadow-none",
+                isActive
+                  ? "border-primary/50 ring-1 ring-primary/30 bg-primary/[0.03]"
+                  : "border-border/60 hover:border-border hover:shadow-sm"
               )}
+              onClick={() => setStatut(card.value)}
+            >
+              <CardContent className="p-3.5">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    <card.icon className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide truncate">{card.label}</span>
+                </div>
+                <div className="text-base font-semibold tabular-nums truncate" title={`${card.stats.total.toLocaleString("fr-FR")} FCFA`}>
+                  {card.stats.total.toLocaleString("fr-FR")} FCFA
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{count} facture(s)</p>
 
-              <p className="text-xs text-muted-foreground mt-1">
-                {allFactures.filter(f => card.value === "" ? (f.statut !== "Brouillon" && f.statut !== "Annuler" && f.statut !== "Archiver") : f.statut === card.value).length} facture(s)
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+                {showBreakdown && (
+                  <div className="mt-2 pt-2 border-t border-border/60 flex justify-between text-[10px] font-medium tabular-nums">
+                    <span className="text-emerald-600">{card.stats.paid.toLocaleString("fr-FR")}</span>
+                    <span className="text-rose-500">{card.stats.remaining.toLocaleString("fr-FR")}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Filtres de recherche */}
@@ -417,31 +416,14 @@ export default function Home() {
                     {formatMoney(facture.resteAPayer, facture.devise)}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge
-                      variant={
-                        facture.statut === "Envoyer"
-                          ? "envoyer"
-                          : facture.statut === "Valider"
-                          ? "valider"
-                          : facture.statut === "Payer"
-                          ? "payer"
-                          : facture.statut === "Annuler"
-                          ? "annuler"
-                          : facture.statut === "Archiver"
-                          ? "archiver"
-                          : facture.statut === "Solde"
-                          ? "success"
-                          : "brouillon"
+                    <FactureStatusBadge
+                      status={facture.statut}
+                      percentPaid={
+                        facture.statut === "Payer" && Number(facture.totalTTC) > 0
+                          ? Math.round(((Number(facture.totalTTC) - Number(facture.resteAPayer)) / Number(facture.totalTTC)) * 100)
+                          : undefined
                       }
-                    >
-                      {facture.statut === "Envoyer" ? "Envoyée" : 
-                       facture.statut === "Valider" ? "Validée" : 
-                       facture.statut === "Payer" ? "En cours de paiement" : 
-                       facture.statut === "Annuler" ? "Annulée" : 
-                       facture.statut === "Archiver" ? "Archivée" : 
-                       facture.statut === "Solde" ? "Soldée" : 
-                       facture.statut}
-                    </Badge>
+                    />
                   </TableCell>
                   <TableCell className="text-center">
                     <Link
