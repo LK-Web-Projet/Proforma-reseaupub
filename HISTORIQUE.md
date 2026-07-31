@@ -24,6 +24,87 @@ Ce qui a été demandé et pourquoi.
 
 ## Journal
 
+## 2026-07-31 — Filtres de la liste des factures fournisseurs : panneau repliable + période consolidée
+
+**Demande / Contexte**
+La section « Filtres » de `/fournisseur/factures` était toujours visible, prenait de la place, et contenait deux contrôles redondants (un menu « Année » et un calendrier de plage de dates, désactivé de façon peu claire dès qu'une année était sélectionnée) ainsi qu'un bouton « Rechercher » qui ne servait à rien. Demande : la rendre repliable, enlever les champs inutiles et proposer un vrai sélecteur de période.
+
+**Modifications apportées**
+- `app/(main)/fournisseur/factures/page.tsx` :
+  - Panneau de filtres masqué par défaut, ouvert/fermé via un bouton « Filtres » (icône + chevron animé) affichant un badge du nombre de filtres actifs.
+  - Remplacement des filtres `year` + `dateRange` séparés par un unique sélecteur `period` (`current` / `previous` / `all` / `custom`) ; le calendrier de plage ne s'affiche que si `custom` est choisi.
+  - Suppression du bouton « Rechercher » (la liste se recharge déjà automatiquement à chaque changement de filtre via le `useEffect` existant sur `fetchFactures`).
+  - Ajout de « chips » de filtres actifs (fournisseur, statut, période) affichées en permanence sous le bouton, chacune retirable individuellement, plus un bouton « Tout effacer ».
+- `app/api/factures-fournisseurs/route.ts` : le paramètre `year=ALL` désactive désormais complètement le filtre de date (nécessaire pour l'option « Toutes les périodes », qui n'existait pas avant — la route retombait toujours sur l'année en cours par défaut en l'absence de `year`/`startDate`/`endDate`).
+
+**Erreurs rencontrées & solutions**
+Avertissements ESLint temporaires (`CardHeader`/`CardTitle` importés mais plus utilisés après suppression du titre « Filtres » statique) → imports nettoyés. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier que le choix « Toutes les périodes » renvoie bien des factures de toutes les années (avant ce correctif, l'API imposait toujours l'année en cours par défaut).
+- Vérifier que retirer une chip individuelle remet bien le filtre correspondant à sa valeur par défaut (période → « Cette année »).
+
+---
+
+## 2026-07-31 — Statuts en pastille colorée + verrouillage étendu aux factures Annulées
+
+**Demande / Contexte**
+Sur les tableaux de factures fournisseurs, il fallait : griser/verrouiller aussi les factures au statut Annulée (comme Payée), retravailler visuellement le sélecteur de statut, harmoniser les couleurs avec une pastille clignotante par statut (vert=Payée, jaune=En attente, rouge=Annulée), et uniformiser la taille des boutons d'action.
+
+**Modifications apportées**
+- `components/FactureFournisseurStatusBadge.tsx` (nouveau) : composant `FactureFournisseurStatusBadge` (pastille pleine + point coloré, `animate-ping` optionnel) et `StatusDot`, réutilisés partout où un statut de facture fournisseur est affiché.
+- `components/AttachmentPreviewButton.tsx` : bouton d'aperçu passé en icône seule (`variant="outline" size="icon"`) avec `Tooltip`, pour matcher la taille du bouton d'édition ; état « aucun fichier » aussi restylé en icône avec tooltip au lieu d'un badge texte.
+- `components/FactureFournisseurModal.tsx` + `app/api/factures-fournisseurs/[id]/route.ts` : la règle de verrouillage (déjà en place pour « Payée ») s'applique désormais aussi au statut « Annulée » — seule l'ajout d'une pièce jointe manquante reste possible ; message du bandeau d'avertissement adapté dynamiquement (« payée » vs « annulée »).
+- `app/(main)/fournisseur/factures/page.tsx` et `app/(main)/fournisseur/[id]/page.tsx` : le sélecteur de statut n'est affiché (cliquable) que pour les factures « En attente » ; pour Payée/Annulée, affichage d'un badge non interactif. Les options du menu déroulant de statut affichent désormais le point coloré correspondant. Bouton d'édition uniformisé en `variant="outline" size="icon"` avec tooltip (« Modifier »/« Voir » selon le verrouillage).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur tous les fichiers modifiés.
+
+**À tester / points d'attention**
+- Vérifier visuellement que le point clignotant n'apparaît que pour le statut « En attente » (modifiable) et reste fixe pour Payée/Annulée (verrouillé), conformément au choix de design fait.
+- Confirmer avec l'utilisateur si le verrouillage d'une facture Annulée doit aussi bloquer l'ajout d'une pièce jointe (actuellement autorisé, comme pour Payée) ou non.
+
+---
+
+## 2026-07-31 — Édition des factures fournisseurs (verrouillée si Payée) + aperçu de pièce jointe en modale
+
+**Demande / Contexte**
+Il n'existait aucun moyen de modifier une facture fournisseur après création (ni même d'ajouter la pièce jointe si elle avait été oubliée à la création). Demande : permettre l'édition complète tant que la facture n'est pas « Payée » (auquel cas elle doit être verrouillée, seul l'ajout d'une pièce jointe manquante restant possible), et améliorer l'affichage/consultation du fichier joint.
+
+**Modifications apportées**
+- `lib/uploadFactureFournisseur.ts` (nouveau) : helper `saveFactureFournisseurPieceJointe` partagé entre la création et l'édition (déduplique la logique d'écriture disque déjà présente dans la route POST).
+- `app/api/factures-fournisseurs/[id]/route.ts` : réécriture du `PATCH` pour accepter soit un corps JSON `{ status }` (changement rapide de statut, utilisé par les sélecteurs inline), soit un `FormData` complet (référence, montant, date, fournisseur, statut, pièce jointe). Règle métier : si la facture existante est verrouillée, toute modification est refusée (`403`) sauf l'ajout d'une pièce jointe absente.
+- `components/FactureFournisseurModal.tsx` : ajout du mode édition (`initialData`) — préremplissage du formulaire, champs désactivés/affichés en lecture seule et bandeau d'avertissement quand la facture est verrouillée, appel `PATCH` au lieu de `POST` en édition.
+- `components/AttachmentPreviewButton.tsx` (nouveau) : bouton « Voir » ouvrant une modale avec aperçu direct (image affichée, PDF en `iframe`, message générique sinon) + lien de téléchargement/ouverture en nouvel onglet ; badge dédié si aucune pièce jointe.
+- `app/(main)/fournisseur/factures/page.tsx` et `app/(main)/fournisseur/[id]/page.tsx` : ajout d'un bouton « Modifier » (crayon) par ligne ouvrant la modale d'édition, et remplacement du lien « Voir PJ » par `AttachmentPreviewButton`.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur tous les fichiers créés/modifiés.
+
+**À tester / points d'attention**
+- Sur `/fournisseur/[id]`, la modale d'édition ne reçoit que le fournisseur courant (pas la liste complète) : changer le fournisseur d'une facture n'est donc pas proposé depuis cette page — seulement depuis `/fournisseur/factures`. À signaler si un besoin de réassignation depuis la fiche fournisseur apparaît.
+- Vérifier qu'une tentative de modification d'une facture verrouillée renvoie bien un message clair (409/403) plutôt qu'une erreur générique.
+
+---
+
+## 2026-07-31 — Ajout de facture fournisseur en dialogue (au lieu d'une page dédiée)
+
+**Demande / Contexte**
+Le formulaire d'ajout de facture fournisseur était une page séparée (`/fournisseur/factures/new`). Demande : l'ouvrir en dialogue directement depuis la liste des factures, sans changer la logique ni l'API d'ajout, et recharger le tableau après création.
+
+**Modifications apportées**
+- `components/FactureFournisseurModal.tsx` (nouveau à l'origine, puis étendu en mode édition dans une entrée suivante) : reprend exactement le même formulaire et le même appel `POST /api/factures-fournisseurs` (FormData) que l'ancienne page, dans un `Dialog`.
+- `app/(main)/fournisseur/factures/page.tsx` : bouton « Ajouter une facture » ouvrant le dialogue ; `onSuccess={fetchFactures}` recharge le tableau après création (la dernière facture apparaît immédiatement, triée par date décroissante comme le fait déjà l'API).
+- Suppression de `app/(main)/fournisseur/factures/new/page.tsx` et de son entrée « Ajouter Facture » dans `components/app-sidebar.tsx` (devenue obsolète).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Aucun particulier — fonctionnalité vérifiée par lecture de code, logique/API inchangées par rapport à l'ancienne page.
+
+---
+
 ## 2026-07-31 — Messages d'erreur explicites à la création d'une facture fournisseur
 
 **Demande / Contexte**
