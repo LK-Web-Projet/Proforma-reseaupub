@@ -22,7 +22,178 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
-## Journal
+## 2026-07-31 — Cartes de statut des proformas : design neutre façon SaaS
+
+**Demande / Contexte**
+Les cartes de statut en haut de `/facture` avaient chacune une bordure supérieure colorée différente (bleu, orange, violet, vert, etc.) et un badge d'icône teinté assorti. L'utilisateur trouvait ce rendu trop chargé/pas assez "SaaS" et souhaitait quelque chose de plus simple mais toujours soigné pour un dashboard d'administration.
+
+**Modifications apportées**
+- `app/(main)/facture/page.tsx` :
+  - Suppression des couleurs par carte (`bg`/`text`/`border` par statut) dans la définition de `cards` — retour à une simple liste `{ label, value, stats, icon }`.
+  - Design de carte neutre façon SaaS : bordure fine neutre (`border-border/60`) avec léger survol (`hover:shadow-sm`), icône dans un badge gris neutre (`bg-muted text-muted-foreground`) au lieu d'un badge coloré par statut, libellé en petites majuscules discrètes (`uppercase tracking-wide text-muted-foreground`), montant en semi-gras avec chiffres alignés (`tabular-nums`).
+  - L'état actif (carte sélectionnée) se distingue désormais par une bordure/anneau teinté primaire discret (`border-primary/50 ring-1 ring-primary/30 bg-primary/[0.03]`) plutôt que par la couleur de la carte elle-même.
+  - Le détail Payé/Reste (carte "Paiement en cours") garde des couleurs vert/rouge (`emerald-600`/`rose-500`) car ce sont des données financières significatives (positif/négatif), pas une simple décoration.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier visuellement le rendu en clair/sombre si le thème sombre est un jour activé (les classes `border-border`/`bg-muted` sont déjà theme-aware via les tokens shadcn/ui existants).
+
+---
+
+## 2026-07-31 — Badge "Payé X%" avec pourcentage calculé pour le statut Payer
+
+**Demande / Contexte**
+Suite à l'entrée précédente, le libellé "Paiement en cours" a été jugé trop générique. Demande finale : afficher "Payé" suivi du pourcentage déjà réglé sur la facture (ex: "Payé 50%"), calculé à partir du montant payé et du reste à payer, plutôt qu'un renommage textuel simple ("Partielle"/"Encours" proposés mais non retenus).
+
+**Modifications apportées**
+- `components/FactureStatusBadge.tsx` : le libellé par défaut du statut `Payer` passe à `Payé` ; nouvelle prop `percentPaid` qui, si fournie pour ce statut, remplace le libellé par `Payé {percentPaid}%`.
+- `app/(main)/facture/page.tsx` : calcul du pourcentage payé par facture (`(totalTTC - resteAPayer) / totalTTC * 100`, arrondi) et transmission via `percentPaid` à `FactureStatusBadge`, uniquement pour les factures au statut `Payer`.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier avec une facture partiellement payée que le badge affiche bien le bon pourcentage (ex: 300 000 payés sur 600 000 TTC → "Payé 50%").
+- Le libellé de la carte de statistique en haut de page reste "Paiement en cours" (elle agrège plusieurs factures à des pourcentages différents, un pourcentage unique n'aurait pas de sens) — à voir si un renommage est aussi souhaité là, en cohérence avec le badge du tableau.
+
+---
+
+## 2026-07-31 — Badges de statut à pastille colorée sur le tableau des proformas
+
+**Demande / Contexte**
+Demande d'appliquer sur le tableau des proformas (`/facture`) le même style de badge à pastille colorée que celui déjà en place sur les factures fournisseurs, avec des couleurs différenciées par statut : Validée en bleu, Paiement en cours en jaune, Soldée en vert, Envoyée en orange, et des couleurs distinctes pour les statuts restants (Brouillon, Annulée, Archivée).
+
+**Modifications apportées**
+- `components/FactureStatusBadge.tsx` (nouveau) : composant dédié aux statuts de proforma (`StatusFacture` : Brouillon, Envoyer, Valider, Payer, Solde, Annuler, Archiver), sur le même principe visuel que `FactureFournisseurStatusBadge` (pastille + fond teinté + texte de la même teinte) mais avec sa propre palette : Brouillon gris, Envoyée orange, Validée bleu, Paiement en cours ambre/jaune, Soldée vert, Annulée rouge, Archivée slate. Pastille statique par défaut (`animate=false`) car ce tableau n'a pas de sélecteur de statut interactif comme celui des factures fournisseurs.
+- `app/(main)/facture/page.tsx` : remplacement du `Badge` à variantes (`envoyer`/`valider`/`payer`/`annuler`/`archiver`/`success`/`brouillon`) et de son enchaînement de conditions pour le libellé, par un simple `<FactureStatusBadge status={facture.statut} />` qui gère à la fois la couleur et le libellé.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur les fichiers créés/modifiés.
+
+**À tester / points d'attention**
+- Vérifier visuellement que les 7 statuts s'affichent avec des couleurs bien distinctes et lisibles dans le tableau.
+- Les variantes `Badge` (`envoyer`, `valider`, etc.) restent définies dans `components/ui/badge.tsx` et potentiellement utilisées ailleurs (ex: `facture/[id]/page.tsx`) — non touchées par ce changement, seul l'usage sur la liste `/facture` a été remplacé.
+
+---
+
+## 2026-07-31 — Cartes de statut des proformas étirées sur toute la largeur
+
+**Demande / Contexte**
+Après la première refonte compacte des cartes de statut sur `/facture`, la grille utilisait des paliers de colonnes fixes (`grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8`). Avec 6 cartes visibles par défaut sur un écran large (`xl`, 8 colonnes prévues), les cartes restaient regroupées à gauche et laissaient un vide à droite au lieu de remplir toute la largeur.
+
+**Modifications apportées**
+- `app/(main)/facture/page.tsx` : grille remplacée par `grid-cols-[repeat(auto-fit,minmax(140px,1fr))]`. Le nombre de colonnes s'adapte automatiquement à la largeur disponible et au nombre de cartes visibles, et chaque carte s'étire (`1fr`) pour occuper toute la largeur de la ligne, quel que soit le nombre de cartes affichées (via le panneau de visibilité) ou la largeur d'écran.
+
+**Erreurs rencontrées & solutions**
+Aucune. `next lint` passe sans erreur sur le fichier modifié.
+
+**À tester / points d'attention**
+- Vérifier à différentes largeurs d'écran (mobile, tablette, grand écran) et avec différents nombres de cartes visibles (via le bouton « œil ») que les cartes remplissent bien toute la largeur sans espace vide à droite.
+
+---
+
+## 2026-07-31 — Refonte UI/UX des cartes de statut sur la liste des proformas + libellé « Paiement en cours »
+
+**Demande / Contexte**
+Sur `/facture` (liste des proformas émises), les cartes de statistiques par statut (Brouillon, Envoyée, Validée, etc.) prenaient trop de place et passaient sur deux lignes. Demande : les rendre plus petites pour qu'elles tiennent sur une seule ligne sur toute la largeur (ou se répartissent proprement sinon), avec un design plus « dashboard moderne d'administration ». Demande aussi de renommer le statut « En cours de paiement » (trop long) en « Paiement en cours » dans le tableau des factures.
+
+**Modifications apportées**
+- `app/(main)/facture/page.tsx` :
+  - Grille des cartes passée de `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` (2 lignes pour 6 cartes) à `grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8` (tient sur une seule ligne dès la largeur `lg` pour les 6 cartes visibles par défaut, et jusqu'à `xl` si les 8 sont affichées).
+  - Cartes réduites et redessinées façon mini stat-card de dashboard admin : `CardHeader`/`CardTitle` remplacés par un en-tête compact dans `CardContent` (padding réduit `p-3`, icône dans un badge coloré `bg-*/text-*`, bordure supérieure colorée `border-t-4` par statut au lieu d'un simple `border-2` générique), texte réduit (`text-[11px]`/`text-sm`), et le détail Payé/Reste (pour la carte « Paiement en cours ») compacté sur une seule ligne avec icônes `✓`/`↳` au lieu de deux lignes avec libellés « Payé:  »/« Reste: ».
+  - Carte et statut « En cours de paiement » renommés en « Paiement en cours » (label de la carte, entrée `visibleCardLabels` par défaut, et libellé affiché dans le badge de statut du tableau) pour rester cohérents entre la carte et le tableau.
+
+**Erreurs rencontrées & solutions**
+Avertissement ESLint temporaire (`CardHeader`/`CardTitle` importés mais plus utilisés après la refonte des cartes) → imports nettoyés. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier visuellement sur différentes largeurs d'écran que les cartes restent lisibles une fois réduites (surtout sur mobile en `grid-cols-2`).
+- Si de nouvelles cartes de statut sont ajoutées plus tard, penser à leur donner un triplet `bg`/`text`/`border` cohérent avec les autres (palette actuelle : bleu, gris, orange, violet, vert, émeraude, rouge, slate).
+
+---
+
+## 2026-07-31 — Filtres de la liste des factures fournisseurs : panneau repliable + période consolidée
+
+**Demande / Contexte**
+La section « Filtres » de `/fournisseur/factures` était toujours visible, prenait de la place, et contenait deux contrôles redondants (un menu « Année » et un calendrier de plage de dates, désactivé de façon peu claire dès qu'une année était sélectionnée) ainsi qu'un bouton « Rechercher » qui ne servait à rien. Demande : la rendre repliable, enlever les champs inutiles et proposer un vrai sélecteur de période.
+
+**Modifications apportées**
+- `app/(main)/fournisseur/factures/page.tsx` :
+  - Panneau de filtres masqué par défaut, ouvert/fermé via un bouton « Filtres » (icône + chevron animé) affichant un badge du nombre de filtres actifs.
+  - Remplacement des filtres `year` + `dateRange` séparés par un unique sélecteur `period` (`current` / `previous` / `all` / `custom`) ; le calendrier de plage ne s'affiche que si `custom` est choisi.
+  - Suppression du bouton « Rechercher » (la liste se recharge déjà automatiquement à chaque changement de filtre via le `useEffect` existant sur `fetchFactures`).
+  - Ajout de « chips » de filtres actifs (fournisseur, statut, période) affichées en permanence sous le bouton, chacune retirable individuellement, plus un bouton « Tout effacer ».
+- `app/api/factures-fournisseurs/route.ts` : le paramètre `year=ALL` désactive désormais complètement le filtre de date (nécessaire pour l'option « Toutes les périodes », qui n'existait pas avant — la route retombait toujours sur l'année en cours par défaut en l'absence de `year`/`startDate`/`endDate`).
+
+**Erreurs rencontrées & solutions**
+Avertissements ESLint temporaires (`CardHeader`/`CardTitle` importés mais plus utilisés après suppression du titre « Filtres » statique) → imports nettoyés. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier que le choix « Toutes les périodes » renvoie bien des factures de toutes les années (avant ce correctif, l'API imposait toujours l'année en cours par défaut).
+- Vérifier que retirer une chip individuelle remet bien le filtre correspondant à sa valeur par défaut (période → « Cette année »).
+
+---
+
+## 2026-07-31 — Statuts en pastille colorée + verrouillage étendu aux factures Annulées
+
+**Demande / Contexte**
+Sur les tableaux de factures fournisseurs, il fallait : griser/verrouiller aussi les factures au statut Annulée (comme Payée), retravailler visuellement le sélecteur de statut, harmoniser les couleurs avec une pastille clignotante par statut (vert=Payée, jaune=En attente, rouge=Annulée), et uniformiser la taille des boutons d'action.
+
+**Modifications apportées**
+- `components/FactureFournisseurStatusBadge.tsx` (nouveau) : composant `FactureFournisseurStatusBadge` (pastille pleine + point coloré, `animate-ping` optionnel) et `StatusDot`, réutilisés partout où un statut de facture fournisseur est affiché.
+- `components/AttachmentPreviewButton.tsx` : bouton d'aperçu passé en icône seule (`variant="outline" size="icon"`) avec `Tooltip`, pour matcher la taille du bouton d'édition ; état « aucun fichier » aussi restylé en icône avec tooltip au lieu d'un badge texte.
+- `components/FactureFournisseurModal.tsx` + `app/api/factures-fournisseurs/[id]/route.ts` : la règle de verrouillage (déjà en place pour « Payée ») s'applique désormais aussi au statut « Annulée » — seule l'ajout d'une pièce jointe manquante reste possible ; message du bandeau d'avertissement adapté dynamiquement (« payée » vs « annulée »).
+- `app/(main)/fournisseur/factures/page.tsx` et `app/(main)/fournisseur/[id]/page.tsx` : le sélecteur de statut n'est affiché (cliquable) que pour les factures « En attente » ; pour Payée/Annulée, affichage d'un badge non interactif. Les options du menu déroulant de statut affichent désormais le point coloré correspondant. Bouton d'édition uniformisé en `variant="outline" size="icon"` avec tooltip (« Modifier »/« Voir » selon le verrouillage).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur tous les fichiers modifiés.
+
+**À tester / points d'attention**
+- Vérifier visuellement que le point clignotant n'apparaît que pour le statut « En attente » (modifiable) et reste fixe pour Payée/Annulée (verrouillé), conformément au choix de design fait.
+- Confirmer avec l'utilisateur si le verrouillage d'une facture Annulée doit aussi bloquer l'ajout d'une pièce jointe (actuellement autorisé, comme pour Payée) ou non.
+
+---
+
+## 2026-07-31 — Édition des factures fournisseurs (verrouillée si Payée) + aperçu de pièce jointe en modale
+
+**Demande / Contexte**
+Il n'existait aucun moyen de modifier une facture fournisseur après création (ni même d'ajouter la pièce jointe si elle avait été oubliée à la création). Demande : permettre l'édition complète tant que la facture n'est pas « Payée » (auquel cas elle doit être verrouillée, seul l'ajout d'une pièce jointe manquante restant possible), et améliorer l'affichage/consultation du fichier joint.
+
+**Modifications apportées**
+- `lib/uploadFactureFournisseur.ts` (nouveau) : helper `saveFactureFournisseurPieceJointe` partagé entre la création et l'édition (déduplique la logique d'écriture disque déjà présente dans la route POST).
+- `app/api/factures-fournisseurs/[id]/route.ts` : réécriture du `PATCH` pour accepter soit un corps JSON `{ status }` (changement rapide de statut, utilisé par les sélecteurs inline), soit un `FormData` complet (référence, montant, date, fournisseur, statut, pièce jointe). Règle métier : si la facture existante est verrouillée, toute modification est refusée (`403`) sauf l'ajout d'une pièce jointe absente.
+- `components/FactureFournisseurModal.tsx` : ajout du mode édition (`initialData`) — préremplissage du formulaire, champs désactivés/affichés en lecture seule et bandeau d'avertissement quand la facture est verrouillée, appel `PATCH` au lieu de `POST` en édition.
+- `components/AttachmentPreviewButton.tsx` (nouveau) : bouton « Voir » ouvrant une modale avec aperçu direct (image affichée, PDF en `iframe`, message générique sinon) + lien de téléchargement/ouverture en nouvel onglet ; badge dédié si aucune pièce jointe.
+- `app/(main)/fournisseur/factures/page.tsx` et `app/(main)/fournisseur/[id]/page.tsx` : ajout d'un bouton « Modifier » (crayon) par ligne ouvrant la modale d'édition, et remplacement du lien « Voir PJ » par `AttachmentPreviewButton`.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur tous les fichiers créés/modifiés.
+
+**À tester / points d'attention**
+- Sur `/fournisseur/[id]`, la modale d'édition ne reçoit que le fournisseur courant (pas la liste complète) : changer le fournisseur d'une facture n'est donc pas proposé depuis cette page — seulement depuis `/fournisseur/factures`. À signaler si un besoin de réassignation depuis la fiche fournisseur apparaît.
+- Vérifier qu'une tentative de modification d'une facture verrouillée renvoie bien un message clair (409/403) plutôt qu'une erreur générique.
+
+---
+
+## 2026-07-31 — Ajout de facture fournisseur en dialogue (au lieu d'une page dédiée)
+
+**Demande / Contexte**
+Le formulaire d'ajout de facture fournisseur était une page séparée (`/fournisseur/factures/new`). Demande : l'ouvrir en dialogue directement depuis la liste des factures, sans changer la logique ni l'API d'ajout, et recharger le tableau après création.
+
+**Modifications apportées**
+- `components/FactureFournisseurModal.tsx` (nouveau à l'origine, puis étendu en mode édition dans une entrée suivante) : reprend exactement le même formulaire et le même appel `POST /api/factures-fournisseurs` (FormData) que l'ancienne page, dans un `Dialog`.
+- `app/(main)/fournisseur/factures/page.tsx` : bouton « Ajouter une facture » ouvrant le dialogue ; `onSuccess={fetchFactures}` recharge le tableau après création (la dernière facture apparaît immédiatement, triée par date décroissante comme le fait déjà l'API).
+- Suppression de `app/(main)/fournisseur/factures/new/page.tsx` et de son entrée « Ajouter Facture » dans `components/app-sidebar.tsx` (devenue obsolète).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Aucun particulier — fonctionnalité vérifiée par lecture de code, logique/API inchangées par rapport à l'ancienne page.
+
+---
 
 ## 2026-07-31 — Messages d'erreur explicites à la création d'une facture fournisseur
 

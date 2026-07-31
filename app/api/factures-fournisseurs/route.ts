@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
+import { saveFactureFournisseurPieceJointe } from "@/lib/uploadFactureFournisseur";
 
 // GET /api/factures-fournisseurs - Récupérer toutes les factures fournisseurs
 export async function GET(req: NextRequest) {
@@ -31,7 +30,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (year) {
+    if (year === "ALL") {
+      // Aucun filtre de date : toutes les périodes.
+    } else if (year) {
       const parsedYear = parseInt(year, 10);
 
       if (!Number.isNaN(parsedYear)) {
@@ -142,23 +143,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let pieceJointeUrl: string | null = null;
-
-    if (file) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const filename = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
-      const uploadDir = path.join(
-        process.cwd(),
-        "public",
-        "Upload",
-        "FactureFournisseur",
-      );
-
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(path.join(uploadDir, filename), buffer);
-
-      pieceJointeUrl = `/Upload/FactureFournisseur/${filename}`;
-    }
+    const pieceJointeUrl = file
+      ? await saveFactureFournisseurPieceJointe(file)
+      : null;
 
     const newFacture = await prisma.factureFournisseur.create({
       data: {

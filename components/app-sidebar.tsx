@@ -95,11 +95,6 @@ const fournisseur = [
     url: "/fournisseur/factures",
     icon: FileText,
   },
-  {
-    title: "Ajouter Facture",
-    url: "/fournisseur/factures/new",
-    icon: Plus,
-  },
 ];
 
 const finance = [
