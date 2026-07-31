@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
-import { StatutFactureFournisseur } from "@prisma/client";
+import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -114,6 +113,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const montantNumber = parseFloat(montant);
+    if (Number.isNaN(montantNumber)) {
+      return NextResponse.json(
+        { message: "Le montant saisi est invalide." },
+        { status: 400 },
+      );
+    }
+
+    const dateValue = new Date(date);
+    if (Number.isNaN(dateValue.getTime())) {
+      return NextResponse.json(
+        { message: "La date saisie est invalide." },
+        { status: 400 },
+      );
+    }
+
+    const existing = await prisma.factureFournisseur.findUnique({
+      where: { reference },
+      select: { id: true },
+    });
+    if (existing) {
+      return NextResponse.json(
+        {
+          message: `Une facture avec la référence "${reference}" existe déjà. Merci d'utiliser une référence unique.`,
+        },
+        { status: 409 },
+      );
+    }
+
     let pieceJointeUrl: string | null = null;
 
     if (file) {
@@ -135,8 +163,8 @@ export async function POST(req: NextRequest) {
     const newFacture = await prisma.factureFournisseur.create({
       data: {
         reference,
-        montant: parseFloat(montant),
-        date: new Date(date),
+        montant: montantNumber,
+        date: dateValue,
         fournisseurId,
         status,
         pieceJointe: pieceJointeUrl,
@@ -146,9 +174,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(newFacture, { status: 201 });
   } catch (error) {
     console.error(
-      "Erreur lors de la création de la facture fournisseur:Verifier si reference existe déja...",
+      "Erreur lors de la création de la facture fournisseur:",
       error,
     );
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return NextResponse.json(
+          { message: "Une facture avec cette référence existe déjà." },
+          { status: 409 },
+        );
+      }
+      if (error.code === "P2003") {
+        return NextResponse.json(
+          { message: "Le fournisseur sélectionné est introuvable." },
+          { status: 400 },
+        );
+      }
+    }
+
     return NextResponse.json(
       { message: "Erreur interne du serveur" },
       { status: 500 },

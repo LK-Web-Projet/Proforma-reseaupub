@@ -24,6 +24,70 @@ Ce qui a été demandé et pourquoi.
 
 ## Journal
 
+## 2026-07-31 — Messages d'erreur explicites à la création d'une facture fournisseur
+
+**Demande / Contexte**
+Depuis un bon moment, l'enregistrement d'une facture fournisseur échouait « en ligne » avec le message générique « Erreur interne du serveur », sans que l'utilisateur (ni le développeur) puisse en identifier la cause réelle.
+
+**Cause réelle**
+`FactureFournisseur.reference` est `@unique` dans `prisma/schema.prisma`. Toute tentative de création avec une référence déjà utilisée en base (double soumission du formulaire, référence ressaisie) fait échouer `prisma.factureFournisseur.create` avec une erreur de contrainte unique (`P2002`), mais le `catch` générique de la route renvoyait toujours le même message flou, quelle que soit la cause réelle (référence dupliquée, fournisseur introuvable, montant/date invalides...).
+
+**Modifications apportées**
+- `app/api/factures-fournisseurs/route.ts` :
+  - Vérification explicite de l'unicité de la référence avant insertion (`prisma.factureFournisseur.findUnique`) → réponse `409` avec message clair si la référence existe déjà.
+  - Validation du `montant` (`parseFloat` + `Number.isNaN`) et de la `date` (`Number.isNaN(dateValue.getTime())`) avant insertion → réponse `400` explicite plutôt qu'une erreur Prisma silencieuse.
+  - Dans le `catch`, distinction des erreurs Prisma connues via `Prisma.PrismaClientKnownRequestError` : `P2002` (référence dupliquée) et `P2003` (fournisseur introuvable) renvoient désormais un message dédié ; seules les erreurs vraiment inattendues gardent le message générique 500.
+
+**Erreurs rencontrées & solutions**
+Aucune erreur de code. `tsc --noEmit` et `next lint` passent sans erreur sur le fichier modifié.
+
+**À tester / points d'attention**
+- Reproduire volontairement une référence dupliquée depuis le formulaire (`app/(main)/fournisseur/factures/new/page.tsx`) et vérifier que le toast affiche désormais le message précis (409) au lieu de « Erreur interne du serveur ».
+- Point non résolu par ce correctif : la route (comme les autres routes d'upload du projet — `cash-journal/upload`, `factures/upload`, etc.) écrit les pièces jointes directement sur le disque via `fs.writeFile` dans `public/Upload/...`. Si l'hébergement de production utilise un système de fichiers en lecture seule ou éphémère (ex: plateforme serverless), l'upload de fichier échouera toujours avec une 500 même sans référence dupliquée — à vérifier selon la plateforme de déploiement réelle, et migrer vers un stockage externe (S3, Vercel Blob, etc.) si c'est le cas.
+
+---
+<!-- 
+## 2026-07-31 — Refonte visuelle du Dashboard (centrage des caisses + design admin)
+
+**Demande / Contexte**
+Sur la nouvelle page `/dashboard`, les cartes de solde par caisse s'affichaient collées à gauche (grille avec colonnes vides quand il y a peu de caisses). Demande de les centrer et de retravailler le design général pour qu'il ressemble davantage à un tableau de bord d'administration.
+
+**Modifications apportées**
+- `app/(main)/dashboard/page.tsx` :
+  - Les cartes « Solde par caisse » passent d'une grille (`grid`) à `flex flex-wrap justify-center`, ce qui les centre quel que soit leur nombre.
+  - Contenu regroupé en sections `<section>` avec icône + titre (« Solde par caisse », « Vue d'ensemble »), séparées du header par une bordure.
+  - En-tête simplifié (titre + sous-titre) avec un badge « Données en temps réel » (pastille verte animée) à la place du texte brut précédent.
+  - `StatCard` enrichi d'un accent de couleur en bordure supérieure (`border-t-*`) assorti à la couleur de son icône, plus un effet de survol (`hover:shadow-md`), pour distinguer visuellement les 3 indicateurs clés.
+  - Cartes de caisse avec effet de survol (légère élévation) et icône dans un badge arrondi.
+
+**Erreurs rencontrées & solutions**
+Un avertissement ESLint temporaire (`TrendingUp` importé mais plus utilisé après la refonte du header) → import supprimé. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier visuellement le rendu avec un nombre variable de caisses visibles (1, 2, 5+) pour confirmer que le centrage reste cohérent à toutes les largeurs d'écran.
+
+--- -->
+
+## 2026-07-31 — Création de la page Dashboard (KPI dirigeante)
+
+**Demande / Contexte**
+Le menu « Tableau de bors » avait été ajouté dans `components/app-sidebar.tsx` (array `dashboard`) mais pointait vers une page vide. Objectif : construire un vrai tableau de bord temps réel pour la dirigeante avec les chiffres clés de l'activité : commandes totales, encaissements (avec reste à encaisser, ventilé par année de facture), et solde de caisse, avec des graphes de comparaison.
+
+**Modifications apportées**
+- `app/api/dashboard/route.ts` (nouveau) : agrège les factures aux statuts « commandés » (`Valider`, `Payer`, `Solde`) groupées par année de `dateCreation` — total commandé (`totalTTC`), total encaissé (`totalTTC - resteAPayer`), reste à encaisser, et nombre de clients distincts ayant encore un impayé par année. Calcule aussi le solde total des caisses visibles (`CashRegister.view = true`) et l'évolution mensuelle Recettes/Dépenses de l'année en cours (même logique que `app/api/statistiques/route.ts`).
+- `app/(main)/dashboard/page.tsx` (nouveau) : page cliente (`fetch` + `useState`/`useEffect`, même pattern que `statistiques/page.tsx`) avec 3 cartes KPI (Commande Totale, Encaissement Total + reste à encaisser, Solde Caisse Total) et 3 graphiques `recharts` : Commandé/Encaissé/Reste par année, Clients avec impayé par année, Évolution mensuelle de la caisse.
+- `components/app-sidebar.tsx` : le lien Dashboard n'est affiché que pour `role === "org:admin"`, en haut de la sidebar (avant la section Proforma).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur les fichiers créés/modifiés.
+
+**À tester / points d'attention**
+- Vérifier que les montants affichés sur `/dashboard` sont cohérents avec ceux de `/statistiques` et `/journal-caisse` (mêmes sources de données).
+- Se connecter avec un rôle non-admin pour confirmer que le lien Dashboard n'apparaît pas dans la sidebar.
+- Il n'existe pas de statut « en cours de paiement » distinct dans `StatusFacture` : une facture partiellement payée reste au statut `Payer` avec `resteAPayer > 0`, ce qui est déjà couvert par le regroupement actuel.
+
+---
+
 ## 2026-07-20 — Correction définitive du mapping des champs camptrack (bug réel identifié)
 
 **Demande / Contexte**
