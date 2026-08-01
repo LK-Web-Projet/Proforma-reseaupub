@@ -42,9 +42,18 @@ import {
 } from "@/components/ui/sidebar";
 
 // Menu facture.
+const dashboard = [
+  {
+    title: "Tableau de bors",
+    url: "/dashboard",
+    icon: BarChart,
+  },
+ 
+];
+
 const facture = [
   {
-    title: "Home",
+    title: "Facture proforma",
     url: "/facture",
     icon: Home,
   },
@@ -158,6 +167,7 @@ export function AppSidebar() {
   const role = user?.organizationMemberships?.[0]?.role ?? "no-role";
 
   const router = useRouter();
+  const pathname = usePathname();
   const [isFactureOpen, setIsFactureOpen] = useState(true);
   const [isClientOpen, setIsClientOpen] = useState(false);
   const [isCommercialOpen, setIsCommercialOpen] = useState(false);
@@ -189,7 +199,29 @@ export function AppSidebar() {
           </div>
         </div>
       </SidebarHeader>
-      <SidebarContent className="gap-1">
+      <SidebarContent className="gap-2">
+        {role === "org:admin" && (
+          <SidebarMenu>
+            {dashboard.map((item) => (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild>
+                  <Link
+                    href={item.url}
+                    className={cn(
+                      "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
+                      pathname === item.url
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-600"
+                    )}
+                  >
+                    <item.icon />
+                    <span className="font-bold">{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        )}
         <Collapsible
           open={isFactureOpen}
           onOpenChange={setIsFactureOpen}
