@@ -21,6 +21,21 @@ Ce qui a été demandé et pourquoi.
 ```
 
 ---
+## 2026-08-01 — Dashboard & test build 
+
+**Demande / Contexte**
+Demande de création d'un dashboard pour afficher les statistiques de l'entreprise.
+
+**Modifications apportées**
+- Création du fichier `app/api/dashboard/route.ts` pour récupérer les données.
+- Création du fichier `app/dashboard/page.tsx` pour afficher les données.
+
+**Erreurs rencontrées & solutions**
+Aucune erreur rencontrée.
+
+**À tester / points d'attention**
+- Tester le dashboard pour s'assurer que les données sont correctes.
+```
 
 ## 2026-07-31 — Messages d'erreur explicites pour les échecs d'écriture disque (upload pièce jointe fournisseur)
 
