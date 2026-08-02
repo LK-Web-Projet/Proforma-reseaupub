@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SignedIn, UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 import { usePathname } from "next/navigation";
 import Link, { useLinkStatus } from "next/link";
 import {
@@ -363,7 +364,7 @@ export function AppSidebar() {
         </div>
         <div className="border-t border-gray-200 pt-4 text-xs text-gray-500">
           <span>
-            V-Beta © 2025 Proforma. All rights reserved. By Bryan Lk - lk.corp
+            V-{APP_VERSION} © {new Date().getFullYear()} Proforma. All rights reserved. By Bryan Lk - lk.corp
           </span>
         </div>
       </SidebarFooter>

@@ -86,3 +86,34 @@ L'application sera accessible à l'adresse [http://localhost:3000](http://localh
 - `npm run start`: Démarre un serveur de production.
 - `npm run lint`: Lance le linter ESLint pour vérifier la qualité du code.
 - `npm run db:seed`: Exécute le script de seeding de la base de données.
+
+## 🏷️ Versioning
+
+Le projet suit le [versionnage sémantique (SemVer)](https://semver.org/lang/fr/) : `MAJOR.MINOR.PATCH` (ex: `1.2.3`).
+
+| Partie  | Quand l'incrémenter                                                                 | Exemple |
+|---------|---------------------------------------------------------------------------------------|---------|
+| MAJOR   | Changement majeur/incompatible : refonte importante, suppression/changement radical d'une fonctionnalité existante, migration de schéma non rétrocompatible. | `1.4.2` → `2.0.0` |
+| MINOR   | Ajout d'une nouvelle fonctionnalité qui ne casse rien d'existant (ex: nouveau module Dashboard, nouveau filtre, nouvel écran). | `1.4.2` → `1.5.0` |
+| PATCH   | Correction de bug, ajustement UI/UX, petite amélioration sans nouvelle fonctionnalité ni rupture. | `1.4.2` → `1.4.3` |
+
+**Version actuelle : `1.0.0`** — première version suivie formellement (l'application était déjà en production, donc on démarre à `1.0.0` plutôt qu'à `0.x.y`, réservé conventionnellement aux projets pas encore stables).
+
+### Source unique de vérité
+
+Le champ `"version"` de `package.json` est la seule source à modifier. Il est ensuite exposé dans toute l'application (composants client compris) via `NEXT_PUBLIC_APP_VERSION`, injecté au build par `next.config.ts`, et accessible partout via :
+
+```ts
+import { APP_VERSION } from "@/lib/version";
+```
+
+### Publier une nouvelle version
+
+```bash
+# Bump automatique (met à jour package.json et crée un tag git vX.Y.Z) :
+npm version patch   # 1.0.0 -> 1.0.1
+npm version minor   # 1.0.0 -> 1.1.0
+npm version major   # 1.0.0 -> 2.0.0
+```
+
+Ou modifier directement le champ `"version"` dans `package.json`. Penser à ajouter une entrée correspondante dans `HISTORIQUE.md` décrivant ce qui a changé.

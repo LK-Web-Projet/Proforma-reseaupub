@@ -21,6 +21,28 @@ Ce qui a été demandé et pourquoi.
 ```
 
 ---
+
+## 2026-08-01 — Mise en place du versionnage sémantique (SemVer) de l'application
+
+**Demande / Contexte**
+Demande de commencer à versionner officiellement l'application (norme MAJOR.MINOR.PATCH), avec la documentation de la convention dans le README et l'historique, et une variable unique à modifier pour afficher/utiliser la version partout dans l'app.
+
+**Modifications apportées**
+- `package.json` : champ `"version"` passé de `0.1.0` à `1.0.0` — l'app étant déjà en production et utilisée quotidiennement par l'équipe finance, on démarre à `1.0.0` plutôt qu'à `0.0.1` (qui signifierait conventionnellement "version instable, tout peut changer").
+- `next.config.ts` : ajout de `env: { NEXT_PUBLIC_APP_VERSION: packageJson.version }` — injecte la version de `package.json` comme variable d'environnement publique au build, disponible aussi bien côté serveur que dans les composants client (`"use client"`).
+- `lib/version.ts` (nouveau) : exporte `APP_VERSION` (lit `NEXT_PUBLIC_APP_VERSION`, avec fallback `"0.0.0"`) — point d'import unique à utiliser partout où la version doit être affichée, plutôt que de coder la version en dur à plusieurs endroits.
+- `components/app-sidebar.tsx` : le pied de page de la sidebar affiche désormais `V{APP_VERSION}` dynamiquement (au lieu d'un texte codé en dur), avec l'année courante calculée (`new Date().getFullYear()`) au lieu d'une année fixe.
+- `README.md` : nouvelle section « 🏷️ Versioning » expliquant la convention SemVer (quand incrémenter MAJOR/MINOR/PATCH), la source unique de vérité (`package.json` → `APP_VERSION`), et comment publier une nouvelle version (`npm version patch|minor|major`).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur les fichiers modifiés.
+
+**À tester / points d'attention**
+- Après un `npm run build`, vérifier que le pied de page de la sidebar affiche bien `V1.0.0`.
+- Pour toute future version affichée ailleurs dans l'app (ex: page Paramètres, écran de connexion), importer `APP_VERSION` depuis `lib/version.ts` plutôt que de recoder la valeur.
+- Pour publier la prochaine version : `npm version patch` (ou minor/major selon la nature du changement), puis ajouter une entrée dans ce fichier décrivant ce qui a changé.
+
+---
 ## 2026-08-01 — Dashboard & test build 
 
 **Demande / Contexte**
