@@ -13,7 +13,6 @@ import {
   Calendar,
   Home,
   Plus,
-  UserPlus,
   UserRoundPlus,
   BarChart,
   ChevronRight,
@@ -76,11 +75,6 @@ const client = [
     title: "Clients",
     url: "/client",
     icon: Calendar,
-  },
-  {
-    title: "Nouveau Client",
-    url: "/client/new",
-    icon: UserPlus,
   },
 ];
 const Commercial = [

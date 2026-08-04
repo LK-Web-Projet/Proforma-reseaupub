@@ -1,7 +1,7 @@
 // Page: app/(main)/client/page.tsx
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   Table,
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { ClientTableSkeleton } from "@/components/ClientTableSkeleton";
 import { Search, UserPlus, FileText, CheckCircle2, Wallet, CheckSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ClientModal } from "@/components/ClientModal";
 
 type ClientStats = {
   total: number;
@@ -37,25 +38,27 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  const fetchClients = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/clients");
+      if (!res.ok) {
+        throw new Error("Failed to fetch clients");
+      }
+      const data = await res.json();
+      setClients(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchClients() {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/clients");
-        if (!res.ok) {
-          throw new Error("Failed to fetch clients");
-        }
-        const data = await res.json();
-        setClients(data);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchClients();
-  }, []);
+  }, [fetchClients]);
 
   const filteredClients = useMemo(() => {
     return clients.filter((client) => {
@@ -75,13 +78,17 @@ export default function ClientsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Portefeuille Clients</h1>
           <p className="text-muted-foreground">Gérez vos relations clients et suivez leur activité de facturation.</p>
         </div>
-        <Button asChild className="shrink-0">
-          <Link href="/client/new">
-            <UserPlus className="w-4 h-4 mr-2" />
-            Nouveau Client
-          </Link>
+        <Button onClick={() => setIsAddModalOpen(true)} className="shrink-0">
+          <UserPlus className="w-4 h-4 mr-2" />
+          Nouveau Client
         </Button>
       </div>
+
+      <ClientModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={() => fetchClients()}
+      />
 
       <div className="flex items-center gap-2 max-w-md bg-white rounded-lg border shadow-sm px-3 py-1">
         <Search className="w-4 h-4 text-muted-foreground" />

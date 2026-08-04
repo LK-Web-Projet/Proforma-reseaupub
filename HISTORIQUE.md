@@ -22,6 +22,26 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-08-04 — Ajout de client en dialogue + compaction des cartes de statut sur la fiche client
+
+**Demande / Contexte**
+Demande de faire ouvrir le formulaire d'ajout de client en dialogue depuis la liste des clients (au lieu d'une page dédiée), et de retravailler les cartes de statistiques de statut de facture en haut de la fiche client (`/client/[id]`), jugées trop grandes verticalement et pas assez UI/UX.
+
+**Modifications apportées**
+- `components/ClientModal.tsx` (nouveau) : reprend le même formulaire et le même appel `POST /api/clients` que l'ancienne page `/client/new`, dans un `Dialog`.
+- `app/(main)/client/page.tsx` : le bouton "Nouveau Client" ouvre désormais le dialogue ; `fetchClients` extrait en fonction réutilisable (`useCallback`) et rappelée en `onSuccess` pour rafraîchir la liste après création.
+- Suppression de `app/(main)/client/new/page.tsx` et de son entrée "Nouveau Client" dans `components/app-sidebar.tsx` (devenue obsolète).
+- `app/(main)/client/[id]/page.tsx` : `StatCard` (cartes de statut de facture) redessiné en version compacte façon SaaS neutre, cohérente avec la refonte déjà faite sur `/facture` et `/fournisseur/factures` — icône dans un badge gris neutre, libellé en petites majuscules, montant + compteur sur une seule ligne, détail Payé/Reste (facture "Payer") réduit à une ligne verte/rouge sans labels. Suppression du `scale-105` sur l'état actif (remplacé par un anneau primaire discret) et de la prop `colorClass` devenue inutile. Grille passée à `grid-cols-[repeat(auto-fit,minmax(130px,1fr))]` (comme sur `/facture`) pour occuper toute la largeur sans réserver une hauteur excessive.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur tous les fichiers créés/modifiés.
+
+**À tester / points d'attention**
+- Vérifier que la création d'un client depuis le dialogue rafraîchit bien la liste et que la recherche continue de fonctionner sur les nouveaux clients.
+- Vérifier visuellement la hauteur des 7 cartes de statut sur `/client/[id]` avec un client ayant des factures dans plusieurs statuts.
+
+---
+
 ## 2026-08-01 — Mise en place du versionnage sémantique (SemVer) de l'application
 
 **Demande / Contexte**

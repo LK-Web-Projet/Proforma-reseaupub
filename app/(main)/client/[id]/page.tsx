@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { 
     Search, FileText, CheckCircle2, Wallet, 
@@ -54,45 +55,39 @@ type StatCardProps = {
     paidAmount?: number;
     remainingAmount?: number;
     icon: LucideIcon;
-    colorClass: string;
     isActive: boolean;
     onClick: () => void;
 };
 
-const StatCard = ({ title, count, amount, paidAmount, remainingAmount, icon: Icon, colorClass, isActive, onClick }: StatCardProps) => (
-  <Card 
-    className={`cursor-pointer transition-all duration-200 border-2 ${isActive ? 'border-primary shadow-md scale-105' : 'border-transparent hover:border-primary/30'}`}
+const StatCard = ({ title, count, amount, paidAmount, remainingAmount, icon: Icon, isActive, onClick }: StatCardProps) => (
+  <Card
+    className={cn(
+      "cursor-pointer transition-all py-0 gap-0 shadow-none",
+      isActive
+        ? "border-primary/50 ring-1 ring-primary/30 bg-primary/[0.03]"
+        : "border-border/60 hover:border-border hover:shadow-sm"
+    )}
     onClick={onClick}
   >
-    <CardContent className="pt-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className={`p-2 rounded-lg ${colorClass}`}>
-          <Icon className="w-5 h-5" />
+    <CardContent className="p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <Icon className="h-3.5 w-3.5" />
         </div>
-        <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
-          {count}
-        </Badge>
+        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide truncate">{title}</span>
       </div>
-      <div>
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <h3 className="text-xl font-bold">{formatMoney(amount, "XOF")}</h3>
-        {(paidAmount !== undefined || remainingAmount !== undefined) && (
-            <div className="mt-2 space-y-1">
-                {paidAmount !== undefined && (
-                    <div className="flex justify-between text-[10px] text-green-600 font-semibold uppercase">
-                        <span>Payé:</span>
-                        <span>{formatMoney(paidAmount, "XOF")}</span>
-                    </div>
-                )}
-                {remainingAmount !== undefined && (
-                    <div className="flex justify-between text-[10px] text-orange-600 font-semibold uppercase">
-                        <span>Reste:</span>
-                        <span>{formatMoney(remainingAmount, "XOF")}</span>
-                    </div>
-                )}
-            </div>
-        )}
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-sm font-semibold tabular-nums truncate" title={formatMoney(amount, "XOF")}>
+          {formatMoney(amount, "XOF")}
+        </span>
+        <span className="text-[10px] text-muted-foreground shrink-0">{count}</span>
       </div>
+      {(paidAmount !== undefined || remainingAmount !== undefined) && (
+        <div className="mt-2 pt-2 border-t border-border/60 flex justify-between text-[10px] font-medium tabular-nums">
+          <span className="text-emerald-600">{formatMoney(paidAmount ?? 0, "XOF")}</span>
+          <span className="text-rose-500">{formatMoney(remainingAmount ?? 0, "XOF")}</span>
+        </div>
+      )}
     </CardContent>
   </Card>
 );
@@ -295,9 +290,9 @@ export default function ClientDetailPage() {
       )}
 
       {/* Stats Dashboard */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+      <div className="grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(130px,1fr))]">
         {Object.entries(statusConfig).map(([status, config]) => (
-            <StatCard 
+            <StatCard
                 key={status}
                 title={config.label}
                 count={stats[status].count}
@@ -305,7 +300,6 @@ export default function ClientDetailPage() {
                 paidAmount={status === "Payer" ? stats[status].paid : undefined}
                 remainingAmount={status === "Payer" ? stats[status].remaining : undefined}
                 icon={config.icon}
-                colorClass={config.color}
                 isActive={activeStatusFilter === status}
                 onClick={() => setActiveStatusFilter(activeStatusFilter === status ? null : status)}
             />
