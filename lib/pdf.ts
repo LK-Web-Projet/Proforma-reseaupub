@@ -66,6 +66,68 @@ function getLines(text: string, font: PDFFont, fontSize: number, maxWidth: numbe
   return allLines;
 }
 
+interface WrappedLabeledParagraph {
+  labelText: string;
+  labelWidth: number;
+  lines: string[];
+}
+
+// Découpe un paragraphe "Label : reste du texte" en lignes, en réservant la largeur du
+// label (en gras) uniquement sur la première ligne — les lignes suivantes utilisent toute la largeur.
+function wrapLabeledParagraph(
+  boldFont: PDFFont,
+  font: PDFFont,
+  label: string,
+  rest: string,
+  fontSize: number,
+  maxWidth: number
+): WrappedLabeledParagraph {
+  const labelText = `${label} `;
+  const labelWidth = boldFont.widthOfTextAtSize(labelText, fontSize);
+  const words = rest.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const availableWidth = lines.length === 0 ? maxWidth - labelWidth : maxWidth;
+    const prospectiveLine = currentLine === '' ? word : `${currentLine} ${word}`;
+    const width = font.widthOfTextAtSize(prospectiveLine, fontSize);
+
+    if (width > availableWidth && currentLine !== '') {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = prospectiveLine;
+    }
+  }
+  lines.push(currentLine);
+
+  return { labelText, labelWidth, lines };
+}
+
+// Dessine un paragraphe pré-découpé par wrapLabeledParagraph, avec le label en gras suivi
+// du reste du texte en police normale sur la même ligne, aligné à gauche.
+function drawLabeledParagraph(
+  page: PDFPage,
+  boldFont: PDFFont,
+  font: PDFFont,
+  paragraph: WrappedLabeledParagraph,
+  x: number,
+  y: { value: number },
+  fontSize: number,
+  lineHeight: number
+) {
+  paragraph.lines.forEach((line, index) => {
+    if (index === 0) {
+      page.drawText(cleanText(paragraph.labelText), { x, y: y.value, size: fontSize, font: boldFont, color: rgb(0, 0, 0) });
+      page.drawText(cleanText(line), { x: x + paragraph.labelWidth, y: y.value, size: fontSize, font, color: rgb(0, 0, 0) });
+    } else {
+      page.drawText(cleanText(line), { x, y: y.value, size: fontSize, font, color: rgb(0, 0, 0) });
+    }
+    y.value -= lineHeight;
+  });
+}
+
 export async function generateInvoicePdf(
   facture: InvoiceWithDetails,
   entreprise: EntrepriseConfig
@@ -217,12 +279,47 @@ export async function generateInvoicePdf(
   
   if (facture.paymentConditionPercentage && facture.paymentConditionPercentage > 0) {
     y.value -= 20;
-    const conditionText = `NB : Un acompte de ${facture.paymentConditionPercentage}% du montant total de la facture est requis afin de confirmer la commande et lancer la prestation.`;
-    const conditionLines = getLines(conditionText, font, 10, width - pageMargin );
-    await checkNewPage(conditionLines.length * 10);
-    for (const line of conditionLines) {
-        drawText(page, font, line, pageMargin, y.value, 10);
-        y.value -= 30;
+
+    const pct = facture.paymentConditionPercentage;
+    const isFullUpfront = pct >= 100;
+    const acompteAmount = Math.round(totalTTC * pct / 100);
+    const soldeAmount = totalTTC - acompteAmount;
+
+    const paiementRest = isFullUpfront
+      ? `Règlement intégral (100 % à la commande, soit ${formatNumber(acompteAmount)} ${facture.devise}). Aucun démarrage de fabrication, réservation ou déploiement terrain sans encaissement préalable.`
+      : `Acompte de ${pct} % à la commande, soit ${formatNumber(acompteAmount)} ${facture.devise} (condition obligatoire de démarrage) — Solde de ${100 - pct} % sur rapport d'exécution, soit ${formatNumber(soldeAmount)} ${facture.devise} (sauf dispositions spécifiques prévues au contrat cadre historique).`;
+
+    const validationsRest = isFullUpfront
+      ? "Éléments techniques et visuels à valider au moins 3 jours ouvrés avant l'opération."
+      : "Visuels, BAT et éléments logistiques à valider au moins 5 jours ouvrés avant le déploiement.";
+
+    const cadreRest = "La validation du présent devis emporte adhésion aux conditions du Contrat Cadre RESEAUPUB.";
+
+    const conditionTitle = "CONDITIONS D'EXÉCUTION & PAIEMENT";
+    const blockMaxWidth = width - pageMargin * 2;
+    const bodyFontSize = 9.5;
+    const lineHeight = 12;
+    const titleHeight = 16;
+    const paragraphSpacing = 8;
+
+    const paragraphs = [
+      { label: 'Paiement :', rest: paiementRest },
+      { label: 'Validations :', rest: validationsRest },
+      { label: 'Cadre :', rest: cadreRest },
+    ].map(({ label, rest }) => wrapLabeledParagraph(boldFont, font, label, rest, bodyFontSize, blockMaxWidth));
+
+    const estimatedHeight =
+      titleHeight +
+      paragraphs.reduce((sum, p) => sum + p.lines.length * lineHeight + paragraphSpacing, 0);
+
+    await checkNewPage(estimatedHeight);
+
+    drawText(page, boldFont, conditionTitle, pageMargin, y.value, 11, 'left', colorPrimary);
+    y.value -= titleHeight;
+
+    for (const paragraph of paragraphs) {
+      drawLabeledParagraph(page, boldFont, font, paragraph, pageMargin, y, bodyFontSize, lineHeight);
+      y.value -= paragraphSpacing;
     }
   }
 
@@ -253,17 +350,61 @@ export async function generateInvoicePdf(
     y.value -= 20; // spacing after the whole block
   }
   
-  // Explications abréviations
-  await checkNewPage(40);
-  drawText(page, font, "HT : Hors Taxes", pageMargin, y.value, 8);
-  y.value -= 12;
-  drawText(page, font, "TTC : Toutes Taxes Comprises", pageMargin, y.value, 8);
-  y.value -= 12;
-  drawText(page, font, "TVA : Taxe sur la Valeur Ajoutée", pageMargin, y.value, 8);
-  y.value -= 12;
-  drawText(page, font, "NB : Note Bien", pageMargin, y.value, 8);
+  // Explications abréviations (gauche) + cadre de signature "Bon pour accord" (droite)
+  const legendLines = [
+    "HT : Hors Taxes",
+    "TTC : Toutes Taxes Comprises",
+    "TVA : Taxe sur la Valeur Ajoutée",
+    "NB : Note Bien",
+  ];
+  const legendLineHeight = 12;
+  const legendHeight = legendLines.length * legendLineHeight;
 
+  const signatureBoxWidth = 220;
+  const signatureBoxHeight = 110;
 
+  const bottomBlockHeight = Math.max(legendHeight, signatureBoxHeight);
+  await checkNewPage(bottomBlockHeight + 10);
+
+  const blockTopY = y.value;
+
+  // Légende
+  let legendY = blockTopY;
+  for (const line of legendLines) {
+    drawText(page, font, line, pageMargin, legendY, 8);
+    legendY -= legendLineHeight;
+  }
+
+  // Cadre de signature
+  const signatureBoxX = width - pageMargin - signatureBoxWidth;
+  const signatureBoxY = blockTopY - signatureBoxHeight + 8;
+  page.drawRectangle({
+    x: signatureBoxX,
+    y: signatureBoxY,
+    width: signatureBoxWidth,
+    height: signatureBoxHeight,
+    borderWidth: 1,
+    borderColor: colorPrimary,
+    color: rgb(1, 1, 1),
+  });
+
+  const signatureTitle = "BON POUR ACCORD";
+  const signatureTitleWidth = boldFont.widthOfTextAtSize(signatureTitle, 10);
+  drawText(
+    page,
+    boldFont,
+    signatureTitle,
+    signatureBoxX + (signatureBoxWidth - signatureTitleWidth) / 2,
+    blockTopY - 4,
+    10,
+    'left',
+    colorPrimary
+  );
+
+  drawText(page, font, "Nom & Prénom :", signatureBoxX + 12, blockTopY - 30, 9);
+  drawText(page, font, "Signature :", signatureBoxX + 12, blockTopY - 65, 9);
+
+  y.value = blockTopY - bottomBlockHeight - 10;
 
   drawFooter(page, pageCount, font, width);
 

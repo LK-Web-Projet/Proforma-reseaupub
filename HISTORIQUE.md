@@ -22,6 +22,61 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-08-04 — Cadre de signature "Bon pour accord" dans le PDF de la proforma
+
+**Demande / Contexte**
+Demande d'ajouter un cadre assez grand pour la signature du client sur le PDF de la proforma, avec les mentions Nom & Prénom, Signature et "Bon pour accord", positionné tout en bas à droite de la page, au même niveau que la légende des abréviations (HT/TTC/TVA/NB) en bas à gauche.
+
+**Modifications apportées**
+- `lib/pdf.ts` : la section légende, auparavant seule en bas de page, est maintenant accompagnée d'un cadre rectangulaire (`page.drawRectangle`, 220×110) dessiné à droite au même niveau vertical (`blockTopY`, capturé avant de dessiner l'un ou l'autre). Le cadre contient le titre "BON POUR ACCORD" centré en gras/couleur primaire, puis les lignes "Nom & Prénom :" et "Signature :" avec l'espace vide nécessaire en dessous pour signer à la main. La hauteur du bloc bas de page (`checkNewPage`) est calculée sur le plus grand des deux éléments (légende ou cadre) pour que ni l'un ni l'autre ne soit coupé par un saut de page.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Générer un PDF et vérifier que le cadre de signature s'affiche entièrement en bas à droite, aligné avec la légende à gauche, sans chevaucher le footer (numéro de page).
+- Vérifier sur une facture avec beaucoup de lignes de produits (déclenchant plusieurs pages) que le cadre reste bien sur la dernière page sans être coupé.
+
+---
+
+## 2026-08-04 — Ajustement du bloc CGV du PDF : alignement à gauche + rubriques en gras
+
+**Demande / Contexte**
+Retour immédiat sur le bloc "Conditions d'exécution & paiement" ajouté juste avant : préférence pour un alignement à gauche plutôt qu'à droite, avec les rubriques ("Paiement", "Validations", "Cadre") mises en gras au début de chaque paragraphe.
+
+**Modifications apportées**
+- `lib/pdf.ts` : ajout de deux fonctions utilitaires `wrapLabeledParagraph` (découpe un paragraphe "Label : texte" en lignes, en réservant la largeur du label en gras uniquement sur la première ligne) et `drawLabeledParagraph` (dessine le label en gras suivi du reste en police normale sur la même ligne, alignées à gauche). Le bloc CGV utilise désormais ces fonctions au lieu de `getLines`/`drawText` avec alignement `'right'` — chaque paragraphe commence par son libellé en gras ("Paiement :", "Validations :", "Cadre :") suivi du texte normal, le tout aligné à gauche comme le reste du document (au lieu d'aligné à droite).
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Générer un PDF avec un paragraphe "Paiement" assez long pour vérifier que le retour à la ligne fonctionne bien (la 1ère ligne est plus courte à cause du label en gras, les suivantes utilisent toute la largeur).
+
+---
+
+## 2026-08-04 — Bloc "Conditions d'exécution & paiement" dans le PDF de la proforma
+
+**Demande / Contexte**
+La direction a fourni un nouveau texte de conditions générales de validation à faire figurer sur les devis (acompte obligatoire, délais de validation, solde, adhésion au Contrat Cadre), avec deux formulations selon que l'acompte demandé est partiel ou correspond à un règlement intégral (100%) à la commande. Objectif : remplacer le message d'acompte basique actuellement généré dans le PDF de la proforma par ce nouveau bloc, avec les montants calculés automatiquement et affiché aligné à droite.
+
+**Modifications apportées**
+- `lib/pdf.ts` : le bloc conditionnel (affiché uniquement si `paymentConditionPercentage > 0`, comportement inchangé) remplace l'ancien texte *"NB : Un acompte de X%..."* par un bloc **"CONDITIONS D'EXÉCUTION & PAIEMENT"** avec 3 paragraphes (Paiement / Validations / Cadre) :
+  - Si `paymentConditionPercentage` = 100 → formulation "Règlement intégral (100 % à la commande...)" avec délai de validation à 3 jours ouvrés.
+  - Si entre 1 et 99 → formulation "Acompte de X % ... — Solde de (100-X) % ..." avec le vrai pourcentage saisi (pas figé à 50%), délai de validation à 5 jours ouvrés.
+  - Les montants d'acompte et de solde sont calculés sur le **total TTC** (`Math.round(totalTTC * pct / 100)`), pour rester cohérents avec le montant "Acompte requis" déjà affiché sur la fiche facture à l'écran (`app/(main)/facture/[id]/page.tsx`), qui utilise la même base.
+  - Tout le bloc (titre + paragraphes wrappés) est dessiné aligné à droite (`x = width - pageMargin`, `align: 'right'`), avec estimation de hauteur et appel à `checkNewPage` pour éviter une coupure au milieu d'une page.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur `lib/pdf.ts`.
+
+**À tester / points d'attention**
+- Générer un PDF avec un acompte à 50% et un à 100% pour vérifier visuellement les deux formulations et les montants calculés.
+- Générer un PDF sans acompte (0% ou non renseigné) pour confirmer qu'aucun bloc ne s'affiche (comportement inchangé).
+- Le texte légal fourni par la direction mentionnait un calcul sur le montant HT ; le TTC a été retenu à la place pour cohérence avec l'existant (décision validée avec l'utilisateur) — à signaler si le service juridique tient spécifiquement au HT.
+
+---
+
 ## 2026-08-04 — Ajout de client en dialogue + compaction des cartes de statut sur la fiche client
 
 **Demande / Contexte**
