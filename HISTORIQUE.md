@@ -22,6 +22,51 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-08-04 — Documentation des API publiques d'intégration
+
+**Demande / Contexte**
+Demande d'expliquer comment utiliser l'API de dépense de caisse côté app appelante sans erreur, et d'en profiter pour documenter dans un fichier Markdown **toutes** les routes `/api/integration/*` déjà réalisées (pas seulement la nouvelle), avec un titre clair par route et sa date de réalisation — les dates réelles ont été reprises du journal de ce fichier plutôt qu'une date par défaut, puisqu'elles y étaient déjà consignées.
+
+**Modifications apportées**
+- `docs/API-INTEGRATION.md` (nouveau) : documentation complète des 6 routes d'intégration existantes — authentification (header `Authorization: Bearer <INTEGRATION_API_KEY>`, codes d'erreur communs), puis pour chacune : méthode/chemin, date de réalisation, description, paramètres/corps attendu, exemple de réponse, codes d'erreur, exemple `curl`.
+  - `GET /api/integration/proformas` — 19 juillet 2026
+  - `GET /api/integration/proformas/:id` — 19 juillet 2026
+  - `GET /api/integration/clients` — 19 juillet 2026
+  - `POST /api/integration/clients/find-or-create` — 19 juillet 2026
+  - `GET /api/integration/cash-journal/registers` — 4 août 2026
+  - `POST /api/integration/cash-journal/depenses` — 4 août 2026, avec une checklist dédiée côté app appelante (variables d'environnement à définir, ordre d'appel liste-caisses puis création, types de données attendus, gestion des codes retour) pour éviter les erreurs les plus courantes (ex: envoyer `montant` en chaîne au lieu d'un nombre).
+- `README.md` : ajout d'un lien vers `docs/API-INTEGRATION.md`, à côté du lien déjà existant vers `MEMO.md`.
+
+**Erreurs rencontrées & solutions**
+Aucune — travail de documentation uniquement, aucun code applicatif modifié.
+
+**À tester / points d'attention**
+- À chaque nouvelle route `/api/integration/*` ajoutée à l'avenir, penser à ajouter une section à `docs/API-INTEGRATION.md` (le fichier le rappelle en en-tête).
+- Vérifier côté app Campagnes que la checklist (variables d'env, ordre des appels, types JSON) permet bien une intégration sans erreur au premier essai.
+
+---
+
+## 2026-08-04 — API d'intégration publique : enregistrer une dépense de caisse
+
+**Demande / Contexte**
+L'app sœur (campagnes) doit pouvoir enregistrer une dépense dans le journal de caisse de cette app, avec un utilisateur qui choisit lui-même la caisse concernée côté app appelante. Objectif : exposer ça via le mécanisme d'intégration serveur-à-serveur déjà en place (`app/api/integration/*`, clé `INTEGRATION_API_KEY`).
+
+**Modifications apportées**
+- `lib/cashJournal.ts` (nouveau) : `recordCashMovement(tx, { cashRegisterId, type, montant, libelle, date_operation, isApportDeCaisse })` — factorise le calcul de solde (chaîne de soldes par caisse) et la création d'entrée `CashJournal` + mise à jour de `CashRegister.balance`, précédemment dupliqué en ligne dans la route interne.
+- `app/api/cash-journal/route.ts` : le bloc `RECETTE`/`DEPENSE` du `POST` utilise désormais `recordCashMovement` au lieu de sa propre logique inline — comportement inchangé, juste dé-dupliqué.
+- `app/api/integration/cash-journal/registers/route.ts` (nouveau) : `GET`, protégé par `verifyIntegrationKey`, liste les caisses visibles (`view: true`) — `{ id, name }` — pour peupler un sélecteur côté app appelante.
+- `app/api/integration/cash-journal/depenses/route.ts` (nouveau) : `POST`, protégé par `verifyIntegrationKey`, corps validé par `zod` (`cashRegisterId`, `montant`, `libelle`, `date_operation` optionnelle). Le type est fixé à `DEPENSE` côté serveur — l'app appelante ne peut pas créer de `RECETTE`/`TRANSFERT` via cet endpoint. Vérifie que la caisse existe et est visible avant d'enregistrer.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur sur les 4 fichiers.
+
+**À tester / points d'attention**
+- Tester avec `curl` (comme les autres routes `/api/integration/*`) : sans clé → 401 ; `GET registers` → liste des caisses visibles ; `POST depenses` avec un `cashRegisterId` valide → entrée créée, `CashRegister.balance` mis à jour, solde cohérent avec la route interne pour un montant identique.
+- Tester avec un `cashRegisterId` inexistant ou masqué → doit renvoyer `404`, pas une erreur Prisma brute.
+- Documenter l'URL (`/api/integration/cash-journal/registers` et `/depenses`) et rappeler que c'est la même `INTEGRATION_API_KEY` déjà partagée avec l'app campagnes pour les autres endpoints.
+
+---
+
 ## 2026-08-04 — Cadre de signature "Bon pour accord" dans le PDF de la proforma
 
 **Demande / Contexte**

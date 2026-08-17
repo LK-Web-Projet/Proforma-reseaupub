@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient, OperationType } from '@prisma/client';
+import { recordCashMovement } from '@/lib/cashJournal';
 
 const prisma = new PrismaClient();
 
@@ -119,34 +120,14 @@ export async function POST(request: Request) {
         return newEntry;
 
       } else if (type === OperationType.RECETTE || type === OperationType.DEPENSE) {
-        const lastEntry = await tx.cashJournal.findFirst({
-          where: { cashRegisterId: parsedCashRegisterId },
-          orderBy: { id: 'desc' },
+        return recordCashMovement(tx, {
+          cashRegisterId: parsedCashRegisterId,
+          type,
+          montant: parsedMontant,
+          libelle,
+          date_operation: parsedDateOperation,
+          isApportDeCaisse: isApportDeCaisseFromFrontend,
         });
-
-        const lastBalance = lastEntry ? lastEntry.solde : 0;
-        const newBalance = type === OperationType.RECETTE
-          ? lastBalance + parsedMontant
-          : lastBalance - parsedMontant;
-
-        const newEntry = await tx.cashJournal.create({
-          data: {
-            libelle,
-            type: type as OperationType,
-            montant: parsedMontant,
-            date_operation: parsedDateOperation,
-            solde: newBalance,
-            cashRegisterId: parsedCashRegisterId,
-            isApportDeCaisse: type === OperationType.RECETTE ? (isApportDeCaisseFromFrontend || false) : false,
-          },
-        });
-
-        await tx.cashRegister.update({
-          where: { id: parsedCashRegisterId },
-          data: { balance: newBalance },
-        });
-
-        return newEntry;
       } else {
         throw new Error('Invalid operation type.');
       }

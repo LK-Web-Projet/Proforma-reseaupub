@@ -6,6 +6,8 @@ Plateforme interne de gestion financière pour la création de factures proforma
 
 Pour une documentation technique détaillée sur l'architecture, les modèles de données et les API, veuillez consulter le fichier **[MEMO.md](./MEMO.md)**.
 
+Pour l'API publique d'intégration serveur-à-serveur (consommée par l'app Campagnes), voir **[docs/API-INTEGRATION.md](./docs/API-INTEGRATION.md)**.
+
 ---
 
 ## 🚀 Démarrage Rapide
