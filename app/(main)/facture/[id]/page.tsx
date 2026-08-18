@@ -621,56 +621,69 @@ export default function FactureDetailPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="bg-slate-50/20">
-                                <TableHead className="pl-6">Date</TableHead>
-                                <TableHead>Libellé / Référence</TableHead>
-                                <TableHead className="text-right text-green-600">Encaissement</TableHead>
-                                <TableHead className="text-right text-red-600">Décaissement</TableHead>
-                                <TableHead className="text-center pr-6">Preuves</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {facture.paiements?.length > 0 ? facture.paiements.map(p => (
-                                <TableRow key={p.id}>
-                                    <TableCell className="pl-6 text-xs text-muted-foreground">{new Date(p.datePaiement).toLocaleDateString("fr-FR")}</TableCell>
-                                    <TableCell>
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-slate-700 text-sm">{p.reference || (p.type === 'PAIEMENT' ? 'Paiement Client' : 'Dépense liée')}</span>
-                                            <span className="text-[10px] text-muted-foreground uppercase">{p.methode || "-"}</span>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-right font-bold text-green-600">{p.type === 'PAIEMENT' ? formatMoney(p.montant) : ""}</TableCell>
-                                    <TableCell className="text-right font-bold text-red-600">{p.type === 'DEPENSE' ? formatMoney(p.montant) : ""}</TableCell>
-                                    <TableCell className="text-center pr-6">
-                                        <div className="flex items-center justify-center gap-1">
-                                            {p.cashJournalEntry?.attachments?.map(att => (
-                                                <Button key={att.id} asChild variant="ghost" size="icon" className="h-8 w-8 text-blue-500">
-                                                    <a href={att.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
-                                                </Button>
-                                            ))}
-                                            {(!p.cashJournalEntry?.attachments || p.cashJournalEntry.attachments.length === 0) && (
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
-                                                    className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                                                    onClick={() => {
-                                                        setSelectedPaiementId(p.id);
-                                                        setIsProofDialogOpen(true);
-                                                    }}
-                                                >
-                                                    <Upload className="w-4 h-4" />
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </TableCell>
+                    <div className="max-h-[420px] overflow-y-auto">
+                        <Table>
+                            <TableHeader className="sticky top-0 bg-white z-10">
+                                <TableRow className="bg-slate-50/20">
+                                    <TableHead className="pl-6">Date</TableHead>
+                                    <TableHead>Libellé / Référence</TableHead>
+                                    <TableHead className="text-right text-green-600">Encaissement</TableHead>
+                                    <TableHead className="text-right text-red-600">Décaissement</TableHead>
+                                    <TableHead className="text-center pr-6">Preuves</TableHead>
                                 </TableRow>
-                            )) : (
-                                <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground italic">Aucune opération financière enregistrée.</TableCell></TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {facture.paiements?.length > 0 ? facture.paiements.map(p => (
+                                    <TableRow key={p.id}>
+                                        <TableCell className="pl-6 text-xs text-muted-foreground whitespace-nowrap">{new Date(p.datePaiement).toLocaleDateString("fr-FR")}</TableCell>
+                                        <TableCell className="max-w-[220px]">
+                                            <div className="flex flex-col">
+                                                <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <span className="font-bold text-slate-700 text-sm truncate block cursor-default">
+                                                                {p.reference || (p.type === 'PAIEMENT' ? 'Paiement Client' : 'Dépense liée')}
+                                                            </span>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent className="max-w-xs">
+                                                            <p>{p.reference || (p.type === 'PAIEMENT' ? 'Paiement Client' : 'Dépense liée')}</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                                <span className="text-[10px] text-muted-foreground uppercase">{p.methode || "-"}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-green-600 whitespace-nowrap">{p.type === 'PAIEMENT' ? formatMoney(p.montant) : ""}</TableCell>
+                                        <TableCell className="text-right font-bold text-red-600 whitespace-nowrap">{p.type === 'DEPENSE' ? formatMoney(p.montant) : ""}</TableCell>
+                                        <TableCell className="text-center pr-6">
+                                            <div className="flex items-center justify-center gap-1">
+                                                {p.cashJournalEntry?.attachments?.map(att => (
+                                                    <Button key={att.id} asChild variant="ghost" size="icon" className="h-8 w-8 text-blue-500">
+                                                        <a href={att.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
+                                                    </Button>
+                                                ))}
+                                                {(!p.cashJournalEntry?.attachments || p.cashJournalEntry.attachments.length === 0) && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                                                        onClick={() => {
+                                                            setSelectedPaiementId(p.id);
+                                                            setIsProofDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <Upload className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                )) : (
+                                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground italic">Aucune opération financière enregistrée.</TableCell></TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
 
