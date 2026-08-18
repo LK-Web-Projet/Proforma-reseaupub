@@ -22,6 +22,26 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-08-18 — Historique des Flux (fiche facture) : libellés tronqués + carte scrollable
+
+**Demande / Contexte**
+Avec la nouvelle possibilité d'enregistrer des dépenses liées à une proforma depuis l'API d'intégration, le nombre d'entrées dans la carte "Historique des Flux" de la fiche facture (`/facture/[id]`) va augmenter significativement. Demande : tronquer les libellés/références trop longs pour qu'ils ne prennent pas trop de place, et rendre la carte scrollable plutôt que de s'étendre indéfiniment en hauteur.
+
+**Modifications apportées**
+- `app/(main)/facture/[id]/page.tsx` :
+  - La colonne "Libellé / Référence" du tableau limite désormais sa largeur (`max-w-[220px]`) et tronque le texte (`truncate`) ; le texte complet reste consultable via une `Tooltip` au survol (composants déjà importés dans ce fichier, réutilisés tels quels).
+  - Le tableau est enveloppé dans un conteneur `max-h-[420px] overflow-y-auto` avec en-tête collant (`sticky top-0`), même pattern que celui déjà utilisé sur `/journal-caisse` — la carte garde une hauteur fixe et défile au lieu de pousser le reste de la page vers le bas quand les opérations se multiplient.
+  - Colonnes Date/Encaissement/Décaissement passées en `whitespace-nowrap` pour ne pas se compresser bizarrement à côté de la colonne libellé qui, elle, peut se tronquer.
+
+**Erreurs rencontrées & solutions**
+Aucune. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Vérifier visuellement avec une facture ayant beaucoup de paiements/dépenses (ou un libellé très long, ex: une dépense liée via l'API avec numéro de proforma + client + objet) que le texte est bien tronqué avec `...` et que le survol affiche le texte complet.
+- Vérifier que le défilement de la carte n'empêche pas de cliquer sur les boutons d'action (upload de preuve, lien vers pièce jointe) dans les dernières lignes visibles.
+
+---
+
 ## 2026-08-18 — Correctif : libellé "Dépense liée" générique au lieu du vrai libellé sur la fiche facture
 
 **Demande / Contexte**
