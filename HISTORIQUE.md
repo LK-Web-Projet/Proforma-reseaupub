@@ -22,6 +22,28 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-08-18 — Dépense liée à une proforma via l'API d'intégration (Paiement + CashJournal en une fois)
+
+**Demande / Contexte**
+Dans l'app campagnes, une `Campagne` peut être liée à une proforma via `id_proforma`. Demande : quand une dépense est enregistrée côté campagnes pour une campagne liée à une proforma, elle doit être enregistrée ici comme un `Paiement` (type `DEPENSE`) rattaché à la facture, **avec une seule écriture** dans le journal de caisse (pas de double comptage) — sinon, dépense de caisse simple comme avant. Décisions validées : un seul endpoint intelligent (extension de `POST /api/integration/cash-journal/depenses` plutôt qu'un endpoint séparé) ; repli silencieux (pas d'erreur) si `proformaId` est fourni mais ne correspond à aucune facture.
+
+**Modifications apportées**
+- `lib/paiements.ts` (nouveau) : `recordDepensePaiement(tx, { invoiceId, cashRegisterId, montant, libelle, date_operation, methode?, reference?, notes? })` — factorise la logique déjà existante de `app/api/factures/[id]/paiements/route.ts` (branche `type === "DEPENSE"`) : vérifie le solde de la caisse, crée **une** entrée `CashJournal`, met à jour `CashRegister.balance`, crée le `Paiement` (type `DEPENSE`) lié via `cashJournalEntryId`. Ne touche pas à `Invoice.resteAPayer`/`statut` (seul le type `PAIEMENT` les modifie, logique inchangée).
+- `app/api/factures/[id]/paiements/route.ts` : la transaction du `POST` utilise désormais `recordDepensePaiement` pour la branche `DEPENSE` (comportement inchangé, y compris `methode`/`reference`/`notes` qui étaient bien pris en compte côté UI interne — vérifié dans `app/(main)/facture/[id]/page.tsx` avant de les intégrer à la fonction extraite, pour ne pas les perdre). La branche `PAIEMENT` (qui met à jour `resteAPayer`/`statut`) n'a pas été touchée.
+- `app/api/integration/cash-journal/depenses/route.ts` : ajout du champ optionnel `proformaId` au schéma zod. Si fourni et qu'une facture correspondante existe, la dépense passe par `recordDepensePaiement` (libellé enrichi avec numéro de proforma / client / objet) au lieu de `recordCashMovement` ; sinon repli sur le comportement existant. **Changement de forme de la réponse `201`** : passée de l'entrée `CashJournal` à plat à `{ cashJournalEntry }` (ou `{ paiement, cashJournalEntry }` si liée à une facture), pour rester cohérente entre les deux cas — à prendre en compte si l'app campagnes avait déjà commencé une intégration sur l'ancienne forme.
+- `docs/API-INTEGRATION.md` : section 6 mise à jour (champ `proformaId`, comportement détaillé selon les 3 cas, nouvelle forme de réponse, exemple `curl` avec lien facture, checklist mise à jour).
+
+**Erreurs rencontrées & solutions**
+Repéré avant de coder : la logique `DEPENSE` interne gérait aussi `methode`/`reference`/`notes` (utilisés par le formulaire de dépense sur la fiche facture) — la première version de `recordDepensePaiement` les omettait. Corrigé en ajoutant ces trois champs optionnels à la fonction avant de brancher la route interne dessus, pour ne pas régresser le formulaire existant. `tsc --noEmit` et `next lint` passent sans erreur sur les 3 fichiers modifiés/créés.
+
+**À tester / points d'attention**
+- Tester `POST /cash-journal/depenses` avec un `proformaId` valide et vérifier que la dépense apparaît bien dans l'historique des paiements de la fiche facture (`/facture/[id]`), avec le bon montant et le bon lien vers l'entrée de caisse.
+- Tester avec un montant supérieur au solde de la caisse et `proformaId` valide → doit être bloqué en `400` avec un message explicite (comportement hérité du formulaire interne).
+- Tester avec un `proformaId` invalide/inexistant → doit se rabattre silencieusement sur une dépense de caisse simple.
+- Vérifier côté app campagnes que le changement de forme de la réponse (`{ cashJournalEntry }` au lieu de l'objet à plat) est bien pris en compte si une intégration avait déjà commencé.
+
+---
+
 ## 2026-08-04 — Documentation des API publiques d'intégration
 
 **Demande / Contexte**

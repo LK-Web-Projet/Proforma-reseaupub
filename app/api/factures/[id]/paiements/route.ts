@@ -4,6 +4,7 @@ import { z } from "zod";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 import { writeFile } from "fs/promises";
+import { recordDepensePaiement } from "@/lib/paiements";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
@@ -120,21 +121,34 @@ export async function POST(
       : new Date();
 
     const result = await prisma.$transaction(async (tx) => {
+      if (type === "DEPENSE") {
+        const { cashJournalEntry } = await recordDepensePaiement(tx, {
+          invoiceId,
+          cashRegisterId: finalCashRegisterId,
+          montant: montantDecimal,
+          libelle,
+          date_operation: dateOperation,
+          methode,
+          reference: rest.reference,
+          notes: rest.notes,
+        });
+
+        const updatedInvoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+        return { updatedInvoice, newCashJournalEntryId: cashJournalEntry.id };
+      }
+
       const lastCashJournalEntry = await tx.cashJournal.findFirst({
         where: { cashRegisterId: finalCashRegisterId },
         orderBy: { id: "desc" },
       });
       const lastBalance = lastCashJournalEntry ? lastCashJournalEntry.solde : 0;
-      const newBalance =
-        type === "PAIEMENT"
-          ? lastBalance + montantDecimal
-          : lastBalance - montantDecimal;
+      const newBalance = lastBalance + montantDecimal;
 
       const newCashJournalEntry = await tx.cashJournal.create({
         data: {
           date_operation: dateOperation,
           libelle,
-          type: type === "PAIEMENT" ? "RECETTE" : "DEPENSE",
+          type: "RECETTE",
           montant: montantDecimal,
           solde: newBalance,
           isApportDeCaisse: false,
@@ -158,27 +172,22 @@ export async function POST(
         },
       });
 
-      let updatedInvoice = await tx.invoice.findUnique({
-        where: { id: invoiceId },
-      });
-      if (type === "PAIEMENT") {
-        const currentReste = parseFloat(updatedInvoice!.resteAPayer.toString());
-        // ✅ Calcul avec arrondi pour éviter les résidus de virgule flottante
-        let newResteAPayer = Math.round((currentReste - montantDecimal) * 100) / 100;
-        
-        // ✅ Pour le XOF (et par sécurité), si le reste est inférieur à 1, on considère que c'est soldé
-        if (newResteAPayer < 1) {
-          newResteAPayer = 0;
-        }
-        
-        updatedInvoice = await tx.invoice.update({
-          where: { id: invoiceId },
-          data: {
-            resteAPayer: newResteAPayer,
-            statut: newResteAPayer <= 0 ? "Solde" : "Payer",
-          },
-        });
+      const currentReste = parseFloat((await tx.invoice.findUnique({ where: { id: invoiceId } }))!.resteAPayer.toString());
+      // ✅ Calcul avec arrondi pour éviter les résidus de virgule flottante
+      let newResteAPayer = Math.round((currentReste - montantDecimal) * 100) / 100;
+
+      // ✅ Pour le XOF (et par sécurité), si le reste est inférieur à 1, on considère que c'est soldé
+      if (newResteAPayer < 1) {
+        newResteAPayer = 0;
       }
+
+      const updatedInvoice = await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          resteAPayer: newResteAPayer,
+          statut: newResteAPayer <= 0 ? "Solde" : "Payer",
+        },
+      });
 
       return { updatedInvoice, newCashJournalEntryId: newCashJournalEntry.id };
     });

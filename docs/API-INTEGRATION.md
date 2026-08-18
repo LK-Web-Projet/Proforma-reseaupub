@@ -137,31 +137,47 @@ curl -H "Authorization: Bearer $INTEGRATION_API_KEY" \
 
 ---
 
-## 6. `POST /api/integration/cash-journal/depenses` — 4 août 2026
+vf## 6. `POST /api/integration/cash-journal/depenses` — 4 août 2026 (champ `proformaId` ajouté le 18 août 2026)
 
 Enregistre une **dépense** dans la caisse choisie par l'utilisateur côté app appelante. Le type d'opération est fixé à `DEPENSE` côté serveur — impossible de créer une `RECETTE` ou un `TRANSFERT` via cet endpoint.
+
+Cet endpoint est **intelligent** : il n'y a rien à choisir côté app appelante entre "dépense simple" et "dépense liée à une proforma" — envoyez `proformaId` si vous l'avez (ex: `Campagne.id_proforma`), omettez-le sinon. Le comportement s'adapte automatiquement côté serveur (voir "Corps JSON" et "Réponse" ci-dessous).
 
 **Corps JSON**
 ```json
 {
   "cashRegisterId": 1,                           // requis, id numérique (voir endpoint #5)
   "montant": 25000,                              // requis, nombre positif (pas une chaîne)
-  "libelle": "Achat fournitures campagne X",    // requis
-  "date_operation": "2026-08-04T09:30:00.000Z"  // optionnel, ISO 8601 — défaut: maintenant
+  "libelle": "Achat fournitures campagne X",     // requis
+  "date_operation": "2026-08-04T09:30:00.000Z",  // optionnel, ISO 8601 — défaut: maintenant
+  "proformaId": "uuid-de-la-proforma"            // optionnel — voir ci-dessous
 }
 ```
 
-**Réponse `201`** : l'entrée `CashJournal` créée (`id`, `montant`, `solde` résultant après la dépense, `date_operation`, `cashRegisterId`, ...). Le `CashRegister.balance` correspondant est mis à jour automatiquement côté serveur.
+**Comportement selon `proformaId`**
+- **Absent** → dépense de caisse simple : une entrée `CashJournal` (type `DEPENSE`), `CashRegister.balance` mis à jour.
+- **Fourni et correspond à une proforma existante** → la dépense est enregistrée comme un `Paiement` (type `DEPENSE`) **rattaché à cette facture**, avec **une seule** écriture `CashJournal` liée (`Paiement.cashJournalEntryId`) — pas de double comptage sur la caisse. Le libellé enregistré est enrichi automatiquement avec le numéro de la proforma, le nom du client et l'objet. La dépense apparaît alors dans l'historique des paiements de la facture, côté app Finance/Proforma. **Attention** : si le solde de la caisse est insuffisant pour couvrir le montant, la requête est bloquée (`400`) — contrairement au cas "caisse simple" ci-dessus qui n'a pas cette vérification.
+- **Fourni mais ne correspond à aucune facture** (donnée obsolète côté campagnes) → repli silencieux sur le comportement "dépense de caisse simple", sans erreur renvoyée.
+
+**Réponse `201`**
+- Sans lien facture : `{ "cashJournalEntry": { "id": ..., "montant": ..., "solde": ..., "date_operation": ..., "cashRegisterId": ..., ... } }`.
+- Avec lien facture : `{ "paiement": { "id": ..., "invoiceId": ..., "montant": ..., "type": "DEPENSE", ... }, "cashJournalEntry": { ... } }`.
 
 **Erreurs**
-- `400` — corps invalide (`cashRegisterId` non numérique, `montant` négatif/nul, `libelle` vide, `date_operation` mal formatée). Corps de réponse : `{ "error": <détail zod> }`.
+- `400` — corps invalide (`cashRegisterId` non numérique, `montant` négatif/nul, `libelle` vide, `date_operation` mal formatée), ou solde de caisse insuffisant quand `proformaId` est fourni et valide (message explicite avec le nom de la caisse et le solde actuel).
 - `404` — `{ "error": "Caisse introuvable ou indisponible." }` si `cashRegisterId` n'existe pas ou correspond à une caisse masquée (`view: false`).
 - `401` — clé API absente/invalide.
 - `500` — erreur serveur inattendue.
 
 ```bash
+# Dépense simple (pas de lien facture)
 curl -X POST -H "Authorization: Bearer $INTEGRATION_API_KEY" -H "Content-Type: application/json" \
   -d '{"cashRegisterId":1,"montant":25000,"libelle":"Achat fournitures campagne X"}' \
+  "https://proforma.reseaupub.com/api/integration/cash-journal/depenses"
+
+# Dépense liée à une proforma (campagne avec id_proforma renseigné)
+curl -X POST -H "Authorization: Bearer $INTEGRATION_API_KEY" -H "Content-Type: application/json" \
+  -d '{"cashRegisterId":1,"montant":25000,"libelle":"Achat fournitures campagne X","proformaId":"<id de la proforma>"}' \
   "https://proforma.reseaupub.com/api/integration/cash-journal/depenses"
 ```
 
@@ -170,4 +186,5 @@ curl -X POST -H "Authorization: Bearer $INTEGRATION_API_KEY" -H "Content-Type: a
 1. Définir dans le `.env` de l'app campagnes : la même `INTEGRATION_API_KEY` que celle de cette app, et l'URL de base de cette app (ex: `PROFORMA_API_URL=https://proforma.reseaupub.com`).
 2. Au chargement du formulaire de dépense : appeler `GET /api/integration/cash-journal/registers` pour peupler le sélecteur de caisse (ne pas coder les caisses en dur — si une caisse est renommée/masquée ici, la liste doit rester à jour côté campagnes).
 3. À la soumission : `POST /api/integration/cash-journal/depenses` avec le header `Authorization: Bearer <clé>`, le header `Content-Type: application/json`, et le corps JSON ci-dessus — `montant` doit être un **nombre** JSON (`25000`, pas `"25000"`), sinon `400`.
-4. Gérer les codes retour : `201` = succès (afficher le solde résultant si utile) ; `400`/`404` = afficher le message d'erreur retourné à l'utilisateur (le formulaire a un souci de saisie ou la caisse n'est plus valide) ; `401` = problème de configuration de la clé côté campagnes (à corriger côté déploiement, pas un souci utilisateur) ; `500` = réessayer / alerter.
+4. Si la campagne concernée a un `id_proforma` renseigné, l'envoyer tel quel dans `proformaId` — pas besoin de vérifier côté campagnes que la proforma existe encore, le serveur gère le repli automatiquement.
+5. Gérer les codes retour : `201` = succès (la réponse contient `cashJournalEntry`, et `paiement` en plus si `proformaId` a matché une facture) ; `400` = souci de saisie **ou** solde de caisse insuffisant (afficher le message d'erreur à l'utilisateur) ; `404` = caisse invalide ; `401` = problème de configuration de la clé côté campagnes (à corriger côté déploiement, pas un souci utilisateur) ; `500` = réessayer / alerter.
