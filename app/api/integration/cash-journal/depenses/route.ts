@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
           cashRegisterId,
           montant,
           libelle: enrichedLibelle,
+          reference: enrichedLibelle,
           date_operation: dateOperation,
         })
       );

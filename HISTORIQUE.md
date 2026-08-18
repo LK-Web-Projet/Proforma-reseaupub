@@ -22,6 +22,27 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-08-18 — Correctif : libellé "Dépense liée" générique au lieu du vrai libellé sur la fiche facture
+
+**Demande / Contexte**
+Une dépense créée via l'API d'intégration avec `proformaId` apparaissait dans l'historique des paiements de la fiche facture avec le texte générique "Dépense liée", alors que le journal de caisse affichait bien le libellé enrichi (numéro de proforma, client, objet) pour la même opération. Question posée : est-ce à gérer côté camptrack ou côté cette app ? Réponse : côté cette app — camptrack n'a rien à faire de plus, l'API d'intégration ne renseignait tout simplement pas le bon champ.
+
+**Cause réelle**
+`app/(main)/facture/[id]/page.tsx:640` affiche `p.reference` (avec un texte générique en repli si vide). La route `app/api/integration/cash-journal/depenses/route.ts` construisait bien un libellé enrichi et le passait à `recordDepensePaiement`, mais seulement via le paramètre `libelle`, qui n'alimente que `CashJournal.libelle` (voir `lib/paiements.ts`) — jamais `Paiement.reference`. Résultat : `Paiement.reference` restait `null`, d'où le texte générique côté fiche facture.
+
+**Modifications apportées**
+- `app/api/integration/cash-journal/depenses/route.ts` : le libellé enrichi (`"${libelle} (Proforma ${numero} de ${client} pour ${objet})"`) est désormais passé aussi en `reference` à `recordDepensePaiement`, en plus de `libelle` — les deux affichages (journal de caisse et historique des paiements de la facture) montrent maintenant exactement le même texte.
+- `docs/API-INTEGRATION.md` : précision ajoutée dans la section 6 sur le fait que `CashJournal.libelle` et `Paiement.reference` reçoivent le même texte enrichi.
+
+**Erreurs rencontrées & solutions**
+Aucune erreur de code — bug de champ manquant, corrigé directement. `tsc --noEmit` et `next lint` passent sans erreur.
+
+**À tester / points d'attention**
+- Les dépenses déjà créées avant ce correctif gardent leur `Paiement.reference` vide (donc toujours "Dépense liée" pour l'historique) — seules les nouvelles dépenses créées via l'API après ce correctif afficheront le bon libellé. Pas de script de rattrapage prévu pour les anciennes entrées (à faire manuellement si besoin).
+- Vérifier sur une nouvelle dépense de test que le texte affiché sur la fiche facture correspond bien à celui du journal de caisse.
+
+---
+
 ## 2026-08-18 — Dépense liée à une proforma via l'API d'intégration (Paiement + CashJournal en une fois)
 
 **Demande / Contexte**
