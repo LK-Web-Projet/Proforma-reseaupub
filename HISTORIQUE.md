@@ -22,6 +22,98 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-08-20 — Réinitialisation du mot de passe utilisateur (UI admin)
+
+**Demande / Contexte**
+Après la mise en production du système de rôles (entrée précédente), l'utilisateur a remarqué qu'il n'existait aucun moyen de gérer le mot de passe d'un compte après sa création : le mot de passe n'est saisi qu'une fois, dans le dialogue "Créer un compte" — impossible ensuite de le changer si l'utilisateur l'oublie ou en cas de doute sur la sécurité du compte.
+
+**Modifications apportées**
+- [app/api/users/[id]/route.ts](app/api/users/[id]/route.ts) : `updateUserSchema` accepte désormais un champ `password` optionnel (min. 8 caractères). Le handler `PATCH` appelle `clerkClient().users.updateUser(id, { password, signOutOfOtherSessions: true })` quand un mot de passe est fourni, avec remontée du message d'erreur Clerk (ex. mot de passe trop faible) en 400. `clerkClient()` est maintenant résolu une seule fois et réutilisé pour ce bloc et pour le ban/unban existant.
+- [app/(main)/parametres/utilisateurs/page.tsx](app/(main)/parametres/utilisateurs/page.tsx) : ajout d'une colonne "Mot de passe" dans le tableau des utilisateurs avec un bouton (icône clé) ouvrant un dialogue "Réinitialiser le mot de passe" (nouveau mot de passe, min. 8 caractères) qui appelle `PATCH /api/users/[id]` avec `{ password }`.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Test manuel à faire par l'utilisateur : réinitialiser le mot de passe d'un compte de test depuis `/parametres/utilisateurs`, vérifier que la connexion avec l'ancien mot de passe échoue et qu'elle réussit avec le nouveau (l'utilisateur est aussi déconnecté de ses sessions actives par sécurité, `signOutOfOtherSessions: true`).
+
+---
+
+## 2026-08-20 — Mise en production du système de rôles/permissions (suite et activation)
+
+**Demande / Contexte**
+Suite de l'entrée précédente : connexion base de données rétablie, configuration Clerk (custom session claim) faite côté Dashboard par l'utilisateur. Exécution de la checklist de mise en production jusqu'au point 7.
+
+**Incident détecté et corrigé en cours de route**
+`prisma/schema.prisma` avait été ramené à son état d'avant les modifications (probablement une annulation accidentelle sur ce fichier précisément — les 20 autres fichiers créés/modifiés dans l'entrée précédente étaient intacts). Un premier `prisma migrate dev` avait alors renvoyé « Already in sync » de façon trompeuse : il comparait un schéma déjà vidé de `Role`/`User` à une base qui ne les avait pas non plus. L'utilisateur a eu le bon réflexe de faire revérifier. Diagnostic confirmé par une requête directe (`prisma.role.count()` → « table does not exist »). Le schéma a été reconstruit à l'identique (mêmes modèles, mêmes relations) et revalidé (`prisma validate`) avant de relancer la migration.
+
+**Étapes exécutées**
+1. `DIRECT_URL` corrigée par l'utilisateur (port 5432, connexion directe, au lieu de 6543/pooler utilisé par erreur) — a débloqué la connexion.
+2. `npx prisma migrate dev --name add_users_roles_permissions_and_audit_trail` : migration réellement générée et appliquée cette fois (vérifié par requête directe : tables `Role`/`RolePage`/`User` et colonne `Invoice.createdById` bien présentes en base).
+3. Dashboard Clerk → Sessions → Customize session token → `{ "metadata": "{{user.public_metadata}}" }` : fait par l'utilisateur.
+4. `pnpm run bootstrap:admin-users` : rôle "Admin" créé (accès à toutes les pages + `canManageUsers`), 5 comptes Clerk existants migrés et synchronisés (`info@`, `ibrahime.manane@`, `finance@`, `karamatouabgetou@`, `informatique@reseaupub.com`) — 0 échec.
+5. Vérifié en base que les 5 comptes ont bien le rôle Admin, actifs — correspond à ce que `/parametres/utilisateurs` doit afficher.
+6. `ENABLE_PAGE_PERMISSIONS=true` activé dans `.env`.
+7. Logique de routage `resolvePageKeyFromPathname` vérifiée par un script de test couvrant les 17 pages + cas hors périmètre (`/sign-in`, `/api/*`) — tous les cas passent.
+
+**Erreurs rencontrées & solutions**
+Voir "Incident détecté et corrigé en cours de route" ci-dessus — leçon retenue : toujours vérifier l'état réel de la base (requête directe) plutôt que de se fier seul au message `migrate dev`/`migrate status`, qui peut être trompeur si le fichier schema.prisma a changé entre-temps sans qu'on s'en aperçoive.
+
+**À tester / points d'attention**
+- **Test de bout en bout non encore fait par manque d'accès navigateur côté assistant** : créer un rôle restreint depuis `/parametres/roles` (ex. seulement "Proforma" coché), créer un compte de test depuis `/parametres/utilisateurs`, se connecter avec dans une fenêtre privée, et vérifier que la navigation vers une section non cochée redirige bien vers `/acces-refuse`. C'est le test qui valide l'ensemble de la chaîne (UI admin → sync Clerk → middleware).
+- Vérifier que les 5 admins existants peuvent toujours accéder à tout normalement après l'activation (conséquence attendue du rôle Admin complet).
+- Phase 2 (toujours non commencée) : traçabilité sur Client/Fournisseur/Gestionnaire/Produits, affichage "Créé par {nom}" dans les UI.
+
+---
+
+## 2026-08-20 — Gestion des utilisateurs, rôles & permissions par page + traçabilité "qui a fait quoi" (Phase 1)
+
+**Demande / Contexte**
+Demande de gérer soi-même les comptes utilisateurs et leurs droits : l'admin crée des comptes, leur attribue un rôle, et coche les pages de l'app que ce rôle peut consulter. Objectif secondaire : associer chaque enregistrement créé (facture, paiement, entrée de caisse, facture fournisseur) à l'utilisateur qui l'a fait, pour savoir "qui a fait quoi". Contrainte forte : app en production, il fallait aller vite sans casser l'authentification existante (Clerk) ni risquer de bloquer les utilisateurs actuels.
+
+**État constaté avant modification** (exploration complète faite avant de coder) : Clerk ne faisait que de l'authentification (`middleware.ts` → `auth.protect()` = "connecté ou pas", rien de plus) ; le seul contrôle de rôle existant (`role === "org:admin"` dans `components/app-sidebar.tsx`) était purement cosmétique côté client, sans aucune vérification serveur ; aucune table `User`/`Role` en base ; aucune route API ne capturait l'identité de l'utilisateur agissant.
+
+**Décisions d'architecture validées avec l'utilisateur**
+- Garder Clerk pour l'authentification (mot de passe, sessions, sécurité) — construire les rôles/permissions par-dessus, pas à la place.
+- Granularité des permissions : par section de sidebar (7 clés : dashboard, proforma, client, fournisseurs, commercial, finance, parametres), pas par page individuelle.
+- Le middleware ne fait pas d'appel base de données à chaque navigation : les permissions (calculées depuis nos tables Prisma, source de vérité) sont poussées dans le `publicMetadata` Clerk de chaque utilisateur, et le middleware lit ce metadata directement depuis la session.
+- Traçabilité priorisée sur l'argent d'abord : `Invoice`, `Paiement`, `CashJournal`, `FactureFournisseur` (Phase 1) ; les autres tables (Client, Fournisseur, Gestionnaire...) seront traitées dans une phase 2 séparée.
+- Création de compte : l'admin définit le mot de passe directement (pas d'email d'invitation Clerk).
+
+**Modifications apportées**
+- `prisma/schema.prisma` : nouveaux modèles `Role` (nom, `canManageUsers`, pages), `RolePage` (une ligne par page cochée pour un rôle) et `User` (id = Clerk userId, email, nom, rôle, actif). Ajout de `createdById` (nullable) sur `Invoice`, `Paiement`, `CashJournal`, `FactureFournisseur`.
+- `lib/permissions.ts` (nouveau) : définitions pures partagées (`PAGE_KEYS`, `PAGE_LABELS`, `resolvePageKeyFromPathname`, type `AppPublicMetadata`) — **sans aucune dépendance Node-only**, pour rester utilisable à la fois par le middleware (runtime Edge), les composants client (UI admin) et les routes API. Erreur évitée en amont : importer Prisma/Clerk-backend directement dans un fichier utilisé par `middleware.ts` aurait cassé le build Edge.
+- `lib/authz.ts` : `syncUserMetadata`/`syncAllUsersForRole` (poussent les permissions vers Clerk), `requirePage`/`requireCanManageUsers` (garde-fous pour routes API sensibles), et `safeCreatedById` — vérifie qu'un `userId` Clerk correspond bien à un `User` local existant avant de l'utiliser comme `createdById`, sinon renvoie `null`. **Bug évité avant qu'il n'arrive en prod** : sans ce garde-fou, toute création de facture/paiement/entrée de caisse aurait échoué avec une violation de contrainte de clé étrangère tant que le script de bootstrap n'a pas tourné (aucun `User` local n'existe encore aujourd'hui).
+- `middleware.ts` : après la vérification d'authentification existante, lit `sessionClaims.metadata.pages` et redirige vers `/acces-refuse` si la section demandée n'est pas autorisée — **derrière une bascule `ENABLE_PAGE_PERMISSIONS`** (variable d'environnement, absente/false par défaut) pour ne rien activer tant que la configuration Clerk et le script de bootstrap n'ont pas été faits (voir "À tester" ci-dessous).
+- `app/acces-refuse/page.tsx` (nouveau) : page affichée quand un compte connecté n'a pas accès à la section demandée.
+- `app/api/roles/route.ts` + `app/api/roles/[id]/route.ts` (nouveaux) : CRUD des rôles, protégés par `requireCanManageUsers`. La modification des pages d'un rôle resynchronise automatiquement le metadata Clerk de tous les utilisateurs de ce rôle.
+- `app/api/users/route.ts` + `app/api/users/[id]/route.ts` (nouveaux) : création de compte (appelle `clerkClient().users.createUser` avec mot de passe fourni par l'admin, puis crée le `User` local), changement de rôle, activation/désactivation (répercutée sur Clerk via `banUser`/`unbanUser` pour empêcher réellement la connexion).
+- `app/(main)/parametres/utilisateurs/page.tsx` et `app/(main)/parametres/roles/page.tsx` (nouveaux) : UI admin (liste + dialogues de création/édition, cases à cocher par page pour les rôles). Liens ajoutés sur `app/(main)/parametres/page.tsx`, visibles uniquement si `canManageUsers` (lu depuis le `publicMetadata` Clerk côté client).
+- `components/app-sidebar.tsx` : les sections de la sidebar utilisent maintenant `publicMetadata.pages` quand disponible ; **repli automatique sur l'ancien comportement** (`org:admin` Clerk) tant qu'un compte n'a pas encore été synchronisé, pour ne rien casser visuellement pendant la transition.
+- `lib/cashJournal.ts` (`recordCashMovement`) et `lib/paiements.ts` (`recordDepensePaiement`) : acceptent et enregistrent désormais `createdById` (via `safeCreatedById`).
+- `app/api/factures/route.ts`, `app/api/factures/[id]/paiements/route.ts`, `app/api/cash-journal/route.ts`, `app/api/factures-fournisseurs/route.ts` : capturent `const { userId } = await auth();` et renseignent `createdById` sur les enregistrements créés (facture, paiement PAIEMENT et DEPENSE, entrée de caisse RECETTE/DEPENSE/TRANSFERT, facture fournisseur).
+- `scripts/seed-admin-users.ts` (nouveau, `npm run bootstrap:admin-users`) : crée le rôle "Admin" (toutes les pages + `canManageUsers`) et y rattache tous les comptes Clerk existants qui n'ont pas encore de `User` local, avec synchronisation immédiate du metadata — **à lancer une seule fois**, avant d'activer `ENABLE_PAGE_PERMISSIONS`.
+- `.env` : section documentée pour `ENABLE_PAGE_PERMISSIONS` (commentée, avec la procédure d'activation en 2 étapes).
+
+**Erreurs rencontrées & solutions**
+- Connexion à la base Supabase indisponible pendant toute la session (`P1001`, puis auparavant un hang indéfini sur `db pull`/`migrate dev`) — `npx prisma migrate dev` n'a pas pu être exécuté. Contournement : tout le code a été écrit et vérifié via `npx prisma generate` (qui ne nécessite que le fichier `schema.prisma`, pas de connexion) + `tsc --noEmit`. **La migration Prisma correspondant à ce nouveau schéma n'a pas encore été créée ni appliquée** — à faire dès que la connexion est rétablie (voir "À tester").
+- Risque de violation de clé étrangère sur `createdById` identifié et corrigé avant tout déploiement (voir `safeCreatedById` ci-dessus).
+- Risque d'importer Prisma/Clerk-backend dans le bundle Edge du middleware identifié et corrigé en séparant `lib/permissions.ts` (pur) de `lib/authz.ts` (Node-only) avant que ça ne casse le build.
+- `tsc --noEmit` et `next lint` passent sans erreur sur tous les fichiers créés/modifiés (deux erreurs préexistantes et non liées subsistent dans `scripts/backup.ts`/`scripts/test-direct.ts` : dépendance `dotenv` manquante, non installée avant cette session).
+
+**À tester / points d'attention — checklist de mise en production, dans l'ordre**
+1. Rétablir la connexion à la base (en cours — voir échanges précédents ; `DATABASE_URL`/`DIRECT_URL` déjà mis à jour avec de nouveaux identifiants, mais le serveur reste injoignable à ce stade).
+2. Une fois la connexion rétablie : `npx prisma migrate dev` (génère et applique la migration pour `Role`/`RolePage`/`User` + les champs `createdById`).
+3. Dans le Dashboard Clerk : **Sessions → Customize session token**, ajouter `{ "metadata": "{{user.public_metadata}}" }` — sans cette étape, `sessionClaims.metadata` reste `undefined` et le contrôle d'accès ne peut pas fonctionner même une fois activé.
+4. Lancer `npm run bootstrap:admin-users` (une seule fois) — migre tous les comptes Clerk existants vers un rôle Admin complet.
+5. Vérifier dans `/parametres/utilisateurs` que tous les comptes attendus apparaissent bien, avec le rôle Admin.
+6. Mettre `ENABLE_PAGE_PERMISSIONS=true` dans `.env` et redéployer.
+7. Tester : créer un rôle restreint (ex. seulement "Proforma" coché), créer un compte de test avec ce rôle, se connecter avec, vérifier que `/fournisseur` ou `/journal-caisse` redirige vers `/acces-refuse` alors que `/facture` reste accessible.
+8. Créer une proforma, un paiement, une entrée de caisse et une facture fournisseur, puis vérifier en base que `createdById` correspond bien à l'utilisateur connecté.
+- Phase 2 (non commencée) : traçabilité sur Client/Fournisseur/Gestionnaire/Produits, affichage "Créé par {nom}" dans les UI, et éventuellement `updatedById`.
+
+---
+
 ## 2026-08-18 — Historique des Flux (fiche facture) : libellés tronqués + carte scrollable
 
 **Demande / Contexte**

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import Link from "next/link";
+import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,8 +11,9 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
     Building2, Mail, Phone, MapPin, Globe, FileText,
-    User, Save, Upload, Image as ImageIcon,
+    User, Save, Upload, Image as ImageIcon, Users, ShieldCheck, ChevronRight,
 } from "lucide-react";
+import type { AppPublicMetadata } from "@/lib/permissions";
 
 interface EntrepriseConfig {
     id: string;
@@ -45,6 +48,8 @@ const defaultForm: FormData = {
 };
 
 export default function ParametresPage() {
+    const { user } = useUser();
+    const canManageUsers = Boolean((user?.publicMetadata as AppPublicMetadata | undefined)?.canManageUsers);
     const [form, setForm] = useState<FormData>(defaultForm);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -161,6 +166,35 @@ export default function ParametresPage() {
                     Ces informations apparaîtront sur tous les documents générés (proformas, bons de commande…).
                 </p>
             </div>
+
+            {canManageUsers && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                    <Link href="/parametres/utilisateurs">
+                        <Card className="hover:shadow-md hover:border-primary/40 transition-all cursor-pointer">
+                            <CardContent className="flex items-center gap-4 py-5">
+                                <div className="p-3 rounded-xl bg-blue-100 text-blue-700"><Users className="w-5 h-5" /></div>
+                                <div className="flex-1">
+                                    <p className="font-semibold text-sm">Utilisateurs</p>
+                                    <p className="text-xs text-muted-foreground">Créer des comptes et attribuer des rôles</p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    <Link href="/parametres/roles">
+                        <Card className="hover:shadow-md hover:border-primary/40 transition-all cursor-pointer">
+                            <CardContent className="flex items-center gap-4 py-5">
+                                <div className="p-3 rounded-xl bg-purple-100 text-purple-700"><ShieldCheck className="w-5 h-5" /></div>
+                                <div className="flex-1">
+                                    <p className="font-semibold text-sm">Rôles &amp; Permissions</p>
+                                    <p className="text-xs text-muted-foreground">Définir les pages accessibles par rôle</p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                            </CardContent>
+                        </Card>
+                    </Link>
+                </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Logo */}

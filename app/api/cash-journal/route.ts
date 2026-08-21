@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient, OperationType } from '@prisma/client';
+import { auth } from '@clerk/nextjs/server';
 import { recordCashMovement } from '@/lib/cashJournal';
+import { safeCreatedById } from '@/lib/authz';
 
 const prisma = new PrismaClient();
 
@@ -51,6 +53,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const { userId } = await auth();
     const body = await request.json();
     const { libelle, type, montant, date_operation, cashRegisterId, destinationCashRegisterId, isApportDeCaisse: isApportDeCaisseFromFrontend } = body;
 
@@ -63,6 +66,8 @@ export async function POST(request: Request) {
     const parsedDateOperation = new Date(date_operation);
 
     const result = await prisma.$transaction(async (tx) => {
+      const createdById = await safeCreatedById(tx, userId);
+
       if (type === OperationType.TRANSFERT) {
         if (!destinationCashRegisterId || parsedCashRegisterId === parseInt(destinationCashRegisterId)) {
           throw new Error('Destination cash register is required and must be different from source for transfers.');
@@ -86,6 +91,7 @@ export async function POST(request: Request) {
             solde: newSourceBalance,
             cashRegisterId: parsedCashRegisterId,
             isApportDeCaisse: false,
+            createdById,
           },
         });
         await tx.cashRegister.update({
@@ -110,6 +116,7 @@ export async function POST(request: Request) {
             solde: newDestinationBalance,
             cashRegisterId: parsedDestinationCashRegisterId,
             isApportDeCaisse: true,
+            createdById,
           },
         });
         await tx.cashRegister.update({
@@ -127,6 +134,7 @@ export async function POST(request: Request) {
           libelle,
           date_operation: parsedDateOperation,
           isApportDeCaisse: isApportDeCaisseFromFrontend,
+          createdById,
         });
       } else {
         throw new Error('Invalid operation type.');

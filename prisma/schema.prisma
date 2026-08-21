@@ -8,6 +8,40 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model Role {
+  id             String     @id @default(uuid())
+  nom            String     @unique
+  canManageUsers Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  pages          RolePage[]
+  users          User[]
+}
+
+// Une ligne par (rôle, section de sidebar) autorisée — la "case cochée" par l'admin.
+// Valeurs possibles pour `page` : "dashboard" | "proforma" | "client" | "fournisseurs" | "commercial" | "finance" | "parametres"
+model RolePage {
+  roleId String
+  page   String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, page])
+}
+
+model User {
+  id        String   @id // = Clerk userId
+  email     String   @unique
+  nom       String
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  facturesCreees           Invoice[]            @relation("InvoiceCreatedBy")
+  paiementsCrees           Paiement[]           @relation("PaiementCreatedBy")
+  cashJournalEntriesCrees  CashJournal[]        @relation("CashJournalCreatedBy")
+  facturesFournisseurCrees FactureFournisseur[] @relation("FactureFournisseurCreatedBy")
+}
+
 model EntrepriseConfig {
   id           String   @id @default("singleton")
   nom          String   @default("Reseaupub")
@@ -59,9 +93,11 @@ model Invoice {
   resteAPayer                Decimal               @default(0.00)
   info                       String?
   isTaxExempt                Boolean               @default(false)
+  createdById                String?
   bonCommande                BonCommande?
   factureNormaliser          FactureNormaliser?
   client                     Client                @relation(fields: [clientId], references: [id])
+  createdBy                  User?                 @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
   gestionnaires              InvoiceGestionnaire[]
   produits                   InvoiceProduit[]
   paiements                  Paiement[]
@@ -126,8 +162,10 @@ model Paiement {
   invoiceId          String
   cashJournalEntryId Int?         @unique
   type               PaiementType @default(PAIEMENT)
+  createdById        String?
   cashJournalEntry   CashJournal? @relation(fields: [cashJournalEntryId], references: [id])
   invoice            Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdBy          User?        @relation("PaiementCreatedBy", fields: [createdById], references: [id])
 
   @@map("paiements")
 }
@@ -137,8 +175,8 @@ model CashRegister {
   name      String        @unique
   balance   Float         @default(0)
   createdAt DateTime      @default(now())
+  view      Boolean       @default(true)
   journals  CashJournal[]
-  view Boolean @default(true)
 }
 
 model CashJournal {
@@ -151,7 +189,9 @@ model CashJournal {
   createdAt        DateTime                @default(now())
   cashRegisterId   Int                     @default(1)
   isApportDeCaisse Boolean?                @default(false)
+  createdById      String?
   cashRegister     CashRegister            @relation(fields: [cashRegisterId], references: [id])
+  createdBy        User?                   @relation("CashJournalCreatedBy", fields: [createdById], references: [id])
   attachments      CashJournalAttachment[]
   paiement         Paiement?
 }
@@ -192,7 +232,9 @@ model FactureFournisseur {
   createdAt     DateTime                 @default(now())
   updatedAt     DateTime                 @updatedAt
   fournisseurId String
+  createdById   String?
   fournisseur   Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  createdBy     User?                    @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
 }
 
 model ProduitFournisseur {

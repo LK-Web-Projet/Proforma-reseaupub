@@ -40,6 +40,7 @@ import {
   SidebarMenuItem,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import type { AppPublicMetadata, PageKey } from "@/lib/permissions";
 
 // Menu facture.
 const dashboard = [
@@ -161,6 +162,17 @@ export function AppSidebar() {
   const { user, isLoaded, isSignedIn } = useUser();
   const role = user?.organizationMemberships?.[0]?.role ?? "no-role";
 
+  // Nouveau système de rôles/permissions par page (voir lib/authz.ts, lib/permissions.ts).
+  // Tant qu'un compte n'a pas encore été synchronisé (metadata.pages absent — compte créé
+  // avant le déploiement de ce système et script de bootstrap pas encore lancé), on reproduit
+  // l'ancien comportement (sections admin visibles seulement si org:admin Clerk) pour ne rien
+  // casser visuellement pendant la transition.
+  const metadata = user?.publicMetadata as AppPublicMetadata | undefined;
+  const hasSyncedPermissions = Array.isArray(metadata?.pages);
+  const allowedPages = metadata?.pages ?? [];
+  const canSeePage = (key: PageKey, legacyAdminOnly: boolean) =>
+    hasSyncedPermissions ? allowedPages.includes(key) : legacyAdminOnly ? role === "org:admin" : true;
+
   const router = useRouter();
   const pathname = usePathname();
   const [isFactureOpen, setIsFactureOpen] = useState(true);
@@ -195,7 +207,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent className="gap-2">
-        {role === "org:admin" && (
+        {canSeePage("dashboard", true) && (
           <SidebarMenu>
             {dashboard.map((item) => (
               <SidebarMenuItem key={item.title}>
@@ -217,6 +229,7 @@ export function AppSidebar() {
             ))}
           </SidebarMenu>
         )}
+        {canSeePage("proforma", false) && (
         <Collapsible
           open={isFactureOpen}
           onOpenChange={setIsFactureOpen}
@@ -242,6 +255,8 @@ export function AppSidebar() {
             </SidebarMenu>
           </CollapsibleContent>
         </Collapsible>
+        )}
+        {canSeePage("client", false) && (
         <Collapsible open={isClientOpen} onOpenChange={setIsClientOpen}>
           <CollapsibleTrigger asChild>
             <SidebarMenuButton>
@@ -263,7 +278,8 @@ export function AppSidebar() {
             </SidebarMenu>
           </CollapsibleContent>
         </Collapsible>
-        {role === "org:admin" && (
+        )}
+        {canSeePage("fournisseurs", true) && (
           <Collapsible
             open={isFournisseurOpen}
             onOpenChange={setIsFournisseurOpen}
@@ -289,7 +305,7 @@ export function AppSidebar() {
             </CollapsibleContent>
           </Collapsible>
         )}
-        {role === "org:admin" && (
+        {canSeePage("commercial", true) && (
           <Collapsible
             open={isCommercialOpen}
             onOpenChange={setIsCommercialOpen}
@@ -315,7 +331,7 @@ export function AppSidebar() {
             </CollapsibleContent>
           </Collapsible>
         )}
-        {role === "org:admin" && (
+        {canSeePage("finance", true) && (
           <Collapsible open={isFinanceOpen} onOpenChange={setIsFinanceOpen}>
             <CollapsibleTrigger asChild>
               <SidebarMenuButton>
@@ -340,9 +356,11 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu>
-          <NavLink item={{ title: "Paramètres", url: "/parametres", icon: Settings }} />
-        </SidebarMenu>
+        {canSeePage("parametres", false) && (
+          <SidebarMenu>
+            <NavLink item={{ title: "Paramètres", url: "/parametres", icon: Settings }} />
+          </SidebarMenu>
+        )}
         <div className="flex facture-center gap-2 pl-4">
           <SignedIn>
             <UserButton />

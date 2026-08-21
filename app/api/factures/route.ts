@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { auth } from "@clerk/nextjs/server";
 import { getEntrepriseConfig } from "@/lib/entreprise";
+import { safeCreatedById } from "@/lib/authz";
 
 export async function GET(request: Request) {
   try {
@@ -62,6 +64,7 @@ export async function GET(request: Request) {
 // POST /api/factures
 export async function POST(request: Request) {
   try {
+    const { userId } = await auth();
     const { clientNom, objet, produits, gestionnaireId, devise, paymentConditionPercentage, info, isTaxExempt } = await request.json();
 
     if (!clientNom || !objet || !produits || !produits.length) {
@@ -86,6 +89,7 @@ export async function POST(request: Request) {
     const newInvoice = await prisma.$transaction(async (tx) => {
     // 0. Récupérer la config entreprise depuis la DB
       const entreprise = await getEntrepriseConfig();
+      const createdById = await safeCreatedById(tx, userId);
 
       // 1. Gestion du client : trouver ou créer
       let client: { id: string; nom: string; adresse: string | null; email: string | null; telephone: string | null; } | null = await tx.client.findFirst({
@@ -158,6 +162,7 @@ export async function POST(request: Request) {
           paymentConditionPercentage: paymentConditionPercentage,
           info,
           isTaxExempt: isTaxExempt || false,
+          createdById,
         },
       });
 
