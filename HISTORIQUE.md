@@ -22,6 +22,22 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-10 — Export Excel de la liste des factures proforma
+
+**Demande / Contexte**
+Demande d'un bouton d'export Excel sur la page `/facture` pour obtenir une "base de données" des factures proforma, respectant le filtre actif (carte de statut cliquée, recherche, client, dates/année) : objet, client, produits avec quantités, montant TTC, payé/reste à payer, et toute autre colonne utile.
+
+**Modifications apportées**
+- [app/(main)/facture/page.tsx](app/(main)/facture/page.tsx) : ajout d'un bouton « Exporter (Excel) » dans l'en-tête de la page, à côté du réglage de visibilité des cartes. `handleExport()` exporte `filteredFactures` (la même liste déjà filtrée par carte de statut + recherche + filtres avancés que celle affichée dans le tableau) via `xlsx` (déjà une dépendance du projet, même pattern que [app/(main)/journal-caisse/export/page.tsx](app/(main)/journal-caisse/export/page.tsx)). Colonnes exportées : Numéro, Date, Client, Objet, Produits (désignation + quantité), Gestionnaire(s), Devise, Total HT, TVA, Total TTC, Payé, Reste à payer, Statut (libellé lisible réutilisé depuis `FACTURE_STATUS_META` de [components/FactureStatusBadge.tsx](components/FactureStatusBadge.tsx)). Nom de fichier dynamique incluant le filtre de statut actif et la date du jour.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Vérifier visuellement dans le navigateur : cliquer sur une carte (ex. « Brouillon »), exporter, et confirmer que seules les factures de ce statut apparaissent dans le fichier généré (pas d'accès navigateur côté assistant pour ce test).
+
+---
+
 ## 2026-08-18 — Historique des Flux (fiche facture) : libellés tronqués + carte scrollable
 
 **Demande / Contexte**

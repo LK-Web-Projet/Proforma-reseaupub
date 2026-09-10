@@ -13,12 +13,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff } from 'lucide-react';
+import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff, Download } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
-import { FactureStatusBadge } from '@/components/FactureStatusBadge';
+import { FactureStatusBadge, FACTURE_STATUS_META } from '@/components/FactureStatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -160,47 +162,119 @@ export default function Home() {
   ];
 
   const toggleCardVisibility = (label: string) => {
-    setVisibleCardLabels(prev => 
-      prev.includes(label) 
-        ? prev.filter(l => l !== label) 
+    setVisibleCardLabels(prev =>
+      prev.includes(label)
+        ? prev.filter(l => l !== label)
         : [...prev, label]
     );
+  };
+
+  const handleExport = () => {
+    if (filteredFactures.length === 0) {
+      toast.warning("Aucune facture à exporter pour ce filtre.");
+      return;
+    }
+
+    const dataToExport = filteredFactures.map((f) => {
+      const totalTTC = Number(f.totalTTC);
+      const resteAPayer = Number(f.resteAPayer);
+
+      const produits = (f.produits || [])
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((p: any) => `${p.designation} (x${p.quantite})`)
+        .join(' | ');
+
+      const gestionnaires = (f.gestionnaires || [])
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((g: any) => `${g.gestionnaire.prenom} ${g.gestionnaire.nom}`)
+        .join(', ');
+
+      return {
+        'Numéro': f.numero,
+        'Date': formatDateFR(f.dateCreation),
+        'Client': f.client?.nom || '-',
+        'Objet': f.objet,
+        'Produits': produits || '-',
+        'Gestionnaire(s)': gestionnaires || '-',
+        'Devise': f.devise,
+        'Total HT': Number(f.totalHT),
+        'TVA': Number(f.tva),
+        'Total TTC': totalTTC,
+        'Payé': totalTTC - resteAPayer,
+        'Reste à payer': resteAPayer,
+        'Statut': FACTURE_STATUS_META[f.statut as keyof typeof FACTURE_STATUS_META]?.label || f.statut,
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    worksheet['!cols'] = [
+      { wch: 18 }, // Numéro
+      { wch: 14 }, // Date
+      { wch: 22 }, // Client
+      { wch: 30 }, // Objet
+      { wch: 45 }, // Produits
+      { wch: 22 }, // Gestionnaire(s)
+      { wch: 8 },  // Devise
+      { wch: 14 }, // Total HT
+      { wch: 12 }, // TVA
+      { wch: 14 }, // Total TTC
+      { wch: 14 }, // Payé
+      { wch: 14 }, // Reste à payer
+      { wch: 14 }, // Statut
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Factures Proforma');
+
+    const filtreLabel = statut
+      ? (FACTURE_STATUS_META[statut as keyof typeof FACTURE_STATUS_META]?.label || statut)
+      : 'Tout';
+    const fileName = `Export_Factures_Proforma_${filtreLabel.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+
+    toast.success('Exportation réussie !');
   };
 
   return (
     <div className="w-full">
       <div className="flex flex-wrap justify-between items-center mb-6">
         <h1 className="text-2xl font-bold mb-4">Liste des factures émises</h1>
-        
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="icon" title="Gérer la visibilité des cartes">
-              <Eye className="h-4 w-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-56" align="end">
-            <div className="space-y-2">
-              <h4 className="font-medium leading-none mb-2">Visibilité des cartes</h4>
-              {cards.map((card) => (
-                <div key={card.label} className="flex items-center justify-between py-1">
-                  <span className="text-sm truncate mr-2">{card.label}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => toggleCardVisibility(card.label)}
-                  >
-                    {!visibleCardLabels.includes(card.label) ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
+
+        <div className="flex items-center gap-2 mb-4">
+          <Button variant="outline" onClick={handleExport} title="Exporter la liste filtrée en Excel">
+            <Download className="mr-2 h-4 w-4" />
+            Exporter (Excel)
+          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" title="Gérer la visibilité des cartes">
+                <Eye className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56" align="end">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none mb-2">Visibilité des cartes</h4>
+                {cards.map((card) => (
+                  <div key={card.label} className="flex items-center justify-between py-1">
+                    <span className="text-sm truncate mr-2">{card.label}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => toggleCardVisibility(card.label)}
+                    >
+                      {!visibleCardLabels.includes(card.label) ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* Cartes de sélection / Filtres de statut */}
