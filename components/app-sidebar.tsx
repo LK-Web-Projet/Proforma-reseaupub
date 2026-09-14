@@ -120,7 +120,11 @@ const finance = [
     url: "/journal-caisse/export",
     icon: FileDown,
   },
-   
+  {
+    title: "Demandes de Budget",
+    url: "/finance/demandes-budget",
+    icon: ClipboardList,
+  },
 ];
 
 interface NavItem {

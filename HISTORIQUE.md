@@ -22,6 +22,36 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-14 — Demandes de Budget (remplace le suivi Google Sheet) — v1.1.0
+
+**Demande / Contexte**
+Les demandes de budget/décaissement étaient suivies manuellement dans un Google Sheet. Objectif : les gérer directement dans l'app avec un vrai circuit (soumission → validation par un admin → traitement/paiement par le comptable) et des notifications email à chaque étape. Pas de formulaire public pour l'instant — seul un utilisateur authentifié (Clerk) peut soumettre une demande.
+
+**Incident détecté et corrigé en cours de route (dérive de schéma)**
+Avant de migrer, `prisma migrate dev` a détecté que la base de données réelle (partagée entre branches) contenait déjà les tables `Role`/`RolePage`/`User` et les colonnes `createdById` sur `Invoice`/`Paiement`/`CashJournal`/`FactureFournisseur` — appliquées précédemment depuis la branche `feature/usersgestion` (non fusionnée sur `review_code`/`main`), qui n'apparaissaient donc ni dans `prisma/schema.prisma` ni dans `prisma/migrations/` de cette branche. Prisma proposait `migrate reset` (suppression et recréation complète du schéma — aurait détruit les 355+ factures et toutes les autres données). **Aucune commande destructive n'a été exécutée.** Après confirmation de l'utilisateur, la migration manquante (`20260820122101_add_users_roles_permissions_and_audit_trail`) a été copiée depuis `feature/usersgestion`, et les modèles `Role`/`RolePage`/`User` + champs `createdById` correspondants ont été ajoutés au `schema.prisma` de cette branche pour refléter l'état réel de la base — opération purement additive, aucune donnée touchée (vérifié après coup : 355 factures, 5 users, 2 rôles toujours intacts). La migration `20260914095017_add_demandes_budget` a ensuite été créée et appliquée normalement par-dessus.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : nouveaux modèles `DemandeBudget`, `DemandeBudgetLigne`, `DemandeBudgetProforma` (lien plusieurs-à-plusieurs vers `Invoice`), `DemandeBudgetAttachment` (deux types via l'enum `TypeAttachmentDemande` : `DOCUMENT_COMMANDE` à la création, `PREUVE_PAIEMENT` au paiement) ; enums `StatutDemandeBudget` (SOUMISE/VALIDEE/REJETEE/PAYEE) et `ModePaiementDemande`. Lien optionnel vers `CommandeFournisseur`. Pas de champ `Client` direct : le(s) client(s) s'affichent via les proformas liées.
+- [lib/budgetAuth.ts](lib/budgetAuth.ts) (nouveau) : identifie l'admin/comptable via des listes d'emails en `.env` (`BUDGET_ADMIN_EMAILS`, `BUDGET_COMPTABLE_EMAILS`) comparées à l'email Clerk de la personne connectée — pas de système de rôles en base sur cette branche, donc même logique que la liste `NOTIFICATION_RECIPIENTS` déjà utilisée pour les emails de proforma.
+- [lib/email/sendEmail.ts](lib/email/sendEmail.ts) (nouveau) : petit helper mutualisé pour l'envoi d'emails (nodemailer), extrait de la config déjà dupliquée dans `lib/email/proformaValidation.ts` et `app/api/factures/[id]/send-email/route.ts` — ces deux call sites existants n'ont pas été touchés (déjà en prod). [lib/email/demandeBudget.ts](lib/email/demandeBudget.ts) (nouveau) : 3 notifications (demande soumise → admin, demande validée → comptable, demande rejetée → demandeur).
+- [lib/uploadDemandeBudget.ts](lib/uploadDemandeBudget.ts) (nouveau) : upload multi-fichiers sous `public/Upload/DemandeBudget/{id}/`, même pattern que `CashJournalAttachment`.
+- Nouvelles routes API : `app/api/demandes-budget/route.ts` (GET liste filtrable, POST création multipart), `[id]/route.ts` (GET détail), `[id]/valider`, `[id]/rejeter`, `[id]/payer` (actions protégées par `requireBudgetAdmin`/`requireBudgetComptable`), `me-role` (indique au frontend si l'utilisateur connecté peut valider/traiter, sans exposer les listes d'emails).
+- Nouveaux composants : [components/DemandeBudgetStatusBadge.tsx](components/DemandeBudgetStatusBadge.tsx) (pattern `_META` repris de `FactureStatusBadge`), [components/InvoiceMultiCombobox.tsx](components/InvoiceMultiCombobox.tsx) (sélection multiple de proformas, sur le modèle de `FournisseurCombobox`), [components/DemandeBudgetModal.tsx](components/DemandeBudgetModal.tsx) (dialogue de création : lignes de dépense dynamiques, mode de paiement, type de dépense, bon de commande et proformas associés, documents).
+- Nouvelles pages : [app/(main)/finance/demandes-budget/page.tsx](app/(main)/finance/demandes-budget/page.tsx) (liste, cartes de synthèse, filtres) et [app/(main)/finance/demandes-budget/[id]/page.tsx](app/(main)/finance/demandes-budget/[id]/page.tsx) (détail complet + actions Valider/Rejeter pour l'admin, formulaire « Marquer comme payée » pour le comptable).
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : lien « Demandes de Budget » ajouté dans la section Finance.
+- `.env` : ajout de `BUDGET_ADMIN_EMAILS`, `BUDGET_COMPTABLE_EMAILS` (valeurs de départ à ajuster avec les vraies adresses) et `NEXT_PUBLIC_APP_URL` (liens cliquables dans les emails).
+- **Nouvelle règle de versioning appliquée à partir de maintenant** : bump semver (`npm version patch|minor|major --no-git-tag-version`) à chaque modification livrée, en plus de l'entrée `HISTORIQUE.md` — patch pour un correctif, minor pour une nouvelle fonctionnalité, major réservé à une refonte. `package.json` passé de `1.0.0` à `1.1.0` pour cette feature.
+
+**Erreurs rencontrées & solutions**
+Voir l'incident de dérive de schéma ci-dessus.
+
+**À tester / points d'attention**
+- Vérifier/ajuster les vraies adresses dans `BUDGET_ADMIN_EMAILS`/`BUDGET_COMPTABLE_EMAILS` avant usage réel.
+- Test manuel à faire par l'utilisateur (pas d'accès navigateur côté assistant) : soumettre une demande avec 2 lignes + une proforma associée → vérifier l'email reçu par les adresses admin → valider → vérifier l'email reçu par le comptable → marquer comme payée avec une preuve → vérifier l'affichage complet sur la page de détail.
+- Le merge de la branche `feature/usersgestion` (système de rôles complet) dans cette branche est envisagé comme prochaine étape séparée, à la demande de l'utilisateur — non fait dans cette intervention pour ne pas mélanger avec le travail en cours.
+
+---
+
 ## 2026-09-13 — Page dédiée « Bons de Commande Fournisseurs »
 
 **Demande / Contexte**

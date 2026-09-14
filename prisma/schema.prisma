@@ -33,6 +33,38 @@ model Client {
   factures  Invoice[]
 }
 
+model Role {
+  id             String     @id @default(uuid())
+  nom            String     @unique
+  canManageUsers Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  pages          RolePage[]
+  users          User[]
+}
+
+model RolePage {
+  roleId String
+  page   String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, page])
+}
+
+model User {
+  id        String   @id
+  email     String   @unique
+  nom       String
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  facturesCreees           Invoice[]            @relation("InvoiceCreatedBy")
+  paiementsCrees           Paiement[]           @relation("PaiementCreatedBy")
+  cashJournalEntriesCrees  CashJournal[]        @relation("CashJournalCreatedBy")
+  facturesFournisseurCrees FactureFournisseur[] @relation("FactureFournisseurCreatedBy")
+}
+
 model Produit {
   id              String           @id @default(uuid())
   nom             String           @unique
@@ -41,9 +73,9 @@ model Produit {
 }
 
 model Invoice {
-  id                         String                @id @default(uuid())
-  numero                     String                @unique
-  dateCreation               DateTime              @default(now())
+  id                         String                  @id @default(uuid())
+  numero                     String                  @unique
+  dateCreation               DateTime                @default(now())
   objet                      String
   clientId                   String
   totalHT                    Decimal
@@ -53,18 +85,21 @@ model Invoice {
   societeNom                 String
   societeIFU                 String
   societeAdresse             String?
-  statut                     StatusFacture         @default(Brouillon)
-  devise                     Devise                @default(XOF)
+  statut                     StatusFacture           @default(Brouillon)
+  devise                     Devise                  @default(XOF)
   paymentConditionPercentage Int?
-  resteAPayer                Decimal               @default(0.00)
+  resteAPayer                Decimal                 @default(0.00)
   info                       String?
-  isTaxExempt                Boolean               @default(false)
+  isTaxExempt                Boolean                 @default(false)
+  createdById                String?
   bonCommande                BonCommande?
   factureNormaliser          FactureNormaliser?
-  client                     Client                @relation(fields: [clientId], references: [id])
+  client                     Client                  @relation(fields: [clientId], references: [id])
+  createdBy                  User?                   @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
   gestionnaires              InvoiceGestionnaire[]
   produits                   InvoiceProduit[]
   paiements                  Paiement[]
+  demandesBudget             DemandeBudgetProforma[]
 }
 
 model BonCommande {
@@ -126,8 +161,10 @@ model Paiement {
   invoiceId          String
   cashJournalEntryId Int?         @unique
   type               PaiementType @default(PAIEMENT)
+  createdById        String?
   cashJournalEntry   CashJournal? @relation(fields: [cashJournalEntryId], references: [id])
   invoice            Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdBy          User?        @relation("PaiementCreatedBy", fields: [createdById], references: [id])
 
   @@map("paiements")
 }
@@ -138,7 +175,7 @@ model CashRegister {
   balance   Float         @default(0)
   createdAt DateTime      @default(now())
   journals  CashJournal[]
-  view Boolean @default(true)
+  view      Boolean       @default(true)
 }
 
 model CashJournal {
@@ -151,7 +188,9 @@ model CashJournal {
   createdAt        DateTime                @default(now())
   cashRegisterId   Int                     @default(1)
   isApportDeCaisse Boolean?                @default(false)
+  createdById      String?
   cashRegister     CashRegister            @relation(fields: [cashRegisterId], references: [id])
+  createdBy        User?                   @relation("CashJournalCreatedBy", fields: [createdById], references: [id])
   attachments      CashJournalAttachment[]
   paiement         Paiement?
 }
@@ -192,7 +231,9 @@ model FactureFournisseur {
   createdAt     DateTime                 @default(now())
   updatedAt     DateTime                 @updatedAt
   fournisseurId String
+  createdById   String?
   fournisseur   Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  createdBy     User?                    @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
 }
 
 model ProduitFournisseur {
@@ -209,16 +250,17 @@ model ProduitFournisseur {
 }
 
 model CommandeFournisseur {
-  id            String                     @id @default(uuid())
-  numero        String                     @unique
-  dateCommande  DateTime                   @default(now())
-  statut        StatutCommandeFournisseur  @default(BROUILLON)
-  fournisseurId String
-  totalHT       Decimal                    @db.Decimal(10, 2)
-  createdAt     DateTime                   @default(now())
-  updatedAt     DateTime                   @updatedAt
-  fournisseur   Fournisseur                @relation(fields: [fournisseurId], references: [id])
-  lignes        LigneCommandeFournisseur[]
+  id             String                     @id @default(uuid())
+  numero         String                     @unique
+  dateCommande   DateTime                   @default(now())
+  statut         StatutCommandeFournisseur  @default(BROUILLON)
+  fournisseurId  String
+  totalHT        Decimal                    @db.Decimal(10, 2)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  fournisseur    Fournisseur                @relation(fields: [fournisseurId], references: [id])
+  lignes         LigneCommandeFournisseur[]
+  demandesBudget DemandeBudget[]
 }
 
 model LigneCommandeFournisseur {
@@ -289,4 +331,86 @@ enum StatutCommandeFournisseur {
   VALIDEE
   LIVREE
   ANNULEE
+}
+
+enum StatutDemandeBudget {
+  SOUMISE
+  VALIDEE
+  REJETEE
+  PAYEE
+}
+
+enum ModePaiementDemande {
+  VIREMENT
+  CHEQUE
+  ESPECES
+  MOBILE_MONEY
+  AUTRE
+}
+
+enum TypeAttachmentDemande {
+  DOCUMENT_COMMANDE
+  PREUVE_PAIEMENT
+}
+
+model DemandeBudget {
+  id     String              @id @default(uuid())
+  numero String              @unique
+  statut StatutDemandeBudget @default(SOUMISE)
+
+  requesterEmail String
+  requesterName  String?
+
+  departement         String?
+  contexteMotivation  String
+  montantTotal        Decimal             @db.Decimal(12, 2)
+  modePaiement        ModePaiementDemande
+  typeDepense         String
+  pourLeCompteDe      String?
+  dateLimiteSouhaitee DateTime?
+
+  bonCommandeId String?
+  bonCommande   CommandeFournisseur? @relation(fields: [bonCommandeId], references: [id])
+
+  nomReceveur  String?
+  datePaiement DateTime?
+
+  validatedByEmail String?
+  validatedAt      DateTime?
+  rejectionReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lignes      DemandeBudgetLigne[]
+  proformas   DemandeBudgetProforma[]
+  attachments DemandeBudgetAttachment[]
+}
+
+model DemandeBudgetLigne {
+  id              String        @id @default(uuid())
+  demandeBudgetId String
+  designation     String
+  montant         Decimal       @db.Decimal(12, 2)
+  demandeBudget   DemandeBudget @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
+}
+
+model DemandeBudgetProforma {
+  demandeBudgetId String
+  invoiceId       String
+  demandeBudget   DemandeBudget @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id])
+
+  @@id([demandeBudgetId, invoiceId])
+}
+
+model DemandeBudgetAttachment {
+  id              String                @id @default(uuid())
+  demandeBudgetId String
+  kind            TypeAttachmentDemande
+  url             String
+  fileName        String
+  fileType        String
+  createdAt       DateTime              @default(now())
+  demandeBudget   DemandeBudget         @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
 }
