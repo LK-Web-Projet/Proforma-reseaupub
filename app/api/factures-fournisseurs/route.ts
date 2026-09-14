@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
+import { auth } from "@clerk/nextjs/server";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
+import { safeCreatedById } from "@/lib/authz";
 
 // GET /api/factures-fournisseurs - Récupérer toutes les factures fournisseurs
 export async function GET(req: NextRequest) {
@@ -88,6 +90,7 @@ export async function GET(req: NextRequest) {
 // POST /api/factures-fournisseurs - Créer une nouvelle facture fournisseur avec pièce jointe
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
     const formData = await req.formData();
 
     const file = formData.get("pieceJointe") as File | null;
@@ -146,6 +149,7 @@ export async function POST(req: NextRequest) {
     const pieceJointeUrl = file
       ? await saveFactureFournisseurPieceJointe(file)
       : null;
+    const createdById = await safeCreatedById(prisma, userId);
 
     const newFacture = await prisma.factureFournisseur.create({
       data: {
@@ -155,6 +159,7 @@ export async function POST(req: NextRequest) {
         fournisseurId,
         status,
         pieceJointe: pieceJointeUrl,
+        createdById,
       },
     });
 

@@ -1,4 +1,5 @@
 import { OperationType, Prisma } from "@prisma/client";
+import { safeCreatedById } from "@/lib/authz";
 
 interface RecordCashMovementInput {
   cashRegisterId: number;
@@ -7,6 +8,7 @@ interface RecordCashMovementInput {
   libelle: string;
   date_operation: Date;
   isApportDeCaisse?: boolean;
+  createdById?: string | null;
 }
 
 /**
@@ -17,7 +19,7 @@ interface RecordCashMovementInput {
  */
 export async function recordCashMovement(
   tx: Prisma.TransactionClient,
-  { cashRegisterId, type, montant, libelle, date_operation, isApportDeCaisse }: RecordCashMovementInput
+  { cashRegisterId, type, montant, libelle, date_operation, isApportDeCaisse, createdById }: RecordCashMovementInput
 ) {
   const lastEntry = await tx.cashJournal.findFirst({
     where: { cashRegisterId },
@@ -26,6 +28,7 @@ export async function recordCashMovement(
 
   const lastBalance = lastEntry ? lastEntry.solde : 0;
   const newBalance = type === OperationType.RECETTE ? lastBalance + montant : lastBalance - montant;
+  const safeCreatorId = await safeCreatedById(tx, createdById);
 
   const newEntry = await tx.cashJournal.create({
     data: {
@@ -36,6 +39,7 @@ export async function recordCashMovement(
       solde: newBalance,
       cashRegisterId,
       isApportDeCaisse: type === OperationType.RECETTE ? (isApportDeCaisse || false) : false,
+      createdById: safeCreatorId,
     },
   });
 

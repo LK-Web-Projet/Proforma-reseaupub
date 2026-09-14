@@ -4,7 +4,9 @@ import { z } from "zod";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 import { writeFile } from "fs/promises";
+import { auth } from "@clerk/nextjs/server";
 import { recordDepensePaiement } from "@/lib/paiements";
+import { safeCreatedById } from "@/lib/authz";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
@@ -28,6 +30,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { userId } = await auth();
     const { id: invoiceId } = await params;
     const formData = await request.formData();
 
@@ -121,6 +124,8 @@ export async function POST(
       : new Date();
 
     const result = await prisma.$transaction(async (tx) => {
+      const createdById = await safeCreatedById(tx, userId);
+
       if (type === "DEPENSE") {
         const { cashJournalEntry } = await recordDepensePaiement(tx, {
           invoiceId,
@@ -131,6 +136,7 @@ export async function POST(
           methode,
           reference: rest.reference,
           notes: rest.notes,
+          createdById,
         });
 
         const updatedInvoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
@@ -153,6 +159,7 @@ export async function POST(
           solde: newBalance,
           isApportDeCaisse: false,
           cashRegisterId: finalCashRegisterId,
+          createdById,
         },
       });
 
@@ -169,6 +176,7 @@ export async function POST(
           type,
           ...rest,
           cashJournalEntryId: newCashJournalEntry.id,
+          createdById,
         },
       });
 
