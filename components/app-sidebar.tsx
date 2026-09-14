@@ -24,6 +24,7 @@ import {
   FileDown,
   Settings,
   Loader2,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -100,6 +101,11 @@ const fournisseur = [
     title: "Liste Factures",
     url: "/fournisseur/factures",
     icon: FileText,
+  },
+  {
+    title: "Bons de Commande",
+    url: "/fournisseur/commandes",
+    icon: ClipboardList,
   },
 ];
 

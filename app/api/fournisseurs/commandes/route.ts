@@ -20,20 +20,18 @@ const commandeSchema = z.object({
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const fournisseurId = searchParams.get("fournisseurId");
+    const statut = searchParams.get("statut");
 
-    if (!fournisseurId) {
-        return NextResponse.json(
-            { error: "Fournisseur ID is required" },
-            { status: 400 }
-        );
-    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: { [key: string]: any } = {};
+    if (fournisseurId) where.fournisseurId = fournisseurId;
+    if (statut) where.statut = statut;
 
     try {
         const commandes = await prisma.commandeFournisseur.findMany({
-            where: {
-                fournisseurId: fournisseurId,
-            },
+            where,
             include: {
+                fournisseur: true,
                 lignes: true,
             },
             orderBy: {

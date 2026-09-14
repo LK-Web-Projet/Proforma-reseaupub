@@ -22,6 +22,27 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-13 — Page dédiée « Bons de Commande Fournisseurs »
+
+**Demande / Contexte**
+Les bons de commande fournisseur (modèles `CommandeFournisseur`/`LigneCommandeFournisseur`, déjà en base) n'étaient accessibles que depuis un onglet noyé dans la fiche d'un fournisseur (`/fournisseur/[id]?tab=commandes`), avec un formulaire de création en pleine page qui remplaçait l'onglet. Demande de traiter les bons de commande « comme les proforma » : une page dédiée listant tous les bons (tous fournisseurs confondus), accessible directement depuis la navbar, avec un lien direct, et une création via un dialogue (choix du fournisseur, ajout des produits, montant affiché).
+
+**Modifications apportées**
+- [app/api/fournisseurs/commandes/route.ts](app/api/fournisseurs/commandes/route.ts) : `GET` rendu plus général — `fournisseurId` devient optionnel (retourne tous les bons de commande si absent, filtrable aussi par `statut`), et inclut désormais la relation `fournisseur` pour l'affichage du nom d'entreprise dans la liste globale. Le comportement existant (filtré par fournisseur) reste identique pour l'onglet déjà en place dans la fiche fournisseur.
+- [components/CommandeFournisseurModal.tsx](components/CommandeFournisseurModal.tsx) (nouveau) : dialogue de création reprenant la logique de [components/fournisseurs/NewCommandeForm.tsx](components/fournisseurs/NewCommandeForm.tsx) (choix produit, dimensions si m², quantité, prix, calcul du total) mais avec en plus un sélecteur de fournisseur (`FournisseurCombobox`) en tête — le catalogue produits se recharge dynamiquement selon le fournisseur choisi.
+- [app/(main)/fournisseur/commandes/page.tsx](app/(main)/fournisseur/commandes/page.tsx) (nouveau) : page dédiée listant tous les bons de commande, sur le même gabarit que [app/(main)/fournisseur/factures/page.tsx](app/(main)/fournisseur/factures/page.tsx) — cartes de synthèse (total commandé, validées/livrées, brouillons), filtres (fournisseur, statut), tableau avec changement de statut en ligne (Select → `PATCH /api/fournisseurs/commandes/[commandeId]`), et bouton « Voir » vers la page de détail déjà existante (`/fournisseur/[id]/commandes/[commandeId]`, avec génération PDF).
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : ajout du lien « Bons de Commande » (`/fournisseur/commandes`) dans la section Fournisseurs de la navbar, à côté de « Liste Fournisseurs » et « Liste Factures ».
+
+L'onglet « Bons de Commande » existant dans la fiche fournisseur (`FournisseurCommandes.tsx`/`NewCommandeForm.tsx`) n'a pas été touché — il reste utilisable comme vue filtrée sur un seul fournisseur, en plus de la nouvelle page globale (même schéma de coexistence que pour les factures fournisseurs).
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Test manuel à faire par l'utilisateur : ouvrir `/fournisseur/commandes`, créer un bon de commande via le dialogue (choisir un fournisseur, ajouter un produit de son catalogue), vérifier qu'il apparaît dans la liste avec le bon montant, changer son statut en ligne, puis cliquer sur « Voir » pour confirmer que la page de détail (et le PDF) fonctionnent toujours.
+
+---
+
 ## 2026-09-10 — Export Excel de la liste des factures proforma
 
 **Demande / Contexte**
