@@ -213,6 +213,51 @@ export default function DemandeBudgetDetailPage() {
         </div>
       </Card>
 
+      {demande.statut === 'SOUMISE' && role.isAdmin && (
+        <Card className="border-t-4 border-t-green-500 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Validation requise</CardTitle>
+          </CardHeader>
+          <CardContent className="flex gap-3">
+            <Button onClick={handleValider} disabled={isSubmitting} className="gap-2 bg-green-600 hover:bg-green-700">
+              <CheckCircle2 className="h-4 w-4" /> Valider
+            </Button>
+            <Button variant="outline" onClick={() => setIsRejectOpen(true)} disabled={isSubmitting} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
+              <XCircle className="h-4 w-4" /> Rejeter
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {demande.statut === 'VALIDEE' && role.isComptable && (
+        <Card className="border-t-4 border-t-indigo-500 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2"><Wallet className="h-4 w-4" /> Marquer comme payée</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handlePayer} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+              <div className="space-y-2">
+                <label htmlFor="datePaiement">Date de paiement *</label>
+                <Input id="datePaiement" type="date" value={datePaiement} onChange={(e) => setDatePaiement(e.target.value)} required />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="nomReceveur">Nom du receveur *</label>
+                <Input id="nomReceveur" value={nomReceveur} onChange={(e) => setNomReceveur(e.target.value)} required />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label htmlFor="preuves">Preuves de paiement</label>
+                <Input id="preuves" type="file" multiple onChange={(e) => setPreuves(e.target.files ? Array.from(e.target.files) : [])} />
+              </div>
+              <div className="md:col-span-2">
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Enregistrement...' : 'Marquer comme payée'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-3">
@@ -337,51 +382,6 @@ export default function DemandeBudgetDetailPage() {
           <CardContent className="pt-6 text-sm text-green-800 space-y-1">
             <p><strong>Payée le</strong> {demande.datePaiement ? format(new Date(demande.datePaiement), 'dd/MM/yyyy') : '-'}</p>
             <p><strong>Receveur :</strong> {demande.nomReceveur}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {demande.statut === 'SOUMISE' && role.isAdmin && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Validation</CardTitle>
-          </CardHeader>
-          <CardContent className="flex gap-3">
-            <Button onClick={handleValider} disabled={isSubmitting} className="gap-2 bg-green-600 hover:bg-green-700">
-              <CheckCircle2 className="h-4 w-4" /> Valider
-            </Button>
-            <Button variant="outline" onClick={() => setIsRejectOpen(true)} disabled={isSubmitting} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
-              <XCircle className="h-4 w-4" /> Rejeter
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {demande.statut === 'VALIDEE' && role.isComptable && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2"><Wallet className="h-4 w-4" /> Marquer comme payée</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handlePayer} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-              <div className="space-y-2">
-                <label htmlFor="datePaiement">Date de paiement *</label>
-                <Input id="datePaiement" type="date" value={datePaiement} onChange={(e) => setDatePaiement(e.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="nomReceveur">Nom du receveur *</label>
-                <Input id="nomReceveur" value={nomReceveur} onChange={(e) => setNomReceveur(e.target.value)} required />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <label htmlFor="preuves">Preuves de paiement</label>
-                <Input id="preuves" type="file" multiple onChange={(e) => setPreuves(e.target.files ? Array.from(e.target.files) : [])} />
-              </div>
-              <div className="md:col-span-2">
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Enregistrement...' : 'Marquer comme payée'}
-                </Button>
-              </div>
-            </form>
           </CardContent>
         </Card>
       )}

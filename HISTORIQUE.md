@@ -22,6 +22,22 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-16 — Demandes de Budget : boutons d'action remontés dans la fiche détail
+
+**Demande / Contexte**
+L'utilisateur a signalé ne pas trouver de moyen de changer le statut d'une demande de budget (Valider/Rejeter pour l'admin, Marquer comme payée pour le comptable). Après vérification du code (logique correcte, question de configuration `.env`/compte de test écartée par l'utilisateur), le vrai souci était l'emplacement : ces actions étaient tout en bas de la fiche détail, après les infos, les lignes de dépense et les pièces jointes — pas assez visibles/accessibles.
+
+**Modifications apportées**
+- [app/(main)/finance/demandes-budget/[id]/page.tsx](app/(main)/finance/demandes-budget/[id]/page.tsx) : les cartes « Validation requise » (admin) et « Marquer comme payée » (comptable) sont déplacées juste après l'en-tête de la fiche, avant les détails/lignes/pièces jointes — visibles sans avoir à scroller. Ajout d'une bordure colorée en haut (vert pour validation, indigo pour paiement) pour les rendre plus repérables, sur le même modèle que les cartes de synthèse déjà utilisées ailleurs dans l'app.
+
+**Erreurs rencontrées & solutions**
+Aucune (pas de bug de code — uniquement un ajustement de position/visibilité dans l'UI).
+
+**À tester / points d'attention**
+- Confirmer visuellement que les boutons Valider/Rejeter et le formulaire de paiement apparaissent bien juste sous l'en-tête pour les comptes admin/comptable.
+
+---
+
 ## 2026-08-20 — Réinitialisation du mot de passe utilisateur (UI admin)
 
 **Demande / Contexte**
