@@ -22,6 +22,7 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-17 — REBUILD 
 ## 2026-09-16 — Demandes de Budget : boutons d'action remontés dans la fiche détail
 
 **Demande / Contexte**
