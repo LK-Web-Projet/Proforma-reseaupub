@@ -26,9 +26,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
+import { DemandeBudgetAddDocumentsDialog } from '@/components/DemandeBudgetAddDocumentsDialog';
 import { DemandeBudgetStatusBadge, DemandeBudgetStatus } from '@/components/DemandeBudgetStatusBadge';
+import { Badge } from '@/components/ui/badge';
+import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus } from 'lucide-react';
 
 interface DemandeBudgetDetail {
   id: string;
@@ -50,7 +54,7 @@ interface DemandeBudgetDetail {
   rejectionReason: string | null;
   createdAt: string;
   lignes: { id: string; designation: string; montant: number }[];
-  attachments: { id: string; kind: 'DOCUMENT_COMMANDE' | 'PREUVE_PAIEMENT'; url: string; fileName: string }[];
+  attachments: { id: string; kind: string; url: string; fileName: string }[];
   bonCommande: { id: string; numero: string; fournisseur: { entreprise: string } } | null;
   proformas: { invoice: { id: string; numero: string; objet: string; client: { nom: string } } }[];
 }
@@ -60,7 +64,7 @@ const formatMontant = (value: number) =>
 
 export default function DemandeBudgetDetailPage() {
   const [demande, setDemande] = useState<DemandeBudgetDetail | null>(null);
-  const [role, setRole] = useState({ isAdmin: false, isComptable: false });
+  const [role, setRole] = useState<{ email: string | null; isAdmin: boolean; isComptable: boolean }>({ email: null, isAdmin: false, isComptable: false });
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRejectOpen, setIsRejectOpen] = useState(false);
@@ -68,6 +72,7 @@ export default function DemandeBudgetDetailPage() {
   const [datePaiement, setDatePaiement] = useState(new Date().toISOString().split('T')[0]);
   const [nomReceveur, setNomReceveur] = useState('');
   const [preuves, setPreuves] = useState<File[]>([]);
+  const [isAddDocsOpen, setIsAddDocsOpen] = useState(false);
 
   const params = useParams();
   const router = useRouter();
@@ -188,9 +193,9 @@ export default function DemandeBudgetDetailPage() {
     );
   }
 
-  const documentsCommande = demande.attachments.filter((a) => a.kind === 'DOCUMENT_COMMANDE');
-  const preuvesPaiement = demande.attachments.filter((a) => a.kind === 'PREUVE_PAIEMENT');
   const clients = Array.from(new Set(demande.proformas.map((p) => p.invoice.client.nom)));
+  const peutAjouterDocuments =
+    demande.statut === 'VALIDEE' && (role.isAdmin || role.isComptable || role.email === demande.requesterEmail);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -212,6 +217,22 @@ export default function DemandeBudgetDetailPage() {
           </p>
         </div>
       </Card>
+
+      {demande.statut === 'REJETEE' && (role.isComptable || role.email === demande.requesterEmail) && (
+        <Card className="border-t-4 border-t-amber-500 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Demande rejetée — corriger et resoumettre</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-3">
+              Vous pouvez modifier n&apos;importe quel élément de la demande (montants, produits, documents...) pour la rendre conforme, puis la soumettre à nouveau pour validation.
+            </p>
+            <Button onClick={() => router.push(`/budget/demandes/${id}/modifier`)} className="gap-2 bg-amber-600 hover:bg-amber-700">
+              <Pencil className="h-4 w-4" /> Modifier et soumettre à nouveau
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {demande.statut === 'SOUMISE' && role.isAdmin && (
         <Card className="border-t-4 border-t-green-500 shadow-sm">
@@ -335,37 +356,38 @@ export default function DemandeBudgetDetailPage() {
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2 text-indigo-700">
             <Paperclip className="h-4 w-4" />
-            Pièces jointes
+            Documents
           </CardTitle>
+          {peutAjouterDocuments && (
+            <Button variant="outline" size="sm" onClick={() => setIsAddDocsOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Ajouter des documents
+            </Button>
+          )}
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground mb-2">Documents liés à la commande</p>
-            {documentsCommande.length === 0 ? (
-              <p className="text-sm text-gray-400">Aucun document.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {documentsCommande.map((a) => (
-                  <AttachmentPreviewButton key={a.id} url={a.url} title={a.fileName} />
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground mb-2">Preuves de paiement</p>
-            {preuvesPaiement.length === 0 ? (
-              <p className="text-sm text-gray-400">Aucune preuve.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {preuvesPaiement.map((a) => (
-                  <AttachmentPreviewButton key={a.id} url={a.url} title={a.fileName} />
-                ))}
-              </div>
-            )}
-          </div>
+        <CardContent>
+          {demande.attachments.length === 0 ? (
+            <p className="text-sm text-gray-400">Aucun document fourni.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {demande.attachments.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 rounded-lg border p-3 bg-white hover:shadow-sm transition-shadow">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <Badge variant="outline" className={cn('text-[10px] font-medium mb-1', ATTACHMENT_TYPE_COLORS[a.kind])}>
+                      {ATTACHMENT_TYPE_LABELS[a.kind] ?? a.kind}
+                    </Badge>
+                    <p className="text-sm truncate" title={a.fileName}>{a.fileName}</p>
+                  </div>
+                  <AttachmentPreviewButton url={a.url} title={a.fileName} />
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -400,6 +422,13 @@ export default function DemandeBudgetDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DemandeBudgetAddDocumentsDialog
+        isOpen={isAddDocsOpen}
+        onClose={() => setIsAddDocsOpen(false)}
+        onSuccess={fetchDemande}
+        demandeId={id}
+      />
     </div>
   );
 }

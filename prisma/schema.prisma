@@ -351,8 +351,11 @@ enum ModePaiementDemande {
 }
 
 enum TypeAttachmentDemande {
-  DOCUMENT_COMMANDE
+  DEVIS
+  FACTURE
+  BON_COMMANDE
   PREUVE_PAIEMENT
+  AUTRE
 }
 
 model DemandeBudget {

@@ -4,6 +4,7 @@ import { getCurrentUserIdentity, isBudgetAdminEmail, isBudgetComptableEmail } fr
 export async function GET() {
   const { email } = await getCurrentUserIdentity();
   return NextResponse.json({
+    email,
     isAdmin: isBudgetAdminEmail(email),
     isComptable: isBudgetComptableEmail(email),
   });

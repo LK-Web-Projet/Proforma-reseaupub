@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prisma, ModePaiementDemande, StatutDemandeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { getCurrentUserIdentity, isBudgetAdminEmail, isBudgetComptableEmail } from "@/lib/budgetAuth";
-import { saveDemandeBudgetFiles, describeFsError } from "@/lib/uploadDemandeBudget";
+import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
 
 const ligneSchema = z.object({
@@ -88,7 +88,6 @@ export async function POST(request: NextRequest) {
 
     const rawLignes = formData.get("lignes");
     const rawProformaIds = formData.get("proformaIds");
-    const documents = formData.getAll("documentsCommande") as File[];
 
     const parsedBody = {
       departement: (formData.get("departement") as string) || undefined,
@@ -133,11 +132,9 @@ export async function POST(request: NextRequest) {
       include: { lignes: true },
     });
 
-    if (documents.length > 0) {
-      const saved = await saveDemandeBudgetFiles(demande.id, documents);
-      await prisma.demandeBudgetAttachment.createMany({
-        data: saved.map((f) => ({ demandeBudgetId: demande.id, kind: "DOCUMENT_COMMANDE", ...f })),
-      });
+    const attachmentRows = await saveTypedDemandeBudgetAttachments(demande.id, formData);
+    if (attachmentRows.length > 0) {
+      await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }
 
     sendDemandeSoumiseNotification(demande).catch((err) =>

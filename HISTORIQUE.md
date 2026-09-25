@@ -22,6 +22,103 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-25 (suite) — Département : liste de sélection au lieu de texte libre
+
+**Demande / Contexte**
+Le champ « Département » était un texte libre. Demande d'une liste fixe (Informatique, RH, Direction Générale, Finance, Déploiement Terrain, Régie Publicitaire, Opérationnel Logistique) plus une option « Autre » avec un champ pour saisir un département non listé.
+
+**Modifications apportées**
+- [components/DemandeBudgetForm.tsx](components/DemandeBudgetForm.tsx) : remplace l'`Input` par un `Select` (mêmes 7 départements + « Autre »), avec un champ texte révélé uniquement si « Autre » est choisi — exactement le même schéma déjà utilisé pour « Type de dépense ». En mode édition, si le département déjà enregistré ne correspond à aucune option de la liste, le formulaire bascule automatiquement sur « Autre » avec la valeur existante pré-remplie dans le champ texte.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Tester dans le navigateur : créer une demande avec chacun des départements listés, et avec « Autre » + un nom personnalisé ; rouvrir une demande existante (créée avant ce changement, département en texte libre) en édition pour confirmer qu'elle retombe bien sur « Autre » avec la valeur d'origine visible.
+
+---
+
+## 2026-09-25 (suite) — « Pour le compte de » : sélection contextuelle au lieu de texte libre
+
+**Demande / Contexte**
+Le champ « Pour le compte de » était un simple texte libre. Demande de le transformer en sélection : soit « Campagne/Client », soit « RESEAUPUB ». Pour RESEAUPUB, choisir le receveur (« Moi » par défaut, ou « Autre » avec le nom saisi). La valeur finale combine les deux infos : `RESEAUPUB (NOM RECEVEUR)` ou `CAMPAGNE/CLIENT (nom du client - numéro de proforma si associée)`. Le sélecteur de proforma(s) associée(s) ne doit s'afficher que pour Campagne/Client, masqué par défaut pour RESEAUPUB.
+
+**Modifications apportées**
+- [components/DemandeBudgetForm.tsx](components/DemandeBudgetForm.tsx) : le champ texte est remplacé par un `Select` (Campagne/Client vs RESEAUPUB). Pour RESEAUPUB, un second `Select` (Moi via `useUser()` de Clerk / Autre + champ nom). Pour Campagne/Client, un champ texte « Nom du client ou de la campagne » et le sélecteur de proforma(s) (désormais masqué en mode RESEAUPUB, et les proformas sélectionnées sont réinitialisées si on bascule vers RESEAUPUB). La chaîne finale `pourLeCompteDe` est calculée côté client à la soumission — aucun changement de schéma ni de route API nécessaire, le champ reste un simple texte en base. En mode édition, la chaîne existante est reparsée pour reconstituer la sélection (best-effort : un ancien texte libre non conforme au format retombe en mode Campagne/Client avec le texte tel quel).
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Tester dans le navigateur : créer une demande RESEAUPUB (Moi, puis Autre), une demande Campagne/Client avec et sans proforma associée, et rouvrir une demande rejetée existante en édition pour confirmer que la sélection se reconstitue correctement à partir du texte déjà enregistré.
+
+---
+
+## 2026-09-25 (suite) — Ajout de documents possible après validation
+
+**Demande / Contexte**
+Des documents complémentaires peuvent être nécessaires après qu'une demande a été validée (mais avant paiement) — demande d'autoriser l'ajout de documents dans ce cas, pour l'auteur de la demande, l'admin et le comptable (contrairement à la correction complète, réservée aux demandes rejetées).
+
+**Modifications apportées**
+- [components/DemandeBudgetAddDocumentsDialog.tsx](components/DemandeBudgetAddDocumentsDialog.tsx) (nouveau) : dialogue léger (type + fichier, lignes dynamiques) réutilisant les types de documents existants, sans toucher aux autres champs de la demande.
+- Nouvelle route [app/api/demandes-budget/[id]/documents/route.ts](app/api/demandes-budget/[id]/documents/route.ts) (POST) : accepte l'ajout uniquement si la demande est `VALIDEE`, et uniquement pour l'auteur de la demande, l'admin ou le comptable (403 sinon) — n'affecte que les pièces jointes, aucun autre champ ni le statut.
+- [app/(main)/budget/demandes/[id]/page.tsx](app/(main)/budget/demandes/[id]/page.tsx) : bouton « Ajouter des documents » dans l'en-tête de la carte Documents, visible uniquement quand `statut === 'VALIDEE'` et que la personne connectée est autorisée.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Tester dans le navigateur : valider une demande, ajouter un document en tant qu'auteur puis en tant qu'admin/comptable, vérifier qu'il apparaît dans la liste des documents sans changer le statut. Vérifier aussi qu'un utilisateur non impliqué et non auteur ne voit pas le bouton / se voit refuser l'appel API.
+
+---
+
+## 2026-09-25 (suite) — Régression : `serverExternalPackages` cassait toute l'app en dev
+
+**Demande / Contexte**
+En testant `pnpm dev` en local, l'app entière plantait (`GET / 500`) avec `Cannot find module '.../@clerk/nextjs/dist/esm/client-boundary/controlComponents'`. Une réinstallation complète de `node_modules` n'a rien changé (fichiers vérifiés présents et non corrompus sur le disque) — la cause était en fait un changement de configuration fait plus tôt dans la même journée.
+
+**Cause identifiée**
+`next.config.ts` avait `serverExternalPackages: ["@clerk/nextjs", "@clerk/backend"]`, ajouté pour corriger le tracing de `instrumentation.ts` en build standalone (voir entrée précédente). Cette option force Next.js à charger ces packages via un vrai `import()` Node natif (mode ESM strict) au lieu de les bundler. Or `@clerk/nextjs@6.39.5` a des imports internes sans extension de fichier (`from "./client-boundary/controlComponents"` au lieu de `"./client-boundary/controlComponents.js"`) — invalide en ESM Node strict, mais toléré par un bundler classique. Résultat : toute l'app (middleware, layout, sidebar, routes API — partout où `@clerk/nextjs` est utilisé) plantait, pas seulement `instrumentation.ts`.
+
+**Modifications apportées**
+- [next.config.ts](next.config.ts) : `serverExternalPackages` retiré. Commentaire ajouté expliquant pourquoi ne pas le remettre. Conséquence acceptée : le bootstrap RBAC automatique au démarrage (`instrumentation.ts`) continue d'échouer silencieusement en build standalone (déjà catché par le `try/catch`, ne bloque rien) — la méthode fiable pour synchroniser les rôles reste le script CLI manuel (`scripts/seed-admin-users.ts`) lancé via un conteneur temporaire sur le réseau du VPS (déjà utilisé avec succès).
+- Ce changement n'avait jamais été commité ni déployé — aucun impact sur la production.
+
+**Erreurs rencontrées & solutions**
+Voir ci-dessus. Piste à explorer plus tard si on veut vraiment un bootstrap 100% automatique : `outputFileTracingIncludes` ciblé (force la copie des fichiers dans le build standalone sans changer le mode de chargement du module) — non tenté ici par prudence, pas de moyen fiable de le tester en conditions de build standalone réelles depuis ce poste.
+
+**À tester / points d'attention**
+- Relancer `pnpm dev` pour confirmer que l'app démarre normalement (déjà vérifié : `tsc --noEmit` propre, fichiers `@clerk/nextjs` intacts sur disque, cache `.next` vidé).
+
+---
+
+## 2026-09-25 (suite) — Documents typés en cartes + cycle rejet/correction/resoumission
+
+**Demande / Contexte**
+Trois demandes liées aux Demandes de Budget : (1) remplacer l'upload générique de « documents liés à la commande » par un formulaire où chaque document a un type (Devis, Facture/Preuve de dépense, Bon de commande, Autre — en plus de la Preuve de décaissement déjà ajoutée par le comptable), affichés en cartes avec le type visible ; (2) confirmer que l'auteur d'une demande reçoit bien un email quand elle est rejetée ; (3) permettre à l'auteur ou au comptable de corriger une demande rejetée (montants, produits, documents...) et de la resoumettre, ce qui la fait revenir en attente de validation. Une section « Notifications » in-app plus large est notée comme travail futur (« on créera ensuite »), non traitée ici.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : `TypeAttachmentDemande` passe de `{DOCUMENT_COMMANDE, PREUVE_PAIEMENT}` à `{DEVIS, FACTURE, BON_COMMANDE, PREUVE_PAIEMENT, AUTRE}`. Migration écrite à la main (`prisma migrate dev` refusait de tourner en environnement non-interactif à cause de l'avertissement de perte de données) avec un remapping `DOCUMENT_COMMANDE → AUTRE` intégré dans le `USING` du `ALTER COLUMN`, appliquée via `prisma migrate deploy` — vérifié après coup : la ligne existante a bien été remappée vers `AUTRE`, aucune perte de données.
+- [lib/demandeBudgetAttachmentTypes.ts](lib/demandeBudgetAttachmentTypes.ts) (nouveau) : labels et couleurs partagés par type, réutilisés dans le formulaire et l'affichage.
+- [lib/uploadDemandeBudget.ts](lib/uploadDemandeBudget.ts) : nouvelle fonction `saveTypedDemandeBudgetAttachments()` — lit les champs `documents_DEVIS`, `documents_FACTURE`, etc. d'un FormData et prépare les lignes prêtes pour `createMany`.
+- [components/DemandeBudgetForm.tsx](components/DemandeBudgetForm.tsx) : la zone d'upload devient une liste dynamique (type + fichier) au lieu d'un simple champ multi-fichiers ; ajout du mode édition (`mode="edit"`, `initialData`, `demandeId`) qui préremplit tous les champs (y compris détection du « Autre » personnalisé pour le type de dépense) et affiche les documents déjà fournis en lecture seule.
+- Nouvelle route [app/api/demandes-budget/[id]/resoumettre/route.ts](app/api/demandes-budget/[id]/resoumettre/route.ts) : réservée à l'auteur de la demande ou au comptable, uniquement si `statut === REJETEE` ; remplace lignes/proformas, met à jour tous les champs, ajoute les nouveaux documents (les anciens restent), repasse le statut à `SOUMISE` (motif de rejet et validation réinitialisés) et renvoie la notification de soumission à l'admin.
+- [app/api/demandes-budget/route.ts](app/api/demandes-budget/route.ts) (POST création) : utilise désormais `saveTypedDemandeBudgetAttachments` au lieu du champ unique `documentsCommande`.
+- [app/api/demandes-budget/me-role/route.ts](app/api/demandes-budget/me-role/route.ts) : renvoie désormais aussi `email`, nécessaire pour que le front compare « suis-je l'auteur de cette demande ? ».
+- [app/(main)/budget/demandes/[id]/page.tsx](app/(main)/budget/demandes/[id]/page.tsx) : section « Documents » entièrement en cartes (icône, badge de type coloré, nom de fichier, aperçu) ; nouveau bloc « Demande rejetée — corriger et resoumettre » (visible pour l'auteur ou le comptable) menant à la nouvelle page de modification.
+- Nouvelle page [app/(main)/budget/demandes/[id]/modifier/page.tsx](app/(main)/budget/demandes/[id]/modifier/page.tsx) : réutilise `DemandeBudgetForm` en mode édition, préremplie avec les données existantes.
+- Vérifié (aucun changement de code nécessaire) : [lib/email/demandeBudget.ts](lib/email/demandeBudget.ts)'s `sendDemandeRejeteeNotification` envoie déjà à `demande.requesterEmail`, capturé automatiquement à la création via Clerk — déjà correctement branché depuis `app/api/demandes-budget/[id]/rejeter/route.ts`.
+
+**Erreurs rencontrées & solutions**
+- `prisma migrate dev --create-only` échouait avec « non-interactive environment is not supported » à cause de l'avertissement de perte de données sur l'enum → migration écrite à la main puis appliquée via `prisma migrate deploy` (non-interactif par nature, n'applique que les migrations en attente sans recalcul de diff).
+- Erreur de typage `kind: string` non assignable à l'enum Prisma dans les deux routes POST → corrigé en typant `saveTypedDemandeBudgetAttachments` avec `DocumentUploadType` (sous-ensemble litéral compatible) au lieu de `string`.
+
+**À tester / points d'attention**
+- Tester dans le navigateur : créer une demande avec plusieurs documents de types différents, vérifier l'affichage en cartes ; faire rejeter une demande par l'admin, vérifier la réception de l'email par le demandeur, puis la corriger et la resoumettre en tant qu'auteur ET en tant que comptable pour confirmer que les deux peuvent le faire.
+- Section « Notifications » in-app : à construire dans une prochaine intervention, non commencée ici.
+
+---
+
 ## 2026-09-25 (suite) — Section « Budget » à part + visibilité limitée aux propres demandes
 
 **Demande / Contexte**
