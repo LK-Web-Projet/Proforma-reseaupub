@@ -22,6 +22,53 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-25 (suite) — Section « Budget » à part + visibilité limitée aux propres demandes
+
+**Demande / Contexte**
+La section Demandes de Budget vivait sous « Finance » dans la navbar. Demande de la sortir en section « Budget » à part entière, avec deux entrées (« Faire une demande », « Voir les demandes »), et de restreindre la visibilité des données : un employé qui n'est ni admin ni comptable du processus budget ne doit voir QUE les demandes qu'il a lui-même soumises (avec un message dédié si aucune), alors que l'admin et le comptable (emails dans `BUDGET_ADMIN_EMAILS`/`BUDGET_COMPTABLE_EMAILS`) continuent de voir toutes les demandes avec les filtres existants.
+
+**Modifications apportées**
+- [components/DemandeBudgetForm.tsx](components/DemandeBudgetForm.tsx) (nouveau) : formulaire de demande extrait de l'ancien `DemandeBudgetModal.tsx` (supprimé), réutilisable en page pleine plutôt qu'en dialogue.
+- [app/(main)/budget/nouvelle-demande/page.tsx](app/(main)/budget/nouvelle-demande/page.tsx) (nouveau) : page dédiée « Faire une demande », remplace l'ancien dialogue.
+- [app/(main)/budget/demandes/page.tsx](app/(main)/budget/demandes/page.tsx) et [.../[id]/page.tsx](app/(main)/budget/demandes/[id]/page.tsx) : déplacés depuis `app/(main)/finance/demandes-budget/` (dossier supprimé). La liste appelle désormais `/api/demandes-budget/me-role` pour adapter le titre et afficher un message + bouton « Faire une demande » quand un utilisateur non impliqué dans le processus n'a encore aucune demande, au lieu du message générique.
+- [app/api/demandes-budget/route.ts](app/api/demandes-budget/route.ts) (GET) : filtre désormais forcé côté serveur — un utilisateur qui n'est ni admin ni comptable budget ne reçoit que les demandes où `requesterEmail` correspond à son propre email (impossible à contourner via un paramètre client).
+- [app/api/demandes-budget/[id]/route.ts](app/api/demandes-budget/[id]/route.ts) (GET) : même principe pour le détail — un utilisateur non impliqué qui devinerait l'URL d'une demande d'un collègue reçoit désormais un 403 (« Accès refusé à cette demande. »), sauf si c'est bien sa propre demande.
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : nouvelle section « Budget » (icône `PiggyBank`) avec « Faire une demande » et « Voir les demandes », retirée de la section Finance. Volontairement **non** soumise aux cases à cocher par page (`canSeePage`) — accessible à tout utilisateur authentifié, car n'importe quel employé doit pouvoir soumettre une demande ; la restriction se fait sur les données (qui voit quoi), pas sur l'accès à la section.
+- [lib/email/demandeBudget.ts](lib/email/demandeBudget.ts) : lien dans les emails de notification mis à jour vers `/budget/demandes/{id}`.
+
+**Erreurs rencontrées & solutions**
+- Après suppression de l'ancien dossier `app/(main)/finance/demandes-budget/`, `tsc` signalait des erreurs sur des fichiers `.next/types/.../finance/demandes-budget/...` — résidus de types auto-générés par un précédent build référençant les anciennes routes. Résolu en vidant `.next/` (pas une vraie erreur de code).
+
+**À tester / points d'attention**
+- Se connecter avec un compte qui n'est ni dans `BUDGET_ADMIN_EMAILS` ni `BUDGET_COMPTABLE_EMAILS`, confirmer qu'il ne voit que ses propres demandes dans `/budget/demandes`, et qu'accéder directement à l'URL d'une demande d'un collègue renvoie bien un refus.
+- Confirmer que l'admin/comptable voient toujours toutes les demandes avec les filtres (statut, département) inchangés.
+
+---
+
+## 2026-09-25 (suite) — Bootstrap RBAC automatique au démarrage + correctif création de compte
+
+**Demande / Contexte**
+Suite à la découverte que `scripts/seed-admin-users.ts` ne peut pas tourner dans le conteneur de prod (voir entrée précédente), l'utilisateur a demandé d'automatiser ce bootstrap directement dans le code applicatif (exécuté une fois au démarrage, sans rien faire si déjà synchronisé) plutôt que de dépendre d'une commande manuelle à chaque fois. Par ailleurs, la création d'un compte utilisateur échouait avec `["username"] data doesn't match user requirements set for this instance`.
+
+**Modifications apportées**
+- [lib/bootstrapAdminUsers.ts](lib/bootstrapAdminUsers.ts) (nouveau) : logique extraite de `scripts/seed-admin-users.ts` en une fonction réutilisable `bootstrapAdminUsers()` (idempotente — ne retouche jamais un compte déjà migré).
+- [scripts/seed-admin-users.ts](scripts/seed-admin-users.ts) : simplifié pour appeler `bootstrapAdminUsers()` (reste utilisable manuellement en CLI pour diagnostic).
+- [instrumentation.ts](instrumentation.ts) (nouveau) : hook standard Next.js exécuté une fois à chaque démarrage du serveur (runtime Node uniquement, jamais Edge) — appelle `bootstrapAdminUsers()` en tâche de fond, erreurs journalisées sans jamais bloquer le démarrage.
+- [next.config.ts](next.config.ts) : ajout de `serverExternalPackages: ["@clerk/nextjs", "@clerk/backend"]` — nécessaire car le tracing du build `standalone` ne détectait pas correctement `@clerk/nextjs/server` derrière l'import dynamique de `instrumentation.ts` (vérifié via `.next/server/instrumentation.js.nft.json` : 0 fichier `@clerk` tracé avant ce correctif, contre 9 fichiers Prisma) — sans ce correctif, l'erreur "Cannot find module '@clerk/nextjs/server'" se serait reproduite au démarrage du serveur en prod, cette fois de façon bien plus grave qu'un script CLI isolé.
+- [app/api/users/route.ts](app/api/users/route.ts) : ajout de `generateUsername(email, nom)` — dérive un username valide (alphanumérique + suffixe aléatoire) à partir de l'email, passé à `clerkClient().users.createUser()`. L'app n'utilise de username nulle part dans son flux, mais l'instance Clerk l'exige au format valide à la création.
+
+**Erreurs rencontrées & solutions**
+- `Cannot find module '@clerk/nextjs/server'` en tentant d'exécuter le script dans le conteneur de prod (`docker exec`) : l'image `standalone` ne contient qu'un node_modules tracé pour le bundle Next.js, pas pour un script arbitraire → résolu en exécutant le script depuis un conteneur `node:20-alpine` temporaire sur le réseau Docker du VPS avec `npm ci` complet (voir entrée précédente).
+- Tracing incomplet de `@clerk/nextjs/server` pour `instrumentation.ts` → résolu via `serverExternalPackages` (voir ci-dessus), vérifié directement dans le `.nft.json` généré par le build.
+- `node_modules` corrompu de façon inattendue pendant les tests (`Cannot find module 'next/dist/.../global-not-found'`, puis `typescript/lib/typescript.js` manquant) → résolu par une réinstallation complète (`rm -rf node_modules && pnpm install` + `npx prisma generate`), sans lien avec les changements de code.
+- `["username"] data doesn't match user requirements set for this instance` → username généré côté code (voir ci-dessus).
+
+**À tester / points d'attention**
+- Confirmer en prod, après déploiement, que les logs du conteneur affichent bien `[bootstrap] Rôles & utilisateurs synchronisés : ...` au démarrage.
+- Créer un nouveau compte utilisateur depuis `/parametres/utilisateurs` pour confirmer que l'erreur de username a bien disparu.
+
+---
+
 ## 2026-09-16 — Demandes de Budget : boutons d'action remontés dans la fiche détail
 
 **Demande / Contexte**

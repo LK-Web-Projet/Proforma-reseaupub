@@ -4,8 +4,8 @@
 // touche jamais un compte déjà migré).
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { bootstrapAdminUsers } = await import("@/lib/bootstrapAdminUsers");
     try {
+      const { bootstrapAdminUsers } = await import("@/lib/bootstrapAdminUsers");
       const { totalCreated, totalSkipped } = await bootstrapAdminUsers();
       console.log(`[bootstrap] Rôles & utilisateurs synchronisés : ${totalCreated} compte(s) créé(s), ${totalSkipped} déjà à jour.`);
     } catch (error) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getCurrentUserIdentity, isBudgetAdminEmail, isBudgetComptableEmail } from "@/lib/budgetAuth";
 
 export async function GET(
   _request: NextRequest,
@@ -8,6 +9,11 @@ export async function GET(
   const { id } = await params;
 
   try {
+    const { email } = await getCurrentUserIdentity();
+    if (!email) {
+      return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    }
+
     const demande = await prisma.demandeBudget.findUnique({
       where: { id },
       include: {
@@ -20,6 +26,13 @@ export async function GET(
 
     if (!demande) {
       return NextResponse.json({ error: "Demande introuvable." }, { status: 404 });
+    }
+
+    // Une demande n'est consultable que par son auteur, ou par l'admin/comptable du
+    // processus budget — jamais par un autre employé qui devinerait l'URL.
+    const isImplique = isBudgetAdminEmail(email) || isBudgetComptableEmail(email);
+    if (!isImplique && demande.requesterEmail !== email) {
+      return NextResponse.json({ error: "Accès refusé à cette demande." }, { status: 403 });
     }
 
     return NextResponse.json(demande);

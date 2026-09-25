@@ -25,6 +25,9 @@ import {
   Settings,
   Loader2,
   ClipboardList,
+  PiggyBank,
+  FilePlus,
+  Eye,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -121,10 +124,22 @@ const finance = [
     url: "/journal-caisse/export",
     icon: FileDown,
   },
+];
+
+// Section à part — accessible à tout utilisateur authentifié (pas soumise aux cases à
+// cocher par page) : n'importe quel employé doit pouvoir soumettre une demande de budget,
+// la visibilité des données (ses demandes vs toutes) est filtrée côté API selon que son
+// email figure dans BUDGET_ADMIN_EMAILS/BUDGET_COMPTABLE_EMAILS (voir lib/budgetAuth.ts).
+const budget = [
   {
-    title: "Demandes de Budget",
-    url: "/finance/demandes-budget",
-    icon: ClipboardList,
+    title: "Faire une demande",
+    url: "/budget/nouvelle-demande",
+    icon: FilePlus,
+  },
+  {
+    title: "Voir les demandes",
+    url: "/budget/demandes",
+    icon: Eye,
   },
 ];
 
@@ -190,6 +205,7 @@ export function AppSidebar() {
   const [isCommercialOpen, setIsCommercialOpen] = useState(false);
   const [isFournisseurOpen, setIsFournisseurOpen] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
+  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -364,6 +380,27 @@ export function AppSidebar() {
             </CollapsibleContent>
           </Collapsible>
         )}
+        <Collapsible open={isBudgetOpen} onOpenChange={setIsBudgetOpen}>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <PiggyBank className="w-5 h-5" />
+              <span className="font-bold">Budget</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 transition-transform",
+                  isBudgetOpen && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenu className="space-y-1 pl-2">
+              {budget.map((item) => (
+                <NavLink key={item.title} item={item} />
+              ))}
+            </SidebarMenu>
+          </CollapsibleContent>
+        </Collapsible>
       </SidebarContent>
       <SidebarFooter>
         {canSeePage("parametres", false) && (

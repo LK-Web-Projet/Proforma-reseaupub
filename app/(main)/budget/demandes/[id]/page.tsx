@@ -180,7 +180,7 @@ export default function DemandeBudgetDetailPage() {
       <div className="max-w-5xl mx-auto text-center py-20">
         <FileText className="h-16 w-16 mx-auto text-gray-300 mb-4" />
         <p className="text-gray-500 text-lg">Demande de budget introuvable.</p>
-        <Button variant="outline" className="mt-4" onClick={() => router.push('/finance/demandes-budget')}>
+        <Button variant="outline" className="mt-4" onClick={() => router.push('/budget/demandes')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Retour
         </Button>
@@ -195,7 +195,7 @@ export default function DemandeBudgetDetailPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" onClick={() => router.push('/finance/demandes-budget')}>
+        <Button variant="ghost" onClick={() => router.push('/budget/demandes')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Retour aux demandes
         </Button>
