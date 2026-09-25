@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma, ModePaiementDemande, StatutDemandeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { getCurrentUserIdentity } from "@/lib/budgetAuth";
-import { saveDemandeBudgetFiles, describeFsError } from "@/lib/uploadDemandeBudget";
+import { getCurrentUserIdentity, isBudgetAdminEmail, isBudgetComptableEmail } from "@/lib/budgetAuth";
+import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
 
 const ligneSchema = z.object({
@@ -26,12 +26,25 @@ const createSchema = z.object({
 // GET /api/demandes-budget - Liste des demandes de budget
 export async function GET(request: NextRequest) {
   try {
+    const { email } = await getCurrentUserIdentity();
+    if (!email) {
+      return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const statut = searchParams.get("statut");
     const departement = searchParams.get("departement");
     const year = searchParams.get("year");
 
     const where: Prisma.DemandeBudgetWhereInput = {};
+
+    // Un utilisateur qui n'est ni admin ni comptable du processus budget ne voit que ses
+    // propres demandes — jamais celles des autres. Filtre imposé côté serveur (pas de
+    // paramètre client possible pour le contourner).
+    if (!isBudgetAdminEmail(email) && !isBudgetComptableEmail(email)) {
+      where.requesterEmail = email;
+    }
+
     if (statut && Object.values(StatutDemandeBudget).includes(statut as StatutDemandeBudget)) {
       where.statut = statut as StatutDemandeBudget;
     }
@@ -75,7 +88,6 @@ export async function POST(request: NextRequest) {
 
     const rawLignes = formData.get("lignes");
     const rawProformaIds = formData.get("proformaIds");
-    const documents = formData.getAll("documentsCommande") as File[];
 
     const parsedBody = {
       departement: (formData.get("departement") as string) || undefined,
@@ -120,11 +132,9 @@ export async function POST(request: NextRequest) {
       include: { lignes: true },
     });
 
-    if (documents.length > 0) {
-      const saved = await saveDemandeBudgetFiles(demande.id, documents);
-      await prisma.demandeBudgetAttachment.createMany({
-        data: saved.map((f) => ({ demandeBudgetId: demande.id, kind: "DOCUMENT_COMMANDE", ...f })),
-      });
+    const attachmentRows = await saveTypedDemandeBudgetAttachments(demande.id, formData);
+    if (attachmentRows.length > 0) {
+      await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }
 
     sendDemandeSoumiseNotification(demande).catch((err) =>

@@ -23,7 +23,7 @@ function buildLignesRows(lignes: DemandeBudgetForEmail["lignes"]) {
 
 function buildBaseHtml(opts: { title: string; intro: string; demande: DemandeBudgetForEmail; footer?: string }) {
   const { title, intro, demande, footer } = opts;
-  const url = `${getAppUrl()}/finance/demandes-budget/${demande.id}`;
+  const url = `${getAppUrl()}/budget/demandes/${demande.id}`;
 
   return `
   <div style="font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f8;padding:32px 0;">

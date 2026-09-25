@@ -8,8 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DemandeBudgetStatusBadge, DemandeBudgetStatus } from '@/components/DemandeBudgetStatusBadge';
-import { DemandeBudgetModal } from '@/components/DemandeBudgetModal';
-import { Plus, Eye, Wallet, CheckCircle2, Clock, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { Plus, Eye, Wallet, CheckCircle2, Clock, X, SlidersHorizontal, ChevronDown, FileQuestion } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -43,11 +42,13 @@ const defaultFilters = {
 
 export default function DemandesBudgetListPage() {
   const [demandes, setDemandes] = useState<DemandeBudget[]>([]);
+  const [role, setRole] = useState({ isAdmin: false, isComptable: false });
   const [filters, setFilters] = useState(defaultFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const router = useRouter();
+
+  const isImplique = role.isAdmin || role.isComptable;
 
   const fetchDemandes = useCallback(async () => {
     setLoading(true);
@@ -66,6 +67,13 @@ export default function DemandesBudgetListPage() {
       setLoading(false);
     }
   }, [filters]);
+
+  useEffect(() => {
+    fetch('/api/demandes-budget/me-role')
+      .then((res) => (res.ok ? res.json() : { isAdmin: false, isComptable: false }))
+      .then(setRole)
+      .catch(() => setRole({ isAdmin: false, isComptable: false }));
+  }, []);
 
   useEffect(() => {
     fetchDemandes();
@@ -99,20 +107,16 @@ export default function DemandesBudgetListPage() {
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Demandes de Budget</h1>
-          <p className="text-sm text-muted-foreground mt-1">{summary.count} demande(s)</p>
+          <h1 className="text-2xl font-bold">{isImplique ? 'Demandes de Budget' : 'Mes Demandes de Budget'}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {summary.count} demande(s){isImplique ? ' — toutes les demandes' : ''}
+          </p>
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)}>
+        <Button onClick={() => router.push('/budget/nouvelle-demande')}>
           <Plus className="mr-2 h-4 w-4" />
           Nouvelle Demande
         </Button>
       </div>
-
-      <DemandeBudgetModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onSuccess={fetchDemandes}
-      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Card className="border-t-4 border-t-blue-500">
@@ -197,7 +201,7 @@ export default function DemandesBudgetListPage() {
           <TableHeader>
             <TableRow className="bg-muted/40">
               <TableHead>Numéro</TableHead>
-              <TableHead>Demandeur</TableHead>
+              {isImplique && <TableHead>Demandeur</TableHead>}
               <TableHead>Département</TableHead>
               <TableHead>Date</TableHead>
               <TableHead className="text-right">Montant</TableHead>
@@ -207,20 +211,36 @@ export default function DemandesBudgetListPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Chargement...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={isImplique ? 7 : 6} className="h-24 text-center">Chargement...</TableCell></TableRow>
             ) : demandes.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Aucune demande de budget trouvée.</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={isImplique ? 7 : 6} className="h-40 text-center">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <FileQuestion className="h-8 w-8" />
+                    {isImplique ? (
+                      <p>Aucune demande de budget trouvée.</p>
+                    ) : (
+                      <>
+                        <p>Vous n&apos;avez pas encore fait de demande de budget.</p>
+                        <Button size="sm" className="mt-2" onClick={() => router.push('/budget/nouvelle-demande')}>
+                          <Plus className="mr-2 h-4 w-4" /> Faire une demande
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
             ) : (
               demandes.map((demande) => (
                 <TableRow key={demande.id} className="hover:bg-muted/30">
                   <TableCell className="font-mono text-sm">{demande.numero}</TableCell>
-                  <TableCell className="text-sm">{demande.requesterName || demande.requesterEmail}</TableCell>
+                  {isImplique && <TableCell className="text-sm">{demande.requesterName || demande.requesterEmail}</TableCell>}
                   <TableCell className="text-sm text-muted-foreground">{demande.departement || '-'}</TableCell>
                   <TableCell className="whitespace-nowrap">{format(new Date(demande.createdAt), 'dd/MM/yyyy')}</TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(demande.montantTotal))}</TableCell>
                   <TableCell><DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} /></TableCell>
                   <TableCell className="text-center">
-                    <Button variant="outline" size="icon" onClick={() => router.push(`/finance/demandes-budget/${demande.id}`)}>
+                    <Button variant="outline" size="icon" onClick={() => router.push(`/budget/demandes/${demande.id}`)}>
                       <Eye className="h-4 w-4" />
                     </Button>
                   </TableCell>

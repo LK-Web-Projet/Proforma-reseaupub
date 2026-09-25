@@ -4,6 +4,19 @@ import { clerkClient } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
 import { requireCanManageUsers, syncUserMetadata } from "@/lib/authz";
 
+/**
+ * Dérive un username valide pour Clerk à partir de l'email (l'app n'utilise jamais de
+ * username nulle part dans son flux — uniquement email/mot de passe — mais l'instance Clerk
+ * exige un username au format valide à la création d'un compte). Ajoute un suffixe numérique
+ * aléatoire pour limiter le risque de collision avec un compte existant.
+ */
+function generateUsername(email: string, nom: string): string {
+  const clean = (value: string) => value.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  const base = clean(email.split("@")[0]) || clean(nom) || "user";
+  const suffix = Math.floor(1000 + Math.random() * 9000);
+  return `${base.slice(0, 20)}${suffix}`;
+}
+
 // GET /api/users - Liste des comptes locaux avec leur rôle
 export async function GET() {
   const authError = await requireCanManageUsers();
@@ -56,6 +69,7 @@ export async function POST(request: NextRequest) {
         emailAddress: [email],
         password,
         firstName: nom,
+        username: generateUsername(email, nom),
       });
       clerkUserId = clerkUser.id;
     } catch (clerkError: unknown) {

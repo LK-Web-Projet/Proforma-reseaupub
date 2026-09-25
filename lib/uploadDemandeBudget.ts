@@ -1,10 +1,29 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { DOCUMENT_UPLOAD_TYPES, DocumentUploadType } from "@/lib/demandeBudgetAttachmentTypes";
 
 export interface SavedFile {
   url: string;
   fileName: string;
   fileType: string;
+}
+
+/**
+ * Sauvegarde les documents typés soumis dans un FormData (champs `documents_DEVIS`,
+ * `documents_FACTURE`, etc. — voir components/DemandeBudgetForm.tsx) et retourne les lignes
+ * prêtes pour `prisma.demandeBudgetAttachment.createMany()`.
+ */
+export async function saveTypedDemandeBudgetAttachments(demandeBudgetId: string, formData: FormData) {
+  const rows: (SavedFile & { demandeBudgetId: string; kind: DocumentUploadType })[] = [];
+
+  for (const type of DOCUMENT_UPLOAD_TYPES) {
+    const files = formData.getAll(`documents_${type}`) as File[];
+    if (files.length === 0) continue;
+    const saved = await saveDemandeBudgetFiles(demandeBudgetId, files);
+    rows.push(...saved.map((f) => ({ demandeBudgetId, kind: type, ...f })));
+  }
+
+  return rows;
 }
 
 export async function saveDemandeBudgetFiles(demandeBudgetId: string, files: File[]): Promise<SavedFile[]> {
