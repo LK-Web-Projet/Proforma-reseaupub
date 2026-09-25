@@ -22,6 +22,22 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-25 (suite) — Version 1.1.0 → 1.2.0
+
+**Demande / Contexte**
+Depuis le dernier bump (1.1.0, création de la feature Demandes de Budget), plusieurs améliorations substantielles ont été apportées à cette même feature : documents typés en cartes, cycle complet rejet → correction → resoumission, ajout de documents après validation, sélection contextuelle « Pour le compte de » (Campagne/Client vs RESEAUPUB), liste de départements. Conformément à la règle de versioning établie (patch = correctif, minor = nouvelle fonctionnalité/amélioration notable, major = refonte), ces changements justifient un bump **minor**.
+
+**Modifications apportées**
+- `package.json` / `package-lock.json` : version `1.1.0` → `1.2.0` via `npm version minor --no-git-tag-version`.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+Aucun — changement purement déclaratif (numéro de version affiché dans le pied de la sidebar via `lib/version.ts`).
+
+---
+
 ## 2026-09-25 (suite) — Département : liste de sélection au lieu de texte libre
 
 **Demande / Contexte**
