@@ -22,6 +22,25 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-09-27 (suite) — Mise en avant du motif de rejet (UX)
+
+**Demande / Contexte**
+Le motif de rejet d'une demande de budget était affiché tout en bas de la fiche, facile à manquer. Demande de le rendre plus visible : soit en haut, soit dans un dialogue à l'ouverture, avec un accès direct à « Modifier et soumettre à nouveau » depuis là.
+
+**Modifications apportées**
+- [app/(main)/budget/demandes/[id]/page.tsx](app/(main)/budget/demandes/[id]/page.tsx) : les deux options ont été combinées.
+  - Un dialogue s'ouvre automatiquement à l'arrivée sur une demande `REJETEE` (motif, qui a rejeté et quand, bouton « Fermer » et — pour l'auteur ou le comptable — « Modifier et soumettre à nouveau » directement dedans).
+  - L'encart « Demande rejetée » tout en haut de la fiche (juste après l'en-tête) affiche désormais le motif directement, au lieu du texte générique précédent ; visible pour toute personne pouvant consulter la demande (auteur, admin, comptable), le bouton de resoumission restant réservé à l'auteur/comptable.
+  - L'ancien encart redondant « Motif du rejet » tout en bas de la page a été supprimé.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Tester dans le navigateur : ouvrir une demande rejetée en tant qu'auteur (le dialogue doit s'ouvrir avec le bouton de resoumission), puis en tant qu'admin qui l'a rejetée (le dialogue doit s'ouvrir sans le bouton, juste le motif).
+
+---
+
 ## 2026-09-27 — Redirection post-connexion « intelligente » (bug bloquant les rôles sans accès Proforma)
 
 **Demande / Contexte**

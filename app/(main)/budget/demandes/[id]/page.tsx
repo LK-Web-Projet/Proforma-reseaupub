@@ -73,6 +73,7 @@ export default function DemandeBudgetDetailPage() {
   const [nomReceveur, setNomReceveur] = useState('');
   const [preuves, setPreuves] = useState<File[]>([]);
   const [isAddDocsOpen, setIsAddDocsOpen] = useState(false);
+  const [isRejetInfoOpen, setIsRejetInfoOpen] = useState(false);
 
   const params = useParams();
   const router = useRouter();
@@ -100,6 +101,15 @@ export default function DemandeBudgetDetailPage() {
   useEffect(() => {
     fetchDemande();
   }, [fetchDemande]);
+
+  // Notifie clairement l'auteur (et l'admin/comptable) du motif de refus dès l'ouverture
+  // de la fiche, plutôt que de le laisser en bas de page — voir aussi le bloc dédié plus
+  // haut dans le rendu qui reprend le même motif.
+  useEffect(() => {
+    if (demande?.statut === 'REJETEE') {
+      setIsRejetInfoOpen(true);
+    }
+  }, [demande?.id, demande?.statut]);
 
   const handleValider = async () => {
     setIsSubmitting(true);
@@ -218,18 +228,36 @@ export default function DemandeBudgetDetailPage() {
         </div>
       </Card>
 
-      {demande.statut === 'REJETEE' && (role.isComptable || role.email === demande.requesterEmail) && (
+      {demande.statut === 'REJETEE' && (
         <Card className="border-t-4 border-t-amber-500 shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Demande rejetée — corriger et resoumettre</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2 text-amber-700">
+              <XCircle className="h-4 w-4" />
+              Demande rejetée
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-3">
-              Vous pouvez modifier n&apos;importe quel élément de la demande (montants, produits, documents...) pour la rendre conforme, puis la soumettre à nouveau pour validation.
-            </p>
-            <Button onClick={() => router.push(`/budget/demandes/${id}/modifier`)} className="gap-2 bg-amber-600 hover:bg-amber-700">
-              <Pencil className="h-4 w-4" /> Modifier et soumettre à nouveau
-            </Button>
+          <CardContent className="space-y-3">
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm text-amber-900">
+                <strong>Motif du rejet :</strong> {demande.rejectionReason || 'Aucun motif renseigné.'}
+              </p>
+              {demande.validatedByEmail && (
+                <p className="text-xs text-amber-700 mt-1">
+                  Par {demande.validatedByEmail}
+                  {demande.validatedAt ? ` le ${format(new Date(demande.validatedAt), 'dd MMMM yyyy', { locale: fr })}` : ''}
+                </p>
+              )}
+            </div>
+            {(role.isComptable || role.email === demande.requesterEmail) && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Vous pouvez modifier n&apos;importe quel élément de la demande (montants, produits, documents...) pour la rendre conforme, puis la soumettre à nouveau pour validation.
+                </p>
+                <Button onClick={() => router.push(`/budget/demandes/${id}/modifier`)} className="gap-2 bg-amber-600 hover:bg-amber-700">
+                  <Pencil className="h-4 w-4" /> Modifier et soumettre à nouveau
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -391,14 +419,6 @@ export default function DemandeBudgetDetailPage() {
         </CardContent>
       </Card>
 
-      {demande.statut === 'REJETEE' && demande.rejectionReason && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <p className="text-sm text-red-700"><strong>Motif du rejet :</strong> {demande.rejectionReason}</p>
-          </CardContent>
-        </Card>
-      )}
-
       {demande.statut === 'PAYEE' && (
         <Card className="border-green-200 bg-green-50">
           <CardContent className="pt-6 text-sm text-green-800 space-y-1">
@@ -429,6 +449,38 @@ export default function DemandeBudgetDetailPage() {
         onSuccess={fetchDemande}
         demandeId={id}
       />
+
+      <Dialog open={isRejetInfoOpen} onOpenChange={setIsRejetInfoOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <XCircle className="h-5 w-5" /> Demande rejetée
+            </DialogTitle>
+          </DialogHeader>
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm text-amber-900">{demande.rejectionReason || 'Aucun motif renseigné.'}</p>
+            {demande.validatedByEmail && (
+              <p className="text-xs text-amber-700 mt-1">
+                Par {demande.validatedByEmail}
+                {demande.validatedAt ? ` le ${format(new Date(demande.validatedAt), 'dd MMMM yyyy', { locale: fr })}` : ''}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRejetInfoOpen(false)}>
+              Fermer
+            </Button>
+            {(role.isComptable || role.email === demande.requesterEmail) && (
+              <Button
+                onClick={() => router.push(`/budget/demandes/${id}/modifier`)}
+                className="gap-2 bg-amber-600 hover:bg-amber-700"
+              >
+                <Pencil className="h-4 w-4" /> Modifier et soumettre à nouveau
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
