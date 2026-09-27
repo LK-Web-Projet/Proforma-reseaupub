@@ -22,9 +22,27 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
-<<<<<<< HEAD
-## 2026-09-17 — REBUILD 
-=======
+## 2026-09-27 — Redirection post-connexion « intelligente » (bug bloquant les rôles sans accès Proforma)
+
+**Demande / Contexte**
+En production, un utilisateur avec un rôle dont la case « Proforma » n'est pas cochée atterrissait directement sur `/acces-refuse` juste après s'être connecté — alors que la page « Accès refusé » elle-même fonctionnait correctement. Diagnostic : après connexion, l'app forçait systématiquement la redirection vers `/facture` (section Proforma), peu importe les pages réellement autorisées par le rôle — n'importe quel compte sans accès à Proforma se retrouvait donc bloqué dès la première page, même s'il avait accès à d'autres sections.
+
+**Modifications apportées**
+- [lib/permissions.ts](lib/permissions.ts) : nouvelle fonction `resolveLandingUrl(pages)` — renvoie l'URL de la première section autorisée par le rôle (dans l'ordre de `PAGE_KEYS`, donc Dashboard en priorité si présent), ou `/budget/demandes` en repli si aucune section classique n'est autorisée (cette section reste accessible à tout utilisateur authentifié, voir entrée du 25/09).
+- [app/page.tsx](app/page.tsx) : la racine `/` calcule désormais la destination réelle via `resolveLandingUrl` (à partir de `publicMetadata.pages`) au lieu de forcer `/facture`. Comportement inchangé si `ENABLE_PAGE_PERMISSIONS` n'est pas activé.
+- [app/sign-in/[[...sign-in]]/page.tsx](app/sign-in/[[...sign-in]]/page.tsx) : suppression de `forceRedirectUrl="/facture"` (qui écrasait tout) ; `fallbackRedirectUrl` pointe maintenant vers `/`, qui fait le calcul intelligent.
+- `.env` : `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` passé de `/facture` à `/` — **à reporter manuellement sur le `.env` du VPS**, ce fichier n'étant pas versionné.
+- [app/acces-refuse/page.tsx](app/acces-refuse/page.tsx) : ajout d'un bouton « Retour à l'accueil » (vers `/`) à côté de « Se déconnecter », pour qu'un utilisateur qui atterrit ici par erreur (lien direct, ancien favori...) puisse revenir vers une section qu'il a réellement le droit de voir.
+
+**Erreurs rencontrées & solutions**
+Voir diagnostic ci-dessus — bug réel, pas un problème de configuration de rôle. Vérifié avec un test direct de `resolveLandingUrl` : un rôle limité à "fournisseurs" → `/fournisseur`, à "commercial"+"finance" → `/gestionnaire` (premier de la liste), rôle complet (Admin) → `/dashboard`, rôle sans aucune page → `/budget/demandes`.
+
+**À tester / points d'attention**
+- Mettre à jour `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/` dans le `.env` du VPS avant/au prochain déploiement.
+- Demander à l'utilisateur concerné de se reconnecter une fois déployé, pour confirmer qu'il atterrit désormais sur une section accessible au lieu de `/acces-refuse`.
+
+---
+
 ## 2026-09-25 (suite) — Version 1.1.0 → 1.2.0
 
 **Demande / Contexte**

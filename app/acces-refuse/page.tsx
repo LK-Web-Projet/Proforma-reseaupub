@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { SignOutButton } from "@clerk/nextjs";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,14 @@ export default function AccesRefusePage() {
           administrateur si vous pensez que c&apos;est une erreur.
         </p>
       </div>
-      <SignOutButton redirectUrl="/sign-in">
-        <Button variant="outline">Se déconnecter</Button>
-      </SignOutButton>
+      <div className="flex items-center gap-3">
+        <Button asChild>
+          <Link href="/">Retour à l&apos;accueil</Link>
+        </Button>
+        <SignOutButton redirectUrl="/sign-in">
+          <Button variant="outline">Se déconnecter</Button>
+        </SignOutButton>
+      </div>
     </div>
   );
 }
