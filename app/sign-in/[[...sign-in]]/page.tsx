@@ -26,8 +26,10 @@ export default function App() {
       </div>
       {/* Render the SignIn component from Clerk */}
       <div className="w-1/2 h-full flex items-center justify-center bg-white p-8">
-        <SignIn fallbackRedirectUrl="/facture"
-                forceRedirectUrl="/facture" />
+        {/* Pas de forceRedirectUrl : la page racine "/" décide de la destination réelle
+            selon les pages autorisées par le rôle (voir app/page.tsx, lib/permissions.ts) —
+            forcer "/facture" bloquait immédiatement tout compte sans accès à Proforma. */}
+        <SignIn fallbackRedirectUrl="/" />
       </div>
     </div>
   );

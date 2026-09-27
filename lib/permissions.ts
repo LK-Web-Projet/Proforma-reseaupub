@@ -61,6 +61,33 @@ export function resolvePageKeyFromPathname(pathname: string): PageKey | null {
   return null;
 }
 
+/** URL représentative de chaque section, utilisée pour la redirection « intelligente » post-connexion. */
+const PAGE_DEFAULT_URLS: Record<PageKey, string> = {
+  dashboard: "/dashboard",
+  proforma: "/facture",
+  client: "/client",
+  fournisseurs: "/fournisseur",
+  commercial: "/gestionnaire",
+  finance: "/journal-caisse",
+  parametres: "/parametres",
+};
+
+/**
+ * Détermine où envoyer un utilisateur après connexion (ou depuis /acces-refuse) : la
+ * première section que son rôle autorise réellement, dans l'ordre de PAGE_KEYS — plutôt que
+ * de forcer systématiquement `/facture`, qui bloquait immédiatement tout rôle sans la page
+ * "proforma" cochée. `/budget/demandes` est toujours accessible (voir middleware.ts), donc
+ * sert de repli sûr si aucune section classique n'est autorisée.
+ */
+export function resolveLandingUrl(pages: PageKey[] | undefined | null): string {
+  if (pages) {
+    for (const key of PAGE_KEYS) {
+      if (pages.includes(key)) return PAGE_DEFAULT_URLS[key];
+    }
+  }
+  return "/budget/demandes";
+}
+
 /**
  * Forme du `publicMetadata` Clerk synchronisé pour chaque utilisateur.
  * ⚠️ Pour que le middleware puisse la lire sans appel base de données, le token de
