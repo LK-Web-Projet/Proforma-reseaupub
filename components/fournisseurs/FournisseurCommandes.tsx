@@ -83,7 +83,7 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
                             <TableHead>Numéro</TableHead>
                             <TableHead>Date</TableHead>
                             <TableHead>Statut</TableHead>
-                            <TableHead className="text-right">Total HT</TableHead>
+                            <TableHead className="text-right">Montant Net</TableHead>
                             <TableHead className="text-center">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -114,7 +114,7 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
                                         {new Intl.NumberFormat("fr-FR", {
                                             style: "currency",
                                             currency: "XOF",
-                                        }).format(Number(cmd.totalHT))}
+                                        }).format(Number(cmd.montantNet))}
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <Button

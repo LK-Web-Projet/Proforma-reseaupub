@@ -75,9 +75,9 @@ model Produit {
 }
 
 model Invoice {
-  id                         String                  @id @default(uuid())
-  numero                     String                  @unique
-  dateCreation               DateTime                @default(now())
+  id                         String                        @id @default(uuid())
+  numero                     String                        @unique
+  dateCreation               DateTime                      @default(now())
   objet                      String
   clientId                   String
   totalHT                    Decimal
@@ -87,21 +87,22 @@ model Invoice {
   societeNom                 String
   societeIFU                 String
   societeAdresse             String?
-  statut                     StatusFacture           @default(Brouillon)
-  devise                     Devise                  @default(XOF)
+  statut                     StatusFacture                 @default(Brouillon)
+  devise                     Devise                        @default(XOF)
   paymentConditionPercentage Int?
-  resteAPayer                Decimal                 @default(0.00)
+  resteAPayer                Decimal                       @default(0.00)
   info                       String?
-  isTaxExempt                Boolean                 @default(false)
+  isTaxExempt                Boolean                       @default(false)
   createdById                String?
   bonCommande                BonCommande?
   factureNormaliser          FactureNormaliser?
-  client                     Client                  @relation(fields: [clientId], references: [id])
-  createdBy                  User?                   @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  client                     Client                        @relation(fields: [clientId], references: [id])
+  createdBy                  User?                         @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
   gestionnaires              InvoiceGestionnaire[]
   produits                   InvoiceProduit[]
   paiements                  Paiement[]
   demandesBudget             DemandeBudgetProforma[]
+  commandesFournisseur       CommandeFournisseurProforma[]
 }
 
 model BonCommande {
@@ -216,6 +217,7 @@ model Fournisseur {
   domaineActivite String
   adresse         String
   email           String                @unique
+  typeFournisseur String?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
   commandes       CommandeFournisseur[]
@@ -249,20 +251,47 @@ model ProduitFournisseur {
   updatedAt      DateTime                   @updatedAt
   lignesCommande LigneCommandeFournisseur[]
   fournisseur    Fournisseur                @relation(fields: [fournisseurId], references: [id])
+  photos         ProduitFournisseurPhoto[]
+}
+
+model ProduitFournisseurPhoto {
+  id                   String             @id @default(uuid())
+  produitFournisseurId String
+  url                  String
+  fileName             String
+  fileType             String
+  createdAt            DateTime           @default(now())
+  produitFournisseur   ProduitFournisseur @relation(fields: [produitFournisseurId], references: [id], onDelete: Cascade)
 }
 
 model CommandeFournisseur {
-  id             String                     @id @default(uuid())
-  numero         String                     @unique
-  dateCommande   DateTime                   @default(now())
-  statut         StatutCommandeFournisseur  @default(BROUILLON)
+  id             String                        @id @default(uuid())
+  numero         String                        @unique
+  dateCommande   DateTime                      @default(now())
+  statut         StatutCommandeFournisseur     @default(BROUILLON)
   fournisseurId  String
-  totalHT        Decimal                    @db.Decimal(10, 2)
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
-  fournisseur    Fournisseur                @relation(fields: [fournisseurId], references: [id])
+  totalHT        Decimal                       @db.Decimal(10, 2)
+  appliquerTva   Boolean                       @default(false)
+  tva            Decimal                       @default(0) @db.Decimal(10, 2)
+  appliquerAib   Boolean                       @default(false)
+  montantAib     Decimal                       @default(0) @db.Decimal(10, 2)
+  totalTTC       Decimal                       @default(0) @db.Decimal(10, 2)
+  montantNet     Decimal                       @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+  fournisseur    Fournisseur                   @relation(fields: [fournisseurId], references: [id])
   lignes         LigneCommandeFournisseur[]
   demandesBudget DemandeBudget[]
+  proformas      CommandeFournisseurProforma[]
+}
+
+model CommandeFournisseurProforma {
+  commandeId String
+  invoiceId  String
+  commande   CommandeFournisseur @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  invoice    Invoice             @relation(fields: [invoiceId], references: [id])
+
+  @@id([commandeId, invoiceId])
 }
 
 model LigneCommandeFournisseur {

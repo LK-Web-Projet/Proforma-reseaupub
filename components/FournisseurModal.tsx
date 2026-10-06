@@ -20,6 +20,7 @@ export type Fournisseur = {
   contact: string;
   domaineActivite: string;
   adresse: string;
+  typeFournisseur: string | null;
 };
 
 interface FournisseurModalProps {

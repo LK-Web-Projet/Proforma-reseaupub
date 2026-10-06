@@ -27,9 +27,15 @@ import {
 } from '@/components/ui/select';
 import { FournisseurCombobox, Fournisseur } from '@/components/FournisseurCombobox';
 import { FournisseurModal } from '@/components/FournisseurModal';
+import { InvoiceMultiCombobox, InvoiceOption } from '@/components/InvoiceMultiCombobox';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProduitFournisseur } from '@prisma/client';
+
+// Seules les proformas confirmées côté client peuvent être associées à un BCF.
+const STATUTS_PROFORMA_ASSOCIABLES = ['Valider', 'Payer', 'Solde'];
 
 interface LigneCommande {
   produitFournisseurId: string;
@@ -52,6 +58,9 @@ interface CommandeFournisseurModalProps {
 const formatMontant = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value);
 
+const TAUX_TVA = 0.18;
+const TAUX_AIB = 0.03;
+
 export function CommandeFournisseurModal({
   isOpen,
   onClose,
@@ -63,6 +72,10 @@ export function CommandeFournisseurModal({
   const [dateCommande, setDateCommande] = useState(new Date().toISOString().split('T')[0]);
   const [produits, setProduits] = useState<ProduitFournisseur[]>([]);
   const [lignes, setLignes] = useState<LigneCommande[]>([]);
+  const [appliquerTva, setAppliquerTva] = useState(false);
+  const [appliquerAib, setAppliquerAib] = useState(false);
+  const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
+  const [proformaIds, setProformaIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFournisseurModalOpen, setIsFournisseurModalOpen] = useState(false);
 
@@ -72,6 +85,16 @@ export function CommandeFournisseurModal({
     setDateCommande(new Date().toISOString().split('T')[0]);
     setProduits([]);
     setLignes([]);
+    setAppliquerTva(false);
+    setAppliquerAib(false);
+    setProformaIds([]);
+
+    fetch('/api/factures')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: (InvoiceOption & { statut: string })[]) =>
+        setInvoices(data.filter((inv) => STATUTS_PROFORMA_ASSOCIABLES.includes(inv.statut)))
+      )
+      .catch(() => setInvoices([]));
   }, [isOpen]);
 
   useEffect(() => {
@@ -123,16 +146,27 @@ export function CommandeFournisseurModal({
     });
   };
 
+  const calculateSurface = (ligne: LigneCommande) => {
+    if (ligne.typeUnite !== 'METRE_CARRE' || !ligne.largeur || !ligne.hauteur) return null;
+    // Dimensions saisies en cm, conversion géométrique standard en m² : (L×H)/10000.
+    return (Number(ligne.largeur) * Number(ligne.hauteur)) / 10000;
+  };
+
   const calculateTotalLigne = (ligne: LigneCommande) => {
     const qte = Number(ligne.quantite) || 0;
     const pu = Number(ligne.prixUnitaire) || 0;
-    if (ligne.typeUnite === 'METRE_CARRE' && ligne.largeur && ligne.hauteur) {
-      return Number(ligne.largeur) * Number(ligne.hauteur) * qte * pu;
+    const surfaceM2 = calculateSurface(ligne);
+    if (surfaceM2 !== null) {
+      return surfaceM2 * qte * pu;
     }
     return qte * pu;
   };
 
   const totalGeneral = lignes.reduce((acc, l) => acc + calculateTotalLigne(l), 0);
+  const montantTva = appliquerTva ? totalGeneral * TAUX_TVA : 0;
+  const totalTTC = totalGeneral + montantTva;
+  const montantAib = appliquerAib ? totalGeneral * TAUX_AIB : 0;
+  const montantNet = totalTTC - montantAib;
 
   const handleOpenChange = (open: boolean) => {
     if (!open) onClose();
@@ -164,6 +198,9 @@ export function CommandeFournisseurModal({
           hauteur: l.hauteur ? Number(l.hauteur) : undefined,
           prixUnitaire: Number(l.prixUnitaire),
         })),
+        appliquerTva,
+        appliquerAib,
+        proformaIds,
       };
 
       const res = await fetch('/api/fournisseurs/commandes', {
@@ -225,6 +262,14 @@ export function CommandeFournisseurModal({
             </div>
 
             <div className="space-y-2">
+              <label>Proforma(s) associée(s)</label>
+              <InvoiceMultiCombobox invoices={invoices} value={proformaIds} onChange={setProformaIds} />
+              <p className="text-[11px] text-muted-foreground">
+                Seules les proformas validées, payées ou soldées peuvent être associées.
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label>Produits *</label>
                 <Button type="button" variant="outline" size="sm" onClick={addLigne} disabled={!fournisseurId}>
@@ -241,18 +286,19 @@ export function CommandeFournisseurModal({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[30%]">Produit</TableHead>
-                        <TableHead className="w-[15%]">Dimensions (m)</TableHead>
-                        <TableHead className="w-[10%]">Qté</TableHead>
-                        <TableHead className="w-[15%]">P.U.</TableHead>
-                        <TableHead className="w-[15%] text-right">Total</TableHead>
+                        <TableHead className="w-[25%]">Produit</TableHead>
+                        <TableHead className="w-[14%]">Dimensions (cm)</TableHead>
+                        <TableHead className="w-[10%]">Surface (m²)</TableHead>
+                        <TableHead className="w-[9%]">Qté</TableHead>
+                        <TableHead className="w-[13%]">P.U.</TableHead>
+                        <TableHead className="w-[14%] text-right">Total</TableHead>
                         <TableHead className="w-[5%]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {lignes.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center h-16 text-muted-foreground">
+                          <TableCell colSpan={7} className="text-center h-16 text-muted-foreground">
                             Aucune ligne. Cliquez sur &quot;Ajouter une ligne&quot;.
                           </TableCell>
                         </TableRow>
@@ -301,6 +347,11 @@ export function CommandeFournisseurModal({
                                 <span className="text-muted-foreground text-xs italic">N/A</span>
                               )}
                             </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {calculateSurface(ligne) !== null
+                                ? `${calculateSurface(ligne)!.toFixed(3)} m²`
+                                : <span className="text-xs italic">N/A</span>}
+                            </TableCell>
                             <TableCell>
                               <Input
                                 type="number"
@@ -342,9 +393,63 @@ export function CommandeFournisseurModal({
               )}
             </div>
 
-            <div className="flex justify-end">
-              <div className="text-lg font-bold">
-                Total H.T. : {formatMontant(totalGeneral)}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">TVA (18%)</p>
+                    <p className="text-[11px] text-muted-foreground">Appliquer la TVA à ce bon de commande</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={appliquerTva ? 'default' : 'outline'} className="text-[10px] uppercase">
+                      {appliquerTva ? 'Appliquée' : 'Non appliquée'}
+                    </Badge>
+                    <Switch checked={appliquerTva} onCheckedChange={setAppliquerTva} />
+                  </div>
+                </div>
+                <div className="flex-1 flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">AIB (3%)</p>
+                    <p className="text-[11px] text-muted-foreground">Appliquer l&apos;AIB à ce bon de commande</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={appliquerAib ? 'default' : 'outline'} className="text-[10px] uppercase">
+                      {appliquerAib ? 'Appliqué' : 'Non appliqué'}
+                    </Badge>
+                    <Switch checked={appliquerAib} onCheckedChange={setAppliquerAib} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <div className="w-full sm:w-72 space-y-1 text-sm">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Total H.T.</span>
+                    <span>{formatMontant(totalGeneral)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>
+                      TVA (18%)
+                      {!appliquerTva && <span className="text-[10px] italic"> — non appliquée</span>}
+                    </span>
+                    <span>{formatMontant(montantTva)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold border-t pt-1">
+                    <span>Total T.T.C.</span>
+                    <span>{formatMontant(totalTTC)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>
+                      AIB (3%) — déduite
+                      {!appliquerAib && <span className="text-[10px] italic"> — non appliqué</span>}
+                    </span>
+                    <span>− {formatMontant(montantAib)}</span>
+                  </div>
+                  <div className="flex justify-between text-lg font-bold border-t pt-1">
+                    <span>Montant Net</span>
+                    <span>{formatMontant(montantNet)}</span>
+                  </div>
+                </div>
               </div>
             </div>
 

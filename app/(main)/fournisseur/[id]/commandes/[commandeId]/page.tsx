@@ -17,8 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, Download, Building2, Mail, Phone, MapPin, FileText } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Download, Building2, Mail, Phone, MapPin, FileText, Receipt } from "lucide-react";
 import type { StatutCommandeFournisseur } from "@prisma/client";
+import { FactureStatusBadge } from "@/components/FactureStatusBadge";
 
 interface ProduitFournisseur {
     id: string;
@@ -64,14 +66,31 @@ interface EntrepriseConfig {
     logoPath: string;
 }
 
+interface ProformaAssociee {
+    invoice: {
+        id: string;
+        numero: string;
+        objet: string;
+        statut: string;
+        client: { nom: string } | null;
+    };
+}
+
 interface CommandeDetail {
     id: string;
     numero: string;
     dateCommande: string;
     statut: StatutCommandeFournisseur;
     totalHT: number;
+    appliquerTva: boolean;
+    tva: number;
+    appliquerAib: boolean;
+    montantAib: number;
+    totalTTC: number;
+    montantNet: number;
     fournisseur: Fournisseur;
     lignes: LigneCommande[];
+    proformas: ProformaAssociee[];
     createdAt: string;
 }
 
@@ -229,7 +248,7 @@ async function generatePDF(commande: CommandeDetail, entreprise: EntrepriseConfi
 
     // ── Tableau ────────────────────────────────────────────────────────────────
     const colX = [40, 210, 290, 350, 420, 490];
-    const colHeaders = ["Désignation", "Dim. (L×H)", "Surface", "Qté", "PU", "Total"];
+    const colHeaders = ["Désignation", "Dim. (L×H) cm", "Surface", "Qté", "PU", "Total"];
     const colWidths = [170, 80, 60, 60, 70, 65];
 
     // Header tableau
@@ -278,24 +297,68 @@ async function generatePDF(commande: CommandeDetail, entreprise: EntrepriseConfi
     page.drawRectangle({ x: 40, y: y + 10, width: width - 80, height: 1, color: colorPrimary });
     y -= 10;
 
-    // Total HT
-    page.drawRectangle({ x: width - 220, y: y - 6, width: 180, height: 26, color: colorPrimary });
-    page.drawText("TOTAL HT :", {
-        x: width - 212,
+    // Récapitulatif HT / TVA / TTC / AIB / Montant Net
+    const recapX = width - 220;
+    const recapWidth = 180;
+
+    const drawRecapLine = (label: string, value: string, bold = false) => {
+        const font = bold ? fontBold : fontRegular;
+        page.drawText(label, { x: recapX, y: y + 4, size: 9, font, color: colorBlack });
+        page.drawText(value, {
+            x: recapX + recapWidth - font.widthOfTextAtSize(value, 9),
+            y: y + 4,
+            size: 9,
+            font,
+            color: colorBlack,
+        });
+        y -= 16;
+    };
+
+    drawRecapLine("Total HT :", formatCurrency(Number(commande.totalHT)));
+    drawRecapLine(
+        commande.appliquerTva ? "TVA (18%) :" : "TVA (non appliquée) :",
+        formatCurrency(Number(commande.tva))
+    );
+    drawRecapLine("Total TTC :", formatCurrency(Number(commande.totalTTC)), true);
+    drawRecapLine(
+        commande.appliquerAib ? "AIB (3%) :" : "AIB (non appliqué) :",
+        `- ${formatCurrency(Number(commande.montantAib))}`
+    );
+
+    y -= 6;
+    page.drawRectangle({ x: recapX, y: y - 6, width: recapWidth, height: 26, color: colorPrimary });
+    page.drawText("MONTANT NET :", {
+        x: recapX + 8,
         y: y + 4,
         size: 10,
         font: fontBold,
         color: colorWhite,
     });
-    page.drawText(formatCurrency(Number(commande.totalHT)), {
-        x: width - 212 + fontBold.widthOfTextAtSize("TOTAL HT : ", 10),
+    page.drawText(formatCurrency(Number(commande.montantNet)), {
+        x: recapX + 8 + fontBold.widthOfTextAtSize("MONTANT NET : ", 10),
         y: y + 4,
         size: 10,
         font: fontBold,
         color: colorWhite,
     });
 
-    y -= 60;
+    y -= 30;
+
+    // Proforma(s) associée(s)
+    if (commande.proformas.length > 0) {
+        const numerosProformas = commande.proformas.map((p) => p.invoice.numero).join(", ");
+        page.drawText(`Proforma(s) associée(s) : ${numerosProformas}`, {
+            x: 40,
+            y,
+            size: 9,
+            font: fontRegular,
+            color: colorGray,
+            maxWidth: width - 80,
+        });
+        y -= 20;
+    }
+
+    y -= 30;
 
     // ── Pied de page ──────────────────────────────────────────────────────────
     page.drawText(`Document généré le ${format(new Date(), "dd/MM/yyyy à HH:mm")}`, {
@@ -583,7 +646,7 @@ export default function CommandeDetailPage() {
                                             </TableCell>
                                             <TableCell className="text-center text-sm text-gray-600">
                                                 {ligne.largeur && ligne.hauteur
-                                                    ? `${ligne.largeur} × ${ligne.hauteur} m`
+                                                    ? `${ligne.largeur} × ${ligne.hauteur} cm`
                                                     : <span className="text-gray-300">—</span>}
                                             </TableCell>
                                             <TableCell className="text-center text-sm text-gray-600">
@@ -612,15 +675,72 @@ export default function CommandeDetailPage() {
                     {/* Total */}
                     <Separator />
                     <div className="flex justify-end p-4 pr-6">
-                        <div className="bg-[#ef0b53] text-white rounded-lg px-6 py-3 text-right min-w-[220px]">
-                            <p className="text-rose-100 text-xs uppercase tracking-wider mb-1">Total HT</p>
-                            <p className="text-2xl font-bold">
-                                {formatCurrency(Number(commande.totalHT))}
-                            </p>
+                        <div className="w-full sm:w-80 space-y-1.5 text-sm">
+                            <div className="flex justify-between text-gray-600">
+                                <span>Total HT</span>
+                                <span>{formatCurrency(Number(commande.totalHT))}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-600">
+                                <span>
+                                    TVA (18%)
+                                    {!commande.appliquerTva && <span className="text-xs italic text-gray-400"> — non appliquée</span>}
+                                </span>
+                                <span>{formatCurrency(Number(commande.tva))}</span>
+                            </div>
+                            <div className="flex justify-between font-semibold text-gray-900 border-t pt-1.5">
+                                <span>Total TTC</span>
+                                <span>{formatCurrency(Number(commande.totalTTC))}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-600">
+                                <span>
+                                    AIB (3%) — déduite
+                                    {!commande.appliquerAib && <span className="text-xs italic text-gray-400"> — non appliqué</span>}
+                                </span>
+                                <span>− {formatCurrency(Number(commande.montantAib))}</span>
+                            </div>
+                            <div className="bg-[#ef0b53] text-white rounded-lg px-6 py-3 text-right mt-2">
+                                <p className="text-rose-100 text-xs uppercase tracking-wider mb-1">Montant Net</p>
+                                <p className="text-2xl font-bold">
+                                    {formatCurrency(Number(commande.montantNet))}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Proformas associées */}
+            {commande.proformas.length > 0 && (
+                <Card>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2 text-[#ef0b53]">
+                            <Receipt className="h-4 w-4" />
+                            Proforma(s) associée(s)
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        {commande.proformas.map((p) => (
+                            <div
+                                key={p.invoice.id}
+                                className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-gray-50"
+                            >
+                                <div>
+                                    <Link
+                                        href={`/facture/${p.invoice.id}`}
+                                        className="font-medium text-gray-900 hover:text-[#ef0b53] hover:underline"
+                                    >
+                                        {p.invoice.numero} — {p.invoice.objet}
+                                    </Link>
+                                    {p.invoice.client?.nom && (
+                                        <p className="text-xs text-gray-500 mt-0.5">{p.invoice.client.nom}</p>
+                                    )}
+                                </div>
+                                <FactureStatusBadge status={p.invoice.statut} />
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 }

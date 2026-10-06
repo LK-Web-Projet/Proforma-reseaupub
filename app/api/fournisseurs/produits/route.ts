@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma"; // Assuming prisma client is exported from here
 import { z } from "zod";
+import { saveProduitFournisseurPhotos, describeFsError } from "@/lib/uploadProduitFournisseur";
 
 const productSchema = z.object({
     designation: z.string().min(1, "La désignation est requise"),
     description: z.string().optional(),
-    prixUnitaire: z.number().min(0, "Le prix ne peut pas être négatif"),
+    prixUnitaire: z.coerce.number().min(0, "Le prix ne peut pas être négatif"),
     typeUnite: z.enum(["METRE_CARRE", "UNITE", "ROULEAU", "METRE_LINEAIRE", "FORFAIT"]),
     fournisseurId: z.string().min(1, "L'ID fournisseur est requis"),
 });
@@ -28,6 +29,9 @@ export async function GET(request: Request) {
         const products = await prisma.produitFournisseur.findMany({
             where: {
                 fournisseurId: fournisseurId,
+            },
+            include: {
+                photos: { orderBy: { createdAt: 'asc' } },
             },
             orderBy: {
                 designation: 'asc',
@@ -54,19 +58,40 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
-        const validatedData = productSchema.parse(body);
+        const formData = await request.formData();
+
+        const validatedData = productSchema.parse({
+            designation: formData.get("designation"),
+            description: formData.get("description") || undefined,
+            prixUnitaire: formData.get("prixUnitaire"),
+            typeUnite: formData.get("typeUnite"),
+            fournisseurId: formData.get("fournisseurId"),
+        });
 
         const product = await prisma.produitFournisseur.create({
             data: validatedData,
         });
 
-        return NextResponse.json(product, { status: 201 });
+        const photoFiles = formData.getAll("photos") as File[];
+        if (photoFiles.length > 0) {
+            const savedPhotos = await saveProduitFournisseurPhotos(product.id, photoFiles);
+            await prisma.produitFournisseurPhoto.createMany({
+                data: savedPhotos.map((p) => ({ ...p, produitFournisseurId: product.id })),
+            });
+        }
+
+        const productWithPhotos = await prisma.produitFournisseur.findUnique({
+            where: { id: product.id },
+            include: { photos: { orderBy: { createdAt: 'asc' } } },
+        });
+
+        return NextResponse.json(productWithPhotos, { status: 201 });
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json({ error: error.issues }, { status: 400 });
         }
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const fsMessage = describeFsError(error);
+        const errorMessage = fsMessage || (error instanceof Error ? error.message : "Unknown error");
         console.error("Error creating supplier product:", error);
         return NextResponse.json(
             { error: "Error creating product", details: errorMessage },

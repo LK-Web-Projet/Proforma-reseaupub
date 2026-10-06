@@ -21,6 +21,15 @@ import {
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { ProduitFournisseur } from "@prisma/client";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { InvoiceMultiCombobox, InvoiceOption } from "@/components/InvoiceMultiCombobox";
+
+const TAUX_TVA = 0.18;
+const TAUX_AIB = 0.03;
+
+// Seules les proformas confirmées côté client peuvent être associées à un BCF.
+const STATUTS_PROFORMA_ASSOCIABLES = ['Valider', 'Payer', 'Solde'];
 
 interface NewCommandeFormProps {
     fournisseurId: string;
@@ -43,6 +52,10 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
     const [lignes, setLignes] = useState<LigneCommande[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [dateCommande, setDateCommande] = useState(new Date().toISOString().split('T')[0]);
+    const [appliquerTva, setAppliquerTva] = useState(false);
+    const [appliquerAib, setAppliquerAib] = useState(false);
+    const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
+    const [proformaIds, setProformaIds] = useState<string[]>([]);
 
     // Charger le catalogue
     useEffect(() => {
@@ -61,6 +74,16 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
         };
         fetchProduits();
     }, [fournisseurId]);
+
+    // Charger les proformas associables (validées, payées ou soldées)
+    useEffect(() => {
+        fetch('/api/factures')
+            .then((res) => (res.ok ? res.json() : []))
+            .then((data: (InvoiceOption & { statut: string })[]) =>
+                setInvoices(data.filter((inv) => STATUTS_PROFORMA_ASSOCIABLES.includes(inv.statut)))
+            )
+            .catch(() => setInvoices([]));
+    }, []);
 
     const addLigne = () => {
         setLignes([
@@ -103,14 +126,20 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
         setLignes(newLignes);
     };
 
+    const calculateSurface = (ligne: LigneCommande) => {
+        if (ligne.typeUnite !== "METRE_CARRE" || !ligne.largeur || !ligne.hauteur) return null;
+        // Dimensions saisies en cm, conversion géométrique standard en m² : (L×H)/10000.
+        return (Number(ligne.largeur) * Number(ligne.hauteur)) / 10000;
+    };
+
     const calculateTotalLine = (ligne: LigneCommande) => {
         const qte = Number(ligne.quantite) || 0;
         const pu = Number(ligne.prixUnitaire) || 0;
+        const surfaceM2 = calculateSurface(ligne);
 
-        if (ligne.typeUnite === "METRE_CARRE" && ligne.largeur && ligne.hauteur) {
-            const surface = Number(ligne.largeur) * Number(ligne.hauteur);
+        if (surfaceM2 !== null) {
             // Supposons que PU est au m²
-            return surface * qte * pu;
+            return surfaceM2 * qte * pu;
         }
         return qte * pu;
     };
@@ -118,6 +147,12 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
     const calculateTotalGeneral = () => {
         return lignes.reduce((acc, ligne) => acc + calculateTotalLine(ligne), 0);
     };
+
+    const totalGeneral = calculateTotalGeneral();
+    const montantTva = appliquerTva ? totalGeneral * TAUX_TVA : 0;
+    const totalTTC = totalGeneral + montantTva;
+    const montantAib = appliquerAib ? totalGeneral * TAUX_AIB : 0;
+    const montantNet = totalTTC - montantAib;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -141,7 +176,10 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                     largeur: l.largeur ? Number(l.largeur) : undefined,
                     hauteur: l.hauteur ? Number(l.hauteur) : undefined,
                     prixUnitaire: Number(l.prixUnitaire),
-                }))
+                })),
+                appliquerTva,
+                appliquerAib,
+                proformaIds,
             };
 
             const res = await fetch("/api/fournisseurs/commandes", {
@@ -177,15 +215,24 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                 />
             </div>
 
+            <div className="space-y-2">
+                <label className="text-sm font-medium">Proforma(s) associée(s)</label>
+                <InvoiceMultiCombobox invoices={invoices} value={proformaIds} onChange={setProformaIds} />
+                <p className="text-[11px] text-muted-foreground">
+                    Seules les proformas validées, payées ou soldées peuvent être associées.
+                </p>
+            </div>
+
             <div className="rounded-md border">
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-[30%]">Produit</TableHead>
-                            <TableHead className="w-[10%]">Dimensions (m)</TableHead>
-                            <TableHead className="w-[10%]">Qté</TableHead>
-                            <TableHead className="w-[15%]">P.U.</TableHead>
-                            <TableHead className="w-[15%] text-right">Total</TableHead>
+                            <TableHead className="w-[25%]">Produit</TableHead>
+                            <TableHead className="w-[10%]">Dimensions (cm)</TableHead>
+                            <TableHead className="w-[10%]">Surface (m²)</TableHead>
+                            <TableHead className="w-[9%]">Qté</TableHead>
+                            <TableHead className="w-[13%]">P.U.</TableHead>
+                            <TableHead className="w-[14%] text-right">Total</TableHead>
                             <TableHead className="w-[5%]"></TableHead>
                         </TableRow>
                     </TableHeader>
@@ -239,6 +286,11 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                                         <span className="text-muted-foreground text-xs italic">N/A</span>
                                     )}
                                 </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                    {calculateSurface(ligne) !== null
+                                        ? `${calculateSurface(ligne)!.toFixed(3)} m²`
+                                        : <span className="text-xs italic">N/A</span>}
+                                </TableCell>
                                 <TableCell>
                                     <Input
                                         type="number"
@@ -280,8 +332,63 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                 <Button variant="outline" onClick={addLigne} type="button">
                     <Plus className="mr-2 h-4 w-4" /> Ajouter une ligne
                 </Button>
-                <div className="text-xl font-bold">
-                    Total H.T. : {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(calculateTotalGeneral())}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                    <div>
+                        <p className="text-sm font-semibold text-slate-700">TVA (18%)</p>
+                        <p className="text-[11px] text-muted-foreground">Appliquer la TVA à ce bon de commande</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Badge variant={appliquerTva ? 'default' : 'outline'} className="text-[10px] uppercase">
+                            {appliquerTva ? 'Appliquée' : 'Non appliquée'}
+                        </Badge>
+                        <Switch checked={appliquerTva} onCheckedChange={setAppliquerTva} />
+                    </div>
+                </div>
+                <div className="flex-1 flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                    <div>
+                        <p className="text-sm font-semibold text-slate-700">AIB (3%)</p>
+                        <p className="text-[11px] text-muted-foreground">Appliquer l&apos;AIB à ce bon de commande</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Badge variant={appliquerAib ? 'default' : 'outline'} className="text-[10px] uppercase">
+                            {appliquerAib ? 'Appliqué' : 'Non appliqué'}
+                        </Badge>
+                        <Switch checked={appliquerAib} onCheckedChange={setAppliquerAib} />
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-end">
+                <div className="w-full sm:w-72 space-y-1 text-sm">
+                    <div className="flex justify-between text-muted-foreground">
+                        <span>Total H.T.</span>
+                        <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(totalGeneral)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                        <span>
+                            TVA (18%)
+                            {!appliquerTva && <span className="text-[10px] italic"> — non appliquée</span>}
+                        </span>
+                        <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(montantTva)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold border-t pt-1">
+                        <span>Total T.T.C.</span>
+                        <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(totalTTC)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                        <span>
+                            AIB (3%) — déduite
+                            {!appliquerAib && <span className="text-[10px] italic"> — non appliqué</span>}
+                        </span>
+                        <span>− {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(montantAib)}</span>
+                    </div>
+                    <div className="flex justify-between text-lg font-bold border-t pt-1">
+                        <span>Montant Net</span>
+                        <span>{new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(montantNet)}</span>
+                    </div>
                 </div>
             </div>
 

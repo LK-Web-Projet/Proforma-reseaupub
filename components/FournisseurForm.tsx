@@ -13,6 +13,7 @@ interface FournisseurFormProps {
 }
 
 const domainOptions = ["Informatique", "BTP", "Communication", "Prestation de service"];
+const typeFournisseurOptions = ["Prestataire", "Fournisseur", "Prestataire interne", "Prestataire externe"];
 
 export function FournisseurForm({ onSubmit, initialData, isSubmitting }: FournisseurFormProps) {
   const [formData, setFormData] = useState({
@@ -23,14 +24,18 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
     contact: '',
     domaineActivite: '',
     adresse: '',
+    typeFournisseur: '',
   });
   const [isOtherDomain, setIsOtherDomain] = useState(false);
+  const [isOtherType, setIsOtherType] = useState(false);
 
   useEffect(() => {
     if (initialData) {
       const initialDomain = initialData.domaineActivite || '';
       const isCustomDomain = initialDomain && !domainOptions.includes(initialDomain);
-      
+      const initialType = initialData.typeFournisseur || '';
+      const isCustomType = initialType && !typeFournisseurOptions.includes(initialType);
+
       setFormData({
         entreprise: initialData.entreprise || '',
         nom: initialData.nom || '',
@@ -39,11 +44,11 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
         contact: initialData.contact || '',
         domaineActivite: initialDomain,
         adresse: initialData.adresse || '',
+        typeFournisseur: initialType,
       });
 
-      if (isCustomDomain) {
-        setIsOtherDomain(true);
-      }
+      setIsOtherDomain(!!isCustomDomain);
+      setIsOtherType(!!isCustomType);
 
     } else {
       // Reset form for new entry
@@ -55,8 +60,10 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
         contact: '',
         domaineActivite: '',
         adresse: '',
+        typeFournisseur: '',
       });
       setIsOtherDomain(false);
+      setIsOtherType(false);
     }
   }, [initialData]);
 
@@ -75,12 +82,23 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
     }
   };
 
+  const handleTypeChange = (value: string) => {
+    if (value === 'Autre') {
+      setIsOtherType(true);
+      setFormData((prev) => ({ ...prev, typeFournisseur: '' }));
+    } else {
+      setIsOtherType(false);
+      setFormData((prev) => ({ ...prev, typeFournisseur: value }));
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
   };
 
   const selectValue = isOtherDomain ? 'Autre' : formData.domaineActivite;
+  const typeSelectValue = isOtherType ? 'Autre' : formData.typeFournisseur;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -126,6 +144,32 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
           />
         </div>
       )}
+      <div className="space-y-2">
+        <label htmlFor="typeFournisseur">Type de fournisseur</label>
+        <Select onValueChange={handleTypeChange} value={typeSelectValue}>
+          <SelectTrigger>
+            <SelectValue placeholder="Sélectionner un type" />
+          </SelectTrigger>
+          <SelectContent>
+            {typeFournisseurOptions.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+            <SelectItem value="Autre">Autre</SelectItem>
+          </SelectContent>
+        </Select>
+        {isOtherType && (
+          <Input
+            id="customTypeFournisseur"
+            name="typeFournisseur"
+            value={formData.typeFournisseur}
+            onChange={handleChange}
+            placeholder="Précisez le type de fournisseur"
+            className="mt-2"
+          />
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <label htmlFor="nom">Nom</label>
