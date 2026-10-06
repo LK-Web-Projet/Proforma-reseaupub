@@ -3,14 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
     Dialog,
     DialogContent,
@@ -27,18 +21,33 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
-import { ProduitFournisseur, TypeUnite } from "@prisma/client";
+import { Plus, ImagePlus, Image as ImageIcon, X } from "lucide-react";
+import type { TypeUnite } from "@prisma/client";
+import { ProduitPhotosDialog, ProduitPhoto } from "./ProduitPhotosDialog";
 
 interface FournisseurProduitsProps {
     fournisseurId: string;
 }
 
+interface Produit {
+    id: string;
+    designation: string;
+    description: string | null;
+    prixUnitaire: number;
+    typeUnite: TypeUnite;
+    fournisseurId: string;
+    photos: ProduitPhoto[];
+}
+
+const formatMontant = (value: number) =>
+    new Intl.NumberFormat("fr-FR", { style: "currency", currency: "XOF" }).format(value);
+
 export default function FournisseurProduits({ fournisseurId }: FournisseurProduitsProps) {
-    const [produits, setProduits] = useState<ProduitFournisseur[]>([]);
+    const [produits, setProduits] = useState<Produit[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [selectedProduit, setSelectedProduit] = useState<Produit | null>(null);
 
     const [newProduct, setNewProduct] = useState({
         designation: "",
@@ -46,6 +55,8 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
         prixUnitaire: "",
         typeUnite: "UNITE" as TypeUnite,
     });
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
     const fetchProduits = useCallback(async () => {
         setLoading(true);
@@ -70,20 +81,42 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
         fetchProduits();
     }, [fetchProduits]);
 
+    useEffect(() => {
+        const urls = selectedFiles.map((f) => URL.createObjectURL(f));
+        setPreviewUrls(urls);
+        return () => urls.forEach((u) => URL.revokeObjectURL(u));
+    }, [selectedFiles]);
+
+    const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+        setSelectedFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+        e.target.value = "";
+    };
+
+    const removeSelectedFile = (index: number) => {
+        setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const resetForm = () => {
+        setNewProduct({ designation: "", description: "", prixUnitaire: "", typeUnite: "UNITE" });
+        setSelectedFiles([]);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const payload = {
-                ...newProduct,
-                prixUnitaire: parseFloat(newProduct.prixUnitaire),
-                fournisseurId,
-            };
+            const formData = new FormData();
+            formData.append("designation", newProduct.designation);
+            formData.append("description", newProduct.description);
+            formData.append("prixUnitaire", newProduct.prixUnitaire);
+            formData.append("typeUnite", newProduct.typeUnite);
+            formData.append("fournisseurId", fournisseurId);
+            selectedFiles.forEach((file) => formData.append("photos", file));
 
             const res = await fetch("/api/fournisseurs/produits", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+                body: formData,
             });
 
             if (!res.ok) {
@@ -93,12 +126,7 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
 
             await fetchProduits();
             setIsDialogOpen(false);
-            setNewProduct({
-                designation: "",
-                description: "",
-                prixUnitaire: "",
-                typeUnite: "UNITE",
-            });
+            resetForm();
             toast.success("Produit ajouté au catalogue !");
         } catch (error) {
             console.error(error);
@@ -108,18 +136,29 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
         }
     };
 
+    const handlePhotosChange = (produitId: string, photos: ProduitPhoto[]) => {
+        setProduits((prev) => prev.map((p) => (p.id === produitId ? { ...p, photos } : p)));
+        setSelectedProduit((prev) => (prev && prev.id === produitId ? { ...prev, photos } : prev));
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Catalogue Produits</h3>
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <Dialog
+                    open={isDialogOpen}
+                    onOpenChange={(open) => {
+                        setIsDialogOpen(open);
+                        if (!open) resetForm();
+                    }}
+                >
                     <DialogTrigger asChild>
                         <Button>
                             <Plus className="mr-2 h-4 w-4" />
                             Ajouter un produit
                         </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Ajouter un nouveau produit</DialogTitle>
                         </DialogHeader>
@@ -181,6 +220,39 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                                     </Select>
                                 </div>
                             </div>
+
+                            <div className="space-y-2">
+                                <Label>Photos (optionnel)</Label>
+                                {previewUrls.length > 0 && (
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {previewUrls.map((url, index) => (
+                                            <div key={url} className="relative aspect-square rounded-md overflow-hidden border">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={url} alt="" className="w-full h-full object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeSelectedFile(index)}
+                                                    className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-600"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-md p-3 cursor-pointer text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                                    <ImagePlus className="h-4 w-4" />
+                                    Ajouter des photos
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={handleFilesSelected}
+                                    />
+                                </label>
+                            </div>
+
                             <div className="flex justify-end pt-4">
                                 <Button type="submit" disabled={submitting}>
                                     {submitting ? "Ajout..." : "Ajouter"}
@@ -191,49 +263,65 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                 </Dialog>
             </div>
 
-            <div className="rounded-md border bg-white">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Désignation</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Unité</TableHead>
-                            <TableHead className="text-right">Prix Unitaire</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={4} className="text-center h-24">
-                                    Chargement...
-                                </TableCell>
-                            </TableRow>
-                        ) : produits.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={4} className="text-center h-24">
-                                    Aucun produit dans le catalogue.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            produits.map((prod) => (
-                                <TableRow key={prod.id}>
-                                    <TableCell className="font-medium">{prod.designation}</TableCell>
-                                    <TableCell>{prod.description || "-"}</TableCell>
-                                    <TableCell>
+            {loading ? (
+                <p className="text-center text-muted-foreground py-12">Chargement...</p>
+            ) : produits.length === 0 ? (
+                <p className="text-center text-muted-foreground py-12 border rounded-md bg-white">
+                    Aucun produit dans le catalogue.
+                </p>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {produits.map((prod) => (
+                        <Card
+                            key={prod.id}
+                            className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow py-0 gap-0"
+                            onClick={() => setSelectedProduit(prod)}
+                        >
+                            <div className="relative aspect-video bg-muted">
+                                {prod.photos.length > 0 ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={prod.photos[0].url}
+                                        alt={prod.designation}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-muted-foreground/50">
+                                        <ImageIcon className="h-10 w-10" />
+                                    </div>
+                                )}
+                                {prod.photos.length > 1 && (
+                                    <Badge className="absolute bottom-2 right-2 bg-black/60 text-white border-0 hover:bg-black/60">
+                                        +{prod.photos.length - 1} photo{prod.photos.length - 1 > 1 ? "s" : ""}
+                                    </Badge>
+                                )}
+                            </div>
+                            <CardContent className="p-4 space-y-1.5">
+                                <p className="font-semibold truncate">{prod.designation}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-2 min-h-[2em]">
+                                    {prod.description || "Aucune description"}
+                                </p>
+                                <div className="flex items-center justify-between pt-1">
+                                    <Badge variant="outline" className="text-[10px] font-normal">
                                         {prod.typeUnite === "METRE_CARRE" ? "m²" : prod.typeUnite}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        {new Intl.NumberFormat("fr-FR", {
-                                            style: "currency",
-                                            currency: "XOF",
-                                        }).format(Number(prod.prixUnitaire))}
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+                                    </Badge>
+                                    <span className="font-semibold text-sm">
+                                        {formatMontant(Number(prod.prixUnitaire))}
+                                    </span>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            )}
+
+            <ProduitPhotosDialog
+                produitId={selectedProduit?.id ?? null}
+                produitNom={selectedProduit?.designation ?? ""}
+                photos={selectedProduit?.photos ?? []}
+                onClose={() => setSelectedProduit(null)}
+                onPhotosChange={(photos) => selectedProduit && handlePhotosChange(selectedProduit.id, photos)}
+            />
         </div>
     );
 }

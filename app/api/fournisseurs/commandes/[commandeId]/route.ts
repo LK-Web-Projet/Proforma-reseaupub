@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireBudgetAdmin } from "@/lib/budgetAuth";
 
 export async function GET(
     _request: Request,
@@ -24,6 +25,7 @@ export async function GET(
                         produitFournisseur: true,
                     },
                 },
+                proformas: { include: { invoice: { include: { client: true } } } },
             },
         });
 
@@ -49,6 +51,9 @@ export async function PATCH(
     { params }: { params: Promise<{ commandeId: string }> }
 ) {
     const { commandeId } = await params;
+
+    const admin = await requireBudgetAdmin();
+    if (admin instanceof NextResponse) return admin;
 
     try {
         const body = await request.json();

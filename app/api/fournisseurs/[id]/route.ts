@@ -40,7 +40,7 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
 
   try {
     const body = await req.json();
-    const { nom, prenom, entreprise, contact, domaineActivite, adresse, email } = body;
+    const { nom, prenom, entreprise, contact, domaineActivite, adresse, email, typeFournisseur } = body;
 
     const updatedFournisseur = await prisma.fournisseur.update({
       where: { id },
@@ -52,6 +52,7 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
         domaineActivite,
         adresse,
         email,
+        typeFournisseur: typeFournisseur?.trim() || null,
       },
     });
 

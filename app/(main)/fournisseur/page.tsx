@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -12,15 +12,20 @@ import {
 import { useRouter } from "next/navigation";
 import { FournisseurTableSkeleton } from "@/components/FournisseurTableSkeleton";
 import { FournisseurModal, Fournisseur } from "@/components/FournisseurModal";
-import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2 } from 'lucide-react';
+import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2, Search, Tag } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function FournisseursPage() {
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFournisseur, setSelectedFournisseur] = useState<Fournisseur | null>(null);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const router = useRouter();
 
   const fetchFournisseurs = useCallback(async () => {
@@ -43,6 +48,31 @@ export default function FournisseursPage() {
   useEffect(() => {
     fetchFournisseurs();
   }, [fetchFournisseurs]);
+
+  const typeOptions = useMemo(() => {
+    const types = new Set<string>();
+    fournisseurs.forEach((f) => {
+      if (f.typeFournisseur) types.add(f.typeFournisseur);
+    });
+    return Array.from(types).sort();
+  }, [fournisseurs]);
+
+  const filteredFournisseurs = useMemo(() => {
+    const searchTerms = search.toLowerCase().trim().split(/\s+/).filter((t) => t !== '');
+
+    return fournisseurs.filter((f) => {
+      if (typeFilter && f.typeFournisseur !== typeFilter) return false;
+
+      if (searchTerms.length === 0) return true;
+
+      const haystack = [f.entreprise, f.nom, f.prenom, f.email, f.contact, f.domaineActivite]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return searchTerms.every((term) => haystack.includes(term));
+    });
+  }, [fournisseurs, search, typeFilter]);
 
   const handleOpenModal = (fournisseur: Fournisseur | null = null) => {
     setSelectedFournisseur(fournisseur);
@@ -72,7 +102,7 @@ export default function FournisseursPage() {
           <div>
             <h1 className="text-2xl font-bold">Liste des Fournisseurs</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {loading ? 'Chargement...' : `${fournisseurs.length} fournisseur(s) enregistré(s)`}
+              {loading ? 'Chargement...' : `${filteredFournisseurs.length} / ${fournisseurs.length} fournisseur(s)`}
             </p>
           </div>
           <Button onClick={() => handleOpenModal()}>
@@ -81,11 +111,35 @@ export default function FournisseursPage() {
           </Button>
         </div>
 
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher par entreprise, contact, email..."
+              className="pl-9"
+            />
+          </div>
+          <Select value={typeFilter || 'ALL'} onValueChange={(v) => setTypeFilter(v === 'ALL' ? '' : v)}>
+            <SelectTrigger className="w-full sm:w-56">
+              <SelectValue placeholder="Tous les types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tous les types</SelectItem>
+              {typeOptions.map((type) => (
+                <SelectItem key={type} value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="rounded-md border bg-white overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
                 <TableHead>Entreprise</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Domaine d&apos;activité</TableHead>
@@ -95,9 +149,9 @@ export default function FournisseursPage() {
             <TableBody>
               {loading ? (
                 <FournisseurTableSkeleton />
-              ) : fournisseurs.length === 0 ? (
+              ) : filteredFournisseurs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center h-32">
+                  <TableCell colSpan={6} className="text-center h-32">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Building2 className="h-8 w-8" />
                       <p>Aucun fournisseur trouvé.</p>
@@ -105,7 +159,7 @@ export default function FournisseursPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                fournisseurs.map((fournisseur) => (
+                filteredFournisseurs.map((fournisseur) => (
                   <TableRow
                     key={fournisseur.id}
                     onClick={() =>
@@ -120,6 +174,16 @@ export default function FournisseursPage() {
                         </span>
                         <span className="truncate max-w-[200px]">{fournisseur.entreprise}</span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {fournisseur.typeFournisseur ? (
+                        <Badge variant="outline" className="gap-1 font-normal">
+                          <Tag className="h-3 w-3" />
+                          {fournisseur.typeFournisseur}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="flex items-center gap-1.5 text-sm text-muted-foreground">

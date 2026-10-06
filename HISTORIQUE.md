@@ -22,6 +22,154 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-06 (suite 5) — Validation admin des bons de commande fournisseurs (email + restriction de statut)
+
+**Demande / Contexte**
+À la création d'un bon de commande fournisseur, un email doit être envoyé aux admins pour validation, et seuls les profils admin doivent pouvoir changer le statut du bon de commande (actuellement n'importe quel utilisateur ayant accès à la page pouvait changer librement le statut, sans aucune vérification serveur). Décision validée avec l'utilisateur : réutiliser directement la même liste d'admins que pour les Demandes de Budget (`BUDGET_ADMIN_EMAILS`, via `lib/budgetAuth.ts`), pas de nouvelle liste séparée.
+
+**Modifications apportées**
+- [lib/email/commandeFournisseur.ts](lib/email/commandeFournisseur.ts) (nouveau) : `sendCommandeFournisseurCreeeNotification(commande)`, calqué exactement sur `lib/email/demandeBudget.ts` (même template HTML, même fonction `adminRecipients()` lisant `BUDGET_ADMIN_EMAILS`, retour silencieux si la liste est vide). Email envoyé aux admins avec le détail du bon de commande (lignes, montant net) et un lien direct vers la page de détail.
+- [app/api/fournisseurs/commandes/route.ts](app/api/fournisseurs/commandes/route.ts) : POST — après création, appel fire-and-forget (`.catch(console.error)`) à `sendCommandeFournisseurCreeeNotification`, même pattern que `app/api/demandes-budget/route.ts`. Le `include` de la création ajoute `fournisseur: true` (nécessaire pour l'email).
+- [app/api/fournisseurs/commandes/[commandeId]/route.ts](app/api/fournisseurs/commandes/[commandeId]/route.ts) : PATCH (changement de statut) protégé par `requireBudgetAdmin()` en tout début de handler — renvoie 401/403 si l'utilisateur n'est pas authentifié ou n'est pas dans `BUDGET_ADMIN_EMAILS`.
+- [app/(main)/fournisseur/commandes/page.tsx](app/(main)/fournisseur/commandes/page.tsx) : récupère le rôle via la route existante `GET /api/demandes-budget/me-role` (réutilisée telle quelle, même liste d'admins) ; le sélecteur de statut n'est affiché que si `isAdmin` est vrai — sinon un badge en lecture seule s'affiche, comme pour les statuts déjà verrouillés (LIVREE/ANNULEE).
+
+**Erreurs rencontrées & solutions**
+- `npx prisma generate` était bloqué depuis plusieurs entrées précédentes par une erreur `EPERM` (fichier verrouillé par le serveur `next dev` de l'utilisateur). Résolu : l'utilisateur a arrêté son serveur, la génération a réussi.
+
+**À tester / points d'attention**
+- `npx tsc --noEmit` et `npx next lint` relancés avec succès (aucune erreur) sur l'ensemble des changements accumulés aujourd'hui (TVA/AIB, proformas associées, surface /10000, photos produits, et cette validation admin).
+- Tester en conditions réelles : créer un bon de commande → vérifier la réception de l'email par les adresses `BUDGET_ADMIN_EMAILS` ; tenter de changer le statut avec un compte non-admin (le sélecteur ne doit pas apparaître, et un appel direct à l'API doit renvoyer 403) ; changer le statut avec un compte admin (doit fonctionner normalement).
+
+## 2026-10-06 (suite 4) — Photos sur les produits fournisseur + affichage en cartes
+
+**Demande / Contexte**
+Chaque produit du catalogue d'un fournisseur doit pouvoir avoir une ou plusieurs photos pour l'illustrer, et l'affichage de la liste des produits doit passer d'un tableau à des cartes (cards) pour faciliter la lecture visuelle.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : nouveau modèle `ProduitFournisseurPhoto` (id, produitFournisseurId, url, fileName, fileType, createdAt — `onDelete: Cascade`), relation `photos` ajoutée sur `ProduitFournisseur`. Migration `prisma/migrations/20261006093552_add_produit_fournisseur_photos/`.
+- [lib/uploadProduitFournisseur.ts](lib/uploadProduitFournisseur.ts) (nouveau) : `saveProduitFournisseurPhotos(produitId, files)` écrit les fichiers dans `public/Upload/ProduitFournisseur/<produitId>/...` et retourne les métadonnées à persister — même pattern que `lib/uploadDemandeBudget.ts`/`lib/uploadFactureFournisseur.ts` (y compris `describeFsError`).
+- [app/api/fournisseurs/produits/route.ts](app/api/fournisseurs/produits/route.ts) : le `POST` passe de JSON à `multipart/form-data` (`request.formData()`) pour accepter des fichiers `photos` en plus des champs produit existants ; `GET` inclut désormais `photos`.
+- [app/api/fournisseurs/produits/[id]/photos/route.ts](app/api/fournisseurs/produits/[id]/photos/route.ts) (nouveau) : `POST` pour ajouter des photos à un produit déjà existant, `DELETE ?photoId=` pour en retirer une (suppression de la ligne en base uniquement, le fichier reste sur disque — comportement identique aux autres pièces jointes du projet, aucune route existante ne nettoie les fichiers physiques).
+- [components/fournisseurs/ProduitPhotosDialog.tsx](components/fournisseurs/ProduitPhotosDialog.tsx) (nouveau) : dialogue galerie d'un produit (grille de miniatures, suppression au survol, zone d'ajout de nouvelles photos).
+- [components/fournisseurs/FournisseurProduits.tsx](components/fournisseurs/FournisseurProduits.tsx) : remplacement du `<Table>` par une grille de `Card` (image de couverture = première photo ou icône de remplacement, badge « +N photos » si plusieurs, désignation, description tronquée, unité, prix) ; clic sur une carte → ouvre `ProduitPhotosDialog`. Le formulaire de création accepte désormais un sélecteur de photos multiple avec aperçus (miniatures + suppression avant envoi), soumis en `FormData`.
+
+**Erreurs rencontrées & solutions**
+- `npx prisma generate` est resté bloqué un moment par une erreur `EPERM` (fichier verrouillé par le serveur `next dev` de l'utilisateur, qui gardait l'ancien client Prisma chargé en mémoire). Résolu après l'arrêt du serveur par l'utilisateur — `tsc --noEmit` et `next lint` ont ensuite été relancés avec succès sur l'ensemble des changements accumulés (voir entrée « suite 5 »).
+
+**À tester / points d'attention**
+- Tester la création d'un produit avec plusieurs photos, l'ajout de photos sur un produit existant, la suppression d'une photo, et l'affichage de la grille de cartes avec et sans photo.
+- Vérifier en production que `public/Upload/` est bien un volume persistant sur le VPS (point déjà documenté comme non vérifié pour les autres uploads du projet).
+
+---
+
+## 2026-10-06 (suite 3) — Retour définitif à la conversion de surface /10000 (correction d'une erreur sur le bon de commande papier)
+
+**Demande / Contexte**
+Après avoir ajouté une colonne d'affichage « Surface (m²) » dans les formulaires de création de BCF (calculée avec la convention /1000 validée dans l'entrée précédente), l'utilisateur a précisé que la conversion correcte est en réalité **/10000** — y compris pour le calcul du prix, pas seulement pour l'affichage. Confirmé explicitement malgré l'avertissement que cela ne reproduirait plus les chiffres du bon de commande papier n°095 (9622,8 / 11355 / 11066) : ce document papier contenait donc lui-même une erreur de calcul de surface, qui ne doit pas être reproduite dans l'application.
+
+**Modifications apportées**
+- [app/api/fournisseurs/commandes/route.ts](app/api/fournisseurs/commandes/route.ts), [components/CommandeFournisseurModal.tsx](components/CommandeFournisseurModal.tsx), [components/fournisseurs/NewCommandeForm.tsx](components/fournisseurs/NewCommandeForm.tsx) : conversion de surface repassée à `(largeur_cm × hauteur_cm) / 10000` (conversion géométrique standard cm²→m²) partout — calcul du prix ET colonne d'affichage « Surface (m²) » désormais alignés sur /10000.
+
+**Erreurs rencontrées & solutions**
+Aucune — correction directe suite à confirmation explicite de l'utilisateur.
+
+**À tester / points d'attention**
+- En réexaminant le bon de commande papier 095 : avec /10000 et la quantité correctement multipliée, HT = (99×54/10000) × 10 × 1800 = 0,5346 × 10 × 1800 = **9622,8** — exactement le même résultat qu'avec /1000 sans multiplier par la quantité. Les deux hypothèses coïncidaient uniquement parce que Qté=10 sur cet exemple précis (10 = le facteur d'écart entre /1000 et /10000). Il n'y avait donc pas d'« erreur de saisie » sur ce bon de commande : la vraie formule a toujours été Surface(/10000) × Qté × PU/m², ce qui confirme que /10000 est la bonne conversion. À vérifier sur un bon de commande avec une quantité différente de 10 pour confirmer definitivement.
+
+---
+
+## 2026-10-06 (suite 2) — Correction du modèle TVA/AIB d'après un bon de commande papier réel
+
+**Demande / Contexte**
+L'utilisateur a fourni la photo d'un bon de commande fournisseur papier réel (n°095, MARK ISRO) avec le calcul concret déjà en usage dans l'entreprise. En reconstituant le calcul chiffre par chiffre, trois écarts sont apparus par rapport à ce qui avait été codé dans les deux précédentes entrées du jour :
+1. La conversion de surface utilise **/1000** (convention métier, prix au m² calibré dessus), et non /10000 (conversion géométrique stricte cm²→m²) comme cela avait été « corrigé » à tort précédemment.
+2. Le taux d'AIB est de **3%**, pas 5%.
+3. **L'AIB ne s'ajoute pas au Total TTC.** Le Total TTC = HT + TVA uniquement. L'AIB (calculée sur le HT) se **déduit** du TTC pour obtenir un nouveau montant, le **Montant Net**, qui est la somme réellement versée au fournisseur (l'AIB étant une retenue reversée directement aux impôts par Reseaupub).
+
+Formule confirmée et vérifiée sur l'exemple réel (Surface 99×54cm, Qté 10, PU/m² 1800) : HT = 9622,8 ; TVA 18% = 1732 ; TTC = 11355 ; AIB 3% = 289 ; Montant Net = TTC − AIB = 11066. Un point a été vérifié avec l'utilisateur : sur cet exemple précis, la quantité (10) ne multipliait pas le montant HT — confirmé comme une erreur de saisie sur ce bon de commande particulier, la quantité doit bien multiplier normalement (Surface × Qté × PU/m²), ce qui était déjà le comportement du code.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : nouveau champ `montantNet` sur `CommandeFournisseur`. Migration `prisma/migrations/20261006083326_add_montant_net_commande_fournisseur/`, avec recalcul des bons de commande déjà créés aujourd'hui (`montantAib` à 3%, `totalTTC` = HT+TVA sans AIB, `montantNet` = TTC−AIB) — aucune donnée historique antérieure à cette feature n'est touchée.
+- [app/api/fournisseurs/commandes/route.ts](app/api/fournisseurs/commandes/route.ts) : `TAUX_AIB` passé à 0.03 ; conversion de surface passée à `/1000` ; `totalTTC` ne contient plus l'AIB ; nouveau calcul `montantNet = totalTTC - montantAib`, persisté.
+- [components/CommandeFournisseurModal.tsx](components/CommandeFournisseurModal.tsx) et [components/fournisseurs/NewCommandeForm.tsx](components/fournisseurs/NewCommandeForm.tsx) : mêmes corrections (taux, surface, formule) ; récapitulatif restructuré pour refléter l'ordre réel du document papier : Total HT → TVA → Total TTC → AIB (déduite) → **Montant Net** (mis en évidence, c'est la nouvelle ligne finale).
+- [app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx](app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx) : même restructuration dans la page de détail et dans le PDF généré (bloc coloré final renommé « MONTANT NET » au lieu de « TOTAL TTC »).
+- [app/(main)/fournisseur/commandes/page.tsx](app/(main)/fournisseur/commandes/page.tsx) et [components/fournisseurs/FournisseurCommandes.tsx](components/fournisseurs/FournisseurCommandes.tsx) : colonne et cartes de synthèse « Total TTC » renommées « Montant Net » (c'est désormais le montant le plus représentatif du réellement dû).
+
+**Erreurs rencontrées & solutions**
+- `npx prisma generate` a échoué avec une erreur `EPERM` (fichier `query_engine-windows.dll.node` verrouillé par un processus Node en cours — très probablement le serveur `next dev` de l'utilisateur qui tenait le client Prisma chargé en mémoire). Résolu en demandant à l'utilisateur d'arrêter son serveur de développement avant de relancer la génération.
+
+**À tester / points d'attention**
+- Reproduire exactement l'exemple du bon de commande 095 dans l'application (Hauteur 99cm, Largeur 54cm, Qté 10, PU/m² 1800, TVA et AIB activées) et vérifier que l'app affiche bien HT=9622,8 / TVA=1732 / TTC=11355 / AIB=289 / Montant Net=11066.
+- Vérifier qu'un bon de commande créé avec les anciennes valeurs (AIB à 5%, TTC incluant l'AIB) a bien été recalculé correctement par la migration.
+
+---
+
+## 2026-10-06 (suite) — Détail TVA/AIB toujours visible + association de proformas aux bons de commande fournisseurs
+
+**Demande / Contexte**
+Complément à la feature TVA/AIB du jour : (1) le détail du bon de commande et le PDF doivent afficher en permanence le prix unitaire, le montant avec TVA, l'AIB et le TTC (et non masquer les lignes quand la taxe n'est pas appliquée — un document officiel doit rester lisible et explicite) ; (2) pouvoir associer à un bon de commande fournisseur une ou plusieurs proformas (factures clients) qui sont validées, payées ou soldées.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : nouveau modèle de jointure `CommandeFournisseurProforma` (many-to-many entre `CommandeFournisseur` et `Invoice`, même pattern que `DemandeBudgetProforma`). Migration `prisma/migrations/20261006080433_add_commande_fournisseur_proforma/`.
+- [app/api/fournisseurs/commandes/route.ts](app/api/fournisseurs/commandes/route.ts) : POST accepte désormais `proformaIds` ; vérification serveur que chaque proforma référencée existe et a un statut `Valider`, `Payer` ou `Solde` (sinon 400) avant de créer les liens ; GET et POST incluent `proformas.invoice.client`.
+- [app/api/fournisseurs/commandes/[commandeId]/route.ts](app/api/fournisseurs/commandes/[commandeId]/route.ts) : GET inclut désormais `proformas.invoice.client`.
+- [components/CommandeFournisseurModal.tsx](components/CommandeFournisseurModal.tsx) et [components/fournisseurs/NewCommandeForm.tsx](components/fournisseurs/NewCommandeForm.tsx) : réutilisation du composant existant `InvoiceMultiCombobox` (déjà utilisé pour les Demandes de Budget) pour associer des proformas, dont la liste proposée est filtrée côté client aux statuts Validée/Payée/Soldée ; le récapitulatif HT/TVA/AIB/TTC n'est plus masqué conditionnellement — il affiche toujours les 4 lignes (avec la mention « non appliquée »/« non appliqué » quand la case correspondante est désactivée).
+- [app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx](app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx) : même passage à un récapitulatif toujours visible (Total HT / Montant avec TVA / AIB / Total TTC) dans la page ET dans le PDF généré ; nouvelle carte « Proforma(s) associée(s) » listant les factures liées (numéro, objet, client, badge de statut via le composant existant `FactureStatusBadge`, lien vers `/facture/[id]`) ; le PDF liste aussi les numéros de proformas associées sous le récapitulatif des totaux.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Vérifier que seules les proformas Validée/Payée/Soldée apparaissent dans le sélecteur, et que l'API refuse bien une tentative d'association à une proforma en Brouillon/Envoyée/Annulée/Archivée (test direct de l'API, le filtrage client ne suffit pas comme garde-fou).
+- Vérifier sur un bon de commande existant (créé avant cette mise à jour, donc sans proforma associée) que la nouvelle carte ne s'affiche pas et que rien ne casse.
+
+---
+
+## 2026-10-06 — TVA (18%) + AIB (5%) sur les bons de commande fournisseurs, et correction du calcul de surface (cm → m²)
+
+**Demande / Contexte**
+Deux besoins sur les Bons de Commande Fournisseurs : (1) pouvoir spécifier si la TVA (18%) et/ou l'AIB (5%) s'appliquent, avec calcul du TTC ; (2) corriger le calcul de surface des produits au m² — les dimensions sont saisies en centimètres (usage métier imprimerie/bâche), mais le code multipliait directement largeur × hauteur sans convertir, ce qui donnait un total totalement faux (ex: 60 × 120 cm → 7200 au lieu de 0,72 m²).
+
+Règle de calcul validée avec l'utilisateur : la TVA et l'AIB sont chacun activables/désactivables indépendamment par bon de commande (comme l'exonération de TVA existante sur les factures). L'AIB se calcule sur le montant HT (indépendamment de la TVA, pas en cascade) : **TTC = HT + TVA + AIB**.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : ajout sur `CommandeFournisseur` de `appliquerTva` (Boolean, défaut false), `tva` (montant calculé), `appliquerAib` (Boolean, défaut false), `montantAib` (montant calculé), `totalTTC`. Migration `prisma/migrations/20261005233915_add_tva_aib_commande_fournisseur/` — inclut aussi un backfill (`UPDATE ... SET totalTTC = totalHT`) pour que les bons de commande existants (créés avant cette feature, sans taxe) affichent un TTC cohérent au lieu de 0.
+- [app/api/fournisseurs/commandes/route.ts](app/api/fournisseurs/commandes/route.ts) : POST — correction du calcul de surface (`(largeur_cm × hauteur_cm) / 10000` au lieu de `largeur × hauteur` brut) ; calcul et persistance de `tva` (HT × 18% si activé), `montantAib` (HT × 5% si activé) et `totalTTC` (HT + TVA + AIB).
+- [components/CommandeFournisseurModal.tsx](components/CommandeFournisseurModal.tsx) et [components/fournisseurs/NewCommandeForm.tsx](components/fournisseurs/NewCommandeForm.tsx) (les deux formulaires de création de BCF, un global et un dans la fiche fournisseur) : même correction du calcul de surface côté aperçu client ; colonne « Dimensions (m) » renommée « Dimensions (cm) » ; deux interrupteurs (`Switch`, même pattern visuel que l'exonération de TVA des factures) « TVA (18%) » et « AIB (5%) » ; récapitulatif détaillé HT / TVA / AIB / Total TTC.
+- [app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx](app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx) : affichage des dimensions en « cm » (au lieu de « m ») ; bloc de total détaillé HT/TVA/AIB/TTC ; PDF du bon de commande mis à jour avec le même récapitulatif (plus uniquement « TOTAL HT », maintenant HT + TVA/AIB conditionnels + TOTAL TTC en évidence).
+- [app/(main)/fournisseur/commandes/page.tsx](app/(main)/fournisseur/commandes/page.tsx) et [components/fournisseurs/FournisseurCommandes.tsx](components/fournisseurs/FournisseurCommandes.tsx) : colonne et cartes de synthèse « Total HT » remplacées par « Total TTC » (montant réellement dû).
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Créer un bon de commande avec un produit au m² en saisissant des dimensions réalistes en cm (ex: 60 x 120) et vérifier que la surface calculée est bien ≈ 0,72 m² et que le total correspond.
+- Tester les 4 combinaisons TVA/AIB (aucune, TVA seule, AIB seule, les deux) et vérifier le TTC affiché dans le formulaire, la page de détail et le PDF généré.
+- Les bons de commande créés avant cette mise à jour ont été rétro-complétés avec `totalTTC = totalHT` (pas de TVA/AIB historique) — à vérifier sur un ancien bon de commande que l'affichage reste cohérent.
+
+---
+
+## 2026-10-05 — Type de fournisseur + recherche/filtre sur la liste des fournisseurs
+
+**Demande / Contexte**
+Besoin d'un champ « type de fournisseur » (ex. Prestataire, Fournisseur, Prestataire interne, Prestataire externe, Autre) pour pouvoir filtrer les fournisseurs par type. Contrainte explicite : ce champ doit rester modifiable côté client, donc pas d'enum Prisma figé (qui demanderait une migration/redéploiement pour ajouter une valeur) — juste un champ texte optionnel en base. Demande également une recherche rapide et un filtre sur la page liste des fournisseurs.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : ajout de `typeFournisseur String?` (nullable, texte libre) sur le modèle `Fournisseur`. Migration `prisma/migrations/20261005180535_add_type_fournisseur/`.
+- [components/FournisseurModal.tsx](components/FournisseurModal.tsx) : type partagé `Fournisseur` mis à jour avec `typeFournisseur: string | null`.
+- [components/FournisseurForm.tsx](components/FournisseurForm.tsx) : nouveau champ « Type de fournisseur » reprenant exactement le même pattern UX que « Domaine d'activité » — `Select` avec suggestions (`Prestataire`, `Fournisseur`, `Prestataire interne`, `Prestataire externe`) + option « Autre » qui révèle un champ texte libre. Garde le champ pleinement éditable sans toucher au code.
+- [app/api/fournisseurs/route.ts](app/api/fournisseurs/route.ts) et [app/api/fournisseurs/[id]/route.ts](app/api/fournisseurs/[id]/route.ts) : POST et PUT acceptent et persistent `typeFournisseur` (chaîne vide normalisée en `null`).
+- [app/(main)/fournisseur/page.tsx](app/(main)/fournisseur/page.tsx) : ajout d'un champ de recherche rapide (entreprise, nom, prénom, email, contact, domaine d'activité — filtrage client-side), d'un `Select` de filtre par type (options dérivées dynamiquement des types présents dans les données chargées) et d'une colonne « Type » dans le tableau (badge, ou « - » si non renseigné). Compteur « X / Y fournisseur(s) » ajouté dans l'en-tête.
+
+**Erreurs rencontrées & solutions**
+- Erreur transitoire de connexion à la base Supabase (TEST) pendant `prisma migrate dev` (« tenant/user ... not found ») → résolu par simple nouvelle tentative, problème déjà connu et auto-résolutif.
+
+**À tester / points d'attention**
+- Vérifier en conditions réelles : création/édition d'un fournisseur avec un type suggéré et avec un type personnalisé (« Autre »), puis recherche et filtre par type sur la page liste.
+- Le filtre et la recherche sont client-side (tout le jeu de données est chargé en une fois) — à revoir si le nombre de fournisseurs devient très important.
+
+---
+
 ## 2026-09-27 (suite) — Mise en avant du motif de rejet (UX)
 
 **Demande / Contexte**

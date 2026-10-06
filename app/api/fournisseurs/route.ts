@@ -20,7 +20,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { nom, prenom, entreprise, contact, domaineActivite, adresse, email } = body;
+    const { nom, prenom, entreprise, contact, domaineActivite, adresse, email, typeFournisseur } = body;
 
     // Basic validation
     if (!entreprise || !contact || !email) {
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
         domaineActivite,
         adresse,
         email,
+        typeFournisseur: typeFournisseur?.trim() || null,
       },
     });
 

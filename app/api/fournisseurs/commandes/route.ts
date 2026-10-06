@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { sendCommandeFournisseurCreeeNotification } from "@/lib/email/commandeFournisseur";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
@@ -15,7 +16,18 @@ const commandeSchema = z.object({
     fournisseurId: z.string().min(1),
     dateCommande: z.string().datetime().optional(), // ISO string from frontend
     lignes: z.array(ligneCommandeSchema).min(1),
+    appliquerTva: z.boolean().optional().default(false),
+    appliquerAib: z.boolean().optional().default(false),
+    proformaIds: z.array(z.string()).optional().default([]),
 });
+
+const TAUX_TVA = 0.18;
+const TAUX_AIB = 0.03;
+
+// Une proforma ne peut être associée à un bon de commande que si elle est confirmée
+// côté client (validée, payée ou soldée) — pas un brouillon, une proforma envoyée,
+// annulée ou archivée.
+const STATUTS_PROFORMA_ASSOCIABLES = ["Valider", "Payer", "Solde"];
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -33,6 +45,7 @@ export async function GET(request: Request) {
             include: {
                 fournisseur: true,
                 lignes: true,
+                proformas: { include: { invoice: { include: { client: true } } } },
             },
             orderBy: {
                 dateCommande: "desc",
@@ -54,6 +67,27 @@ export async function POST(request: Request) {
         const body = await request.json();
         const validatedData = commandeSchema.parse(body);
 
+        // 0. Vérification des proformas associées : doivent exister et être dans un
+        // statut confirmé côté client (validée, payée ou soldée).
+        if (validatedData.proformaIds.length > 0) {
+            const proformasValides = await prisma.invoice.findMany({
+                where: { id: { in: validatedData.proformaIds } },
+                select: { id: true, statut: true },
+            });
+            const introuvables = validatedData.proformaIds.filter(
+                (id) => !proformasValides.some((p) => p.id === id)
+            );
+            const nonAssociables = proformasValides.filter(
+                (p) => !STATUTS_PROFORMA_ASSOCIABLES.includes(p.statut)
+            );
+            if (introuvables.length > 0 || nonAssociables.length > 0) {
+                return NextResponse.json(
+                    { error: "Seules les proformas validées, payées ou soldées peuvent être associées à un bon de commande." },
+                    { status: 400 }
+                );
+            }
+        }
+
         // 1. Génération du numéro de commande (implémentation simple pour l'instant)
         const count = await prisma.commandeFournisseur.count();
         const year = new Date().getFullYear();
@@ -70,17 +104,14 @@ export async function POST(request: Request) {
             let surface: number | null = null;
             let prixTotalLigne = 0;
 
-            // Si largeur et hauteur sont fournies, on suppose que c'est un produit en m²
-            // On pourrait vérifier le typeUnite du produit en base pour être plus robuste.
+            // Si largeur et hauteur sont fournies, on suppose que c'est un produit en m².
+            // Les dimensions sont saisies en CENTIMÈTRES (usage métier imprimerie/bâche),
+            // conversion géométrique standard en m² : (L×H)/10000 (1 m² = 100cm × 100cm).
+            // Confirmé explicitement par l'utilisateur malgré un bon de commande papier réel
+            // qui utilisait /1000 — ce document papier contenait une erreur de calcul.
             if (ligne.largeur && ligne.hauteur) {
-                surface = Number(ligne.largeur) * Number(ligne.hauteur);
-                // Prix = Surface * Qté * PU (si le PU est au m²)
-                // ATTENTION: La logique métier imprimerie peut varier.
-                // Option A: PU est au m². Prix Total = Surface (m²) * Quantité (nb pièces) * PU
-                // Option B: PU est à l'unité (pièce). Prix Total = Quantité * PU.
-
-                // D'après le plan : "Si le produit est en m², calculer la surface... puis le prix (Surface * Quantité * PU)"
-                // Donc on part sur l'hypothèse que le Prix Unitaire envoyé est le PRIX AU M².
+                surface = (Number(ligne.largeur) * Number(ligne.hauteur)) / 10000;
+                // Prix = Surface (m²) * Quantité (nb pièces) * PU (prix au m²)
                 prixTotalLigne = surface * ligne.quantite * ligne.prixUnitaire;
             } else {
                 // Produit standard (Unité, Rouleau, Forfait...)
@@ -117,6 +148,14 @@ export async function POST(request: Request) {
             designation: produitsMap.get(l.produitFournisseurId) || "Produit inconnu"
         }));
 
+        // 3bis. Calcul TVA (18%) et AIB (3%), chacun activable indépendamment.
+        // Confirmé sur un bon de commande papier réel : le Total TTC = HT + TVA (l'AIB n'y entre PAS).
+        // L'AIB se calcule sur le HT et se DÉDUIT du TTC pour obtenir le Montant Net,
+        // qui est le montant réellement versé au fournisseur (l'AIB étant reversée aux impôts).
+        const tva = validatedData.appliquerTva ? totalHT * TAUX_TVA : 0;
+        const totalTTC = totalHT + tva;
+        const montantAib = validatedData.appliquerAib ? totalHT * TAUX_AIB : 0;
+        const montantNet = totalTTC - montantAib;
 
         // 4. Transaction Prisma
         const commande = await prisma.commandeFournisseur.create({
@@ -126,14 +165,29 @@ export async function POST(request: Request) {
                 fournisseurId: validatedData.fournisseurId,
                 statut: "BROUILLON",
                 totalHT: totalHT,
+                appliquerTva: validatedData.appliquerTva,
+                tva,
+                appliquerAib: validatedData.appliquerAib,
+                montantAib,
+                totalTTC,
+                montantNet,
                 lignes: {
                     create: lignesFinales
-                }
+                },
+                proformas: {
+                    create: validatedData.proformaIds.map((invoiceId) => ({ invoiceId })),
+                },
             },
             include: {
-                lignes: true
+                lignes: true,
+                proformas: { include: { invoice: { include: { client: true } } } },
+                fournisseur: true,
             }
         });
+
+        sendCommandeFournisseurCreeeNotification(commande).catch((err) =>
+            console.error("Erreur lors de l'envoi de la notification de bon de commande créé:", err)
+        );
 
         return NextResponse.json(commande, { status: 201 });
 

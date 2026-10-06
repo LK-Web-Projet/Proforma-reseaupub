@@ -27,6 +27,8 @@ interface CommandeFournisseur {
   dateCommande: string;
   statut: StatutCommandeFournisseur;
   totalHT: number;
+  totalTTC: number;
+  montantNet: number;
   fournisseurId: string;
   fournisseur: Fournisseur;
   lignes: LigneCommande[];
@@ -61,6 +63,7 @@ export default function CommandesFournisseursListPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
   const fetchFournisseurs = useCallback(async () => {
@@ -76,6 +79,13 @@ export default function CommandesFournisseursListPage() {
   useEffect(() => {
     fetchFournisseurs();
   }, [fetchFournisseurs]);
+
+  useEffect(() => {
+    fetch('/api/demandes-budget/me-role')
+      .then((res) => (res.ok ? res.json() : { isAdmin: false }))
+      .then((data) => setIsAdmin(!!data.isAdmin))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   const handleFournisseurCreated = (newFournisseur: Fournisseur) => {
     setFournisseurs((prev) => [...prev, newFournisseur]);
@@ -137,10 +147,10 @@ export default function CommandesFournisseursListPage() {
   };
 
   const summary = useMemo(() => {
-    const total = commandes.reduce((sum, c) => sum + Number(c.totalHT), 0);
+    const total = commandes.reduce((sum, c) => sum + Number(c.montantNet), 0);
     const validees = commandes.filter((c) => c.statut === 'VALIDEE' || c.statut === 'LIVREE');
-    const totalValidees = validees.reduce((sum, c) => sum + Number(c.totalHT), 0);
-    const enBrouillon = commandes.filter((c) => c.statut === 'BROUILLON').reduce((sum, c) => sum + Number(c.totalHT), 0);
+    const totalValidees = validees.reduce((sum, c) => sum + Number(c.montantNet), 0);
+    const enBrouillon = commandes.filter((c) => c.statut === 'BROUILLON').reduce((sum, c) => sum + Number(c.montantNet), 0);
     return { total, totalValidees, enBrouillon, count: commandes.length };
   }, [commandes]);
 
@@ -258,7 +268,7 @@ export default function CommandesFournisseursListPage() {
               <TableHead>Numéro</TableHead>
               <TableHead>Date</TableHead>
               <TableHead className="text-center">Articles</TableHead>
-              <TableHead className="text-right">Total HT</TableHead>
+              <TableHead className="text-right">Montant Net</TableHead>
               <TableHead>Statut</TableHead>
               <TableHead className="text-center">Actions</TableHead>
             </TableRow>
@@ -284,9 +294,9 @@ export default function CommandesFournisseursListPage() {
                     <TableCell className="font-mono text-sm">{commande.numero}</TableCell>
                     <TableCell className="whitespace-nowrap">{format(new Date(commande.dateCommande), 'dd/MM/yyyy')}</TableCell>
                     <TableCell className="text-center">{commande.lignes.length}</TableCell>
-                    <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(commande.totalHT))}</TableCell>
+                    <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(commande.montantNet))}</TableCell>
                     <TableCell>
-                      {isLocked ? (
+                      {isLocked || !isAdmin ? (
                         <Badge variant={STATUT_BADGE_VARIANT[commande.statut]}>{STATUT_LABELS[commande.statut]}</Badge>
                       ) : (
                         <Select
