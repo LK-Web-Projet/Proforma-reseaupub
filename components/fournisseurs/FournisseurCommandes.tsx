@@ -10,13 +10,13 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Eye } from "lucide-react";
-import { CommandeFournisseur } from "@prisma/client";
+import { CommandeFournisseur, StatutCommandeFournisseur } from "@prisma/client";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import NewCommandeForm from "./NewCommandeForm";
+import { CommandeStatutControl } from "./CommandeStatutControl";
 
 interface FournisseurCommandesProps {
     fournisseurId: string;
@@ -26,6 +26,7 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
     const [commandes, setCommandes] = useState<CommandeFournisseur[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
     const router = useRouter();
 
     const fetchCommandes = useCallback(async () => {
@@ -51,9 +52,31 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
         fetchCommandes();
     }, [fetchCommandes]);
 
+    useEffect(() => {
+        fetch("/api/demandes-budget/me-role")
+            .then((res) => (res.ok ? res.json() : { isAdmin: false }))
+            .then((data) => setIsAdmin(!!data.isAdmin))
+            .catch(() => setIsAdmin(false));
+    }, []);
+
     const handleCreateSuccess = () => {
         setIsCreating(false);
         fetchCommandes();
+    };
+
+    const handleStatutChange = async (commande: CommandeFournisseur, newStatut: StatutCommandeFournisseur) => {
+        try {
+            const res = await fetch(`/api/fournisseurs/commandes/${commande.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ statut: newStatut }),
+            });
+            if (!res.ok) throw new Error();
+            setCommandes((prev) => prev.map((c) => (c.id === commande.id ? { ...c, statut: newStatut } : c)));
+            toast.success("Statut mis à jour avec succès !");
+        } catch {
+            toast.error("Erreur lors de la mise à jour du statut.");
+        }
     };
 
     if (isCreating) {
@@ -106,9 +129,13 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
                                     <TableCell className="font-medium">{cmd.numero}</TableCell>
                                     <TableCell>{format(new Date(cmd.dateCommande), "dd/MM/yyyy")}</TableCell>
                                     <TableCell>
-                                        <Badge variant={cmd.statut === 'VALIDEE' ? 'success' : 'secondary'}>
-                                            {cmd.statut}
-                                        </Badge>
+                                        <CommandeStatutControl
+                                            statut={cmd.statut}
+                                            isAdmin={isAdmin}
+                                            onChange={(value) => handleStatutChange(cmd, value)}
+                                            triggerClassName="border-none bg-transparent! p-0 h-auto cursor-pointer w-auto"
+                                            buttonClassName="h-7 text-xs"
+                                        />
                                     </TableCell>
                                     <TableCell className="text-right">
                                         {new Intl.NumberFormat("fr-FR", {

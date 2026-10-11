@@ -34,7 +34,17 @@ export const DEVISE_OPTIONS = Object.entries(DEVISE).map(([key, value]) => ({
   label: value,
 }));
 
+export const DISCOUNT_TYPE = {
+  POURCENTAGE: "Pourcentage (%)",
+  MONTANT: "Montant fixe",
+} as const;
+
+export const DISCOUNT_TYPE_OPTIONS = Object.entries(DISCOUNT_TYPE).map(
+  ([value, label]) => ({ value, label })
+);
+
 // To get the keys as a type
 export type StatutFacture = keyof typeof STATUT_FACTURE;
 export type UniteDuree = keyof typeof UNITE_DUREE;
 export type Devise = keyof typeof DEVISE;
+export type DiscountTypeKey = keyof typeof DISCOUNT_TYPE;

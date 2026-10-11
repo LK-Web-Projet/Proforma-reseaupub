@@ -12,15 +12,16 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Download, Building2, Mail, Phone, MapPin, FileText, Receipt } from "lucide-react";
+import { ArrowLeft, Download, Building2, Mail, Phone, MapPin, FileText, Receipt, Pencil } from "lucide-react";
 import type { StatutCommandeFournisseur } from "@prisma/client";
 import { FactureStatusBadge } from "@/components/FactureStatusBadge";
+import { CommandeStatutControl } from "@/components/fournisseurs/CommandeStatutControl";
+import { EditCommandeFournisseurModal } from "@/components/fournisseurs/EditCommandeFournisseurModal";
 
 interface ProduitFournisseur {
     id: string;
@@ -93,13 +94,6 @@ interface CommandeDetail {
     proformas: ProformaAssociee[];
     createdAt: string;
 }
-
-const statutConfig: Record<StatutCommandeFournisseur, { label: string; variant: "secondary" | "success" | "brouillon" | "annuler" }> = {
-    BROUILLON: { label: "Brouillon", variant: "brouillon" },
-    VALIDEE: { label: "Validée", variant: "success" },
-    LIVREE: { label: "Livrée", variant: "success" },
-    ANNULEE: { label: "Annulée", variant: "annuler" },
-};
 
 const cleanText = (text: string) => {
     return text.replace(/\u202f/g, " ").replace(/\u00a0/g, " ");
@@ -386,6 +380,8 @@ export default function CommandeDetailPage() {
     const [entreprise, setEntreprise] = useState<EntrepriseConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [generatingPdf, setGeneratingPdf] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [isEditOpen, setIsEditOpen] = useState(false);
     const params = useParams();
     const router = useRouter();
     const commandeId = params.commandeId as string;
@@ -417,6 +413,32 @@ export default function CommandeDetailPage() {
     useEffect(() => {
         fetchCommande();
     }, [fetchCommande]);
+
+    useEffect(() => {
+        fetch("/api/demandes-budget/me-role")
+            .then((res) => (res.ok ? res.json() : { isAdmin: false }))
+            .then((data) => setIsAdmin(!!data.isAdmin))
+            .catch(() => setIsAdmin(false));
+    }, []);
+
+    const handleStatutChange = async (newStatut: StatutCommandeFournisseur) => {
+        if (!commande) return;
+        try {
+            const res = await fetch(`/api/fournisseurs/commandes/${commande.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ statut: newStatut }),
+            });
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || "Erreur lors de la mise à jour du statut.");
+            }
+            setCommande((prev) => (prev ? { ...prev, statut: newStatut } : prev));
+            toast.success("Statut mis à jour avec succès !");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Erreur lors de la mise à jour du statut.");
+        }
+    };
 
     const handleDownloadPDF = async () => {
         if (!commande) return;
@@ -482,8 +504,6 @@ export default function CommandeDetailPage() {
         );
     }
 
-    const statut = statutConfig[commande.statut];
-
     return (
         <div className="max-w-5xl mx-auto space-y-6">
             {/* Barre d'actions */}
@@ -495,14 +515,22 @@ export default function CommandeDetailPage() {
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Retour aux commandes
                 </Button>
-                <Button
-                    onClick={handleDownloadPDF}
-                    disabled={generatingPdf}
-                    className="gap-2 bg-[#ef0b53] hover:bg-[#d10a48] text-white"
-                >
-                    <Download className="h-4 w-4" />
-                    {generatingPdf ? "Génération..." : "Télécharger PDF"}
-                </Button>
+                <div className="flex items-center gap-2">
+                    {commande.statut === "BROUILLON" && (
+                        <Button variant="outline" onClick={() => setIsEditOpen(true)} className="gap-2">
+                            <Pencil className="h-4 w-4" />
+                            Modifier
+                        </Button>
+                    )}
+                    <Button
+                        onClick={handleDownloadPDF}
+                        disabled={generatingPdf}
+                        className="gap-2 bg-[#ef0b53] hover:bg-[#d10a48] text-white"
+                    >
+                        <Download className="h-4 w-4" />
+                        {generatingPdf ? "Génération..." : "Télécharger PDF"}
+                    </Button>
+                </div>
             </div>
 
             {/* En-tête du bon de commande */}
@@ -516,12 +544,16 @@ export default function CommandeDetailPage() {
                             <h1 className="text-3xl font-bold">{commande.numero}</h1>
                         </div>
                         <div className="text-right">
-                            <Badge
-                                variant={statut.variant}
-                                className="text-sm px-3 py-1 mb-2 bg-white/20 text-white hover:bg-white/30 border-0"
-                            >
-                                {statut.label}
-                            </Badge>
+                            <div className="mb-2 flex justify-end">
+                                <CommandeStatutControl
+                                    statut={commande.statut}
+                                    isAdmin={isAdmin}
+                                    onChange={handleStatutChange}
+                                    badgeClassName="text-sm px-3 py-1 bg-white/20 text-white hover:bg-white/30 border-0"
+                                    triggerClassName="border-none bg-transparent! p-0 h-auto cursor-pointer w-auto"
+                                    buttonClassName="h-8 text-xs bg-white text-[#ef0b53] hover:bg-white/90"
+                                />
+                            </div>
                             <p className="text-rose-100 text-sm mt-2">
                                 Date :{" "}
                                 <span className="text-white font-medium">
@@ -741,6 +773,12 @@ export default function CommandeDetailPage() {
                     </CardContent>
                 </Card>
             )}
+
+            <EditCommandeFournisseurModal
+                commande={commande.statut === "BROUILLON" && isEditOpen ? commande : null}
+                onClose={() => setIsEditOpen(false)}
+                onSuccess={fetchCommande}
+            />
         </div>
     );
 }

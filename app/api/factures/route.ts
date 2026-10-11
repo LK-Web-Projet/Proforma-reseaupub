@@ -65,7 +65,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
-    const { clientNom, objet, produits, gestionnaireId, devise, paymentConditionPercentage, info, isTaxExempt } = await request.json();
+    const {
+      clientNom, objet, produits, gestionnaireId, devise, paymentConditionPercentage, info, isTaxExempt,
+      isDiscountEnabled, discountType, discountValue,
+    } = await request.json();
 
     if (!clientNom || !objet || !produits || !produits.length) {
       return NextResponse.json(
@@ -115,8 +118,15 @@ export async function POST(request: Request) {
         }
         totalHT += montantTotalLigne;
       }
-      const tva = isTaxExempt ? 0 : totalHT * 0.18;
-      const totalTTC = totalHT + tva;
+      const discountAmount = isDiscountEnabled
+        ? Math.min(
+            discountType === "MONTANT" ? Number(discountValue) || 0 : totalHT * ((Number(discountValue) || 0) / 100),
+            totalHT
+          )
+        : 0;
+      const totalHTApresRemise = totalHT - discountAmount;
+      const tva = isTaxExempt ? 0 : totalHTApresRemise * 0.18;
+      const totalTTC = totalHTApresRemise + tva;
 
       // 3. Génération du numéro de facture
       const now = new Date();
@@ -162,50 +172,55 @@ export async function POST(request: Request) {
           paymentConditionPercentage: paymentConditionPercentage,
           info,
           isTaxExempt: isTaxExempt || false,
+          isDiscountEnabled: isDiscountEnabled || false,
+          discountType: discountType || "POURCENTAGE",
+          discountValue: isDiscountEnabled ? (Number(discountValue) || 0) : 0,
+          discountAmount,
           createdById,
         },
       });
 
-      // 4. Création des lignes de produits
-      await Promise.all(
-        produits.map(async (p: { quantite: number; prixUnitaire: number; duree: number; includeduree: boolean; designation: string; uniteDuree: "jour" | "heure" | "mois"; }) => {
-          const quantite = Number(p.quantite) || 1;
-          const prixUnitaire = Number(p.prixUnitaire) || 0;
-          const duree = Number(p.duree) || 1;
-          const inclureDuree = p.includeduree ?? false;
-          let montantTotal = quantite * prixUnitaire;
-          if (inclureDuree) {
-            montantTotal *= duree;
-          }
+      // 4. Création des lignes de produits (séquentiel : une transaction interactive Prisma
+      // est liée à une seule connexion, donc des requêtes concurrentes via Promise.all ne
+      // s'exécutent pas réellement en parallèle — elles ajoutent juste de la latence et
+      // risquent de dépasser le timeout de la transaction).
+      for (const p of produits as { quantite: number; prixUnitaire: number; duree: number; includeduree: boolean; designation: string; uniteDuree: "jour" | "heure" | "mois"; }[]) {
+        const quantite = Number(p.quantite) || 1;
+        const prixUnitaire = Number(p.prixUnitaire) || 0;
+        const duree = Number(p.duree) || 1;
+        const inclureDuree = p.includeduree ?? false;
+        let montantTotal = quantite * prixUnitaire;
+        if (inclureDuree) {
+          montantTotal *= duree;
+        }
 
-          let produit = await tx.produit.findUnique({
-            where: { nom: p.designation },
-          });
+        let produit = await tx.produit.findUnique({
+          where: { nom: p.designation },
+        });
 
-          if (!produit) {
-            produit = await tx.produit.create({
-              data: {
-                nom: p.designation,
-                prixUnitaire: prixUnitaire,
-              },
-            });
-          }
-
-          await tx.invoiceProduit.create({
+        if (!produit) {
+          produit = await tx.produit.create({
             data: {
-              invoiceId: facture.id,
-              productId: produit.id,
-              designation: p.designation,
-              quantite,
-              prixUnitaire,
-              duree,
-              uniteDuree: p.uniteDuree || "jour",
-              montantTotal,
-              includeduree: inclureDuree,
+              nom: p.designation,
+              prixUnitaire: prixUnitaire,
             },
           });
-        })
-      );
+        }
+
+        await tx.invoiceProduit.create({
+          data: {
+            invoiceId: facture.id,
+            productId: produit.id,
+            designation: p.designation,
+            quantite,
+            prixUnitaire,
+            duree,
+            uniteDuree: p.uniteDuree || "jour",
+            montantTotal,
+            includeduree: inclureDuree,
+          },
+        });
+      }
 
       // 5. Association du gestionnaire (si fourni)
       if (gestionnaireId) {
@@ -218,6 +233,8 @@ export async function POST(request: Request) {
       }
 
       return facture;
+    }, {
+      timeout: 15000, // 15 secondes — même valeur que la transaction d'édition (app/api/factures/[id]/route.ts)
     });
 
     return NextResponse.json(newInvoice, { status: 201 });

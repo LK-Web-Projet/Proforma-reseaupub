@@ -37,7 +37,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
+import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, DISCOUNT_TYPE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 
@@ -84,6 +84,10 @@ type Facture = {
   devise: Devise;
   info?: string | null;
   isTaxExempt?: boolean | null;
+  isDiscountEnabled?: boolean | null;
+  discountType?: "POURCENTAGE" | "MONTANT" | null;
+  discountValue?: number | null;
+  discountAmount?: number | null;
   client: {
     id: string;
     nom: string;
@@ -408,8 +412,18 @@ export default function FactureDetailPage() {
   const status = statusConfig[facture.statut] || { label: facture.statut, color: "bg-gray-100", icon: FileText };
 
   const currentTotalHT = isEditing ? (formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0) : Number(facture.totalHT);
-  const currentTVA = isEditing ? (formData.isTaxExempt ? 0 : currentTotalHT * 0.18) : Number(facture.tva);
-  const currentTotalTTC = currentTotalHT + currentTVA;
+  const currentIsDiscountEnabled = isEditing ? !!formData.isDiscountEnabled : !!facture.isDiscountEnabled;
+  const currentDiscountType = isEditing ? formData.discountType : facture.discountType;
+  const currentDiscountValue = isEditing ? Number(formData.discountValue) || 0 : Number(facture.discountValue) || 0;
+  const currentDiscountAmount = currentIsDiscountEnabled
+    ? Math.min(
+        currentDiscountType === "MONTANT" ? currentDiscountValue : currentTotalHT * (currentDiscountValue / 100),
+        currentTotalHT
+      )
+    : 0;
+  const currentTotalHTApresRemise = currentTotalHT - currentDiscountAmount;
+  const currentTVA = isEditing ? (formData.isTaxExempt ? 0 : currentTotalHTApresRemise * 0.18) : Number(facture.tva);
+  const currentTotalTTC = currentTotalHTApresRemise + currentTVA;
 
   return (
     <div className="container mx-auto py-8 space-y-8 max-w-6xl">
@@ -478,25 +492,54 @@ export default function FactureDetailPage() {
                             <Briefcase className="w-5 h-5" /> Objet de la Mission
                         </CardTitle>
                         {isEditing && (
-                             <div className="flex items-center gap-6">
-                                <div className="flex items-center gap-2">
-                                    <Switch checked={formData.isTaxExempt || false} onCheckedChange={(v) => setFormData(p => ({...p, isTaxExempt: v}))} />
-                                    <span className="text-xs font-bold uppercase">Exonérer TVA</span>
+                             <div className="flex flex-col items-end gap-2">
+                                <div className="flex items-center gap-6">
+                                    <div className="flex items-center gap-2">
+                                        <Switch checked={formData.isTaxExempt || false} onCheckedChange={(v) => setFormData(p => ({...p, isTaxExempt: v}))} />
+                                        <span className="text-xs font-bold uppercase">Exonérer TVA</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Percent className="w-4 h-4 text-muted-foreground" />
+                                        <Select
+                                            value={String(formData.paymentConditionPercentage ?? 0)}
+                                            onValueChange={(v) => setFormData(p => ({...p, paymentConditionPercentage: Number(v)}))}
+                                        >
+                                            <SelectTrigger className="h-8 w-20 font-bold"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((v) => (
+                                                    <SelectItem key={v} value={String(v)}>{v}%</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <span className="text-xs font-bold uppercase">Acompte</span>
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Percent className="w-4 h-4 text-muted-foreground" />
-                                    <Select 
-                                        value={String(formData.paymentConditionPercentage ?? 0)} 
-                                        onValueChange={(v) => setFormData(p => ({...p, paymentConditionPercentage: Number(v)}))}
-                                    >
-                                        <SelectTrigger className="h-8 w-20 font-bold"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((v) => (
-                                                <SelectItem key={v} value={String(v)}>{v}%</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <span className="text-xs font-bold uppercase">Acompte</span>
+                                    <Switch checked={formData.isDiscountEnabled || false} onCheckedChange={(v) => setFormData(p => ({...p, isDiscountEnabled: v}))} />
+                                    <span className="text-xs font-bold uppercase">Remise</span>
+                                    {formData.isDiscountEnabled && (
+                                        <>
+                                            <Select
+                                                value={formData.discountType || "POURCENTAGE"}
+                                                onValueChange={(v) => setFormData(p => ({...p, discountType: v as "POURCENTAGE" | "MONTANT"}))}
+                                            >
+                                                <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    {DISCOUNT_TYPE_OPTIONS.map((o) => (
+                                                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={formData.discountValue ?? 0}
+                                                onChange={(e) => setFormData(p => ({...p, discountValue: Number(e.target.value)}))}
+                                                className="h-8 w-24 text-xs"
+                                            />
+                                        </>
+                                    )}
                                 </div>
                              </div>
                         )}
@@ -819,9 +862,20 @@ export default function FactureDetailPage() {
                     <CardTitle className="text-sm font-bold uppercase tracking-widest text-primary-foreground/70">Récapitulatif Financier</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-4">
+                    {currentIsDiscountEnabled && currentDiscountAmount > 0 && (
+                        <div className="flex justify-between text-sm text-red-200">
+                            <span>Remise {currentDiscountType === "POURCENTAGE" ? `(${currentDiscountValue}%)` : ""}</span>
+                            <span className="font-mono">− {formatMoney(currentDiscountAmount)}</span>
+                        </div>
+                    )}
                     <div className="flex justify-between text-sm opacity-80">
                         <span>Total HT</span>
-                        <span className="font-mono">{formatMoney(currentTotalHT)}</span>
+                        <span className="font-mono">
+                            {currentIsDiscountEnabled && currentDiscountAmount > 0 && (
+                                <span className="line-through opacity-50 mr-2">{formatMoney(currentTotalHT)}</span>
+                            )}
+                            {formatMoney(currentTotalHTApresRemise)}
+                        </span>
                     </div>
                     <div className="flex justify-between text-sm opacity-80">
                         <span>TVA (18%)</span>

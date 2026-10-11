@@ -249,10 +249,29 @@ export async function generateInvoicePdf(
   const totalHT = Number(facture.totalHT ?? 0);
   const tva = Number(facture.tva ?? 0);
   const totalTTC = Number(facture.totalTTC ?? 0);
+  const discountAmount = Number(facture.discountAmount ?? 0);
+  const hasDiscount = Boolean(facture.isDiscountEnabled) && discountAmount > 0;
+  const totalHTNet = totalHT - discountAmount;
   const totalsX = 350;
   const valuesX = width - pageMargin;
+
+  if (hasDiscount) {
+    const pctLabel = facture.discountType === "POURCENTAGE" ? ` (${Number(facture.discountValue)}%)` : "";
+    drawText(page, font, `Remise${pctLabel} :`, totalsX, y.value);
+    drawText(page, font, `- ${formatNumber(discountAmount)} ${facture.devise}`, valuesX, y.value, 12, 'right');
+    y.value -= 25;
+  }
+
   drawText(page, font, `Total HT :`, totalsX, y.value);
-  drawText(page, font, `${formatNumber(totalHT)} ${facture.devise}`, valuesX, y.value, 12, 'right');
+  if (hasDiscount) {
+    const netText = `${formatNumber(totalHTNet)} ${facture.devise}`;
+    const originalText = `${formatNumber(totalHT)} ${facture.devise}`;
+    const netWidth = font.widthOfTextAtSize(cleanText(netText), 12);
+    drawText(page, font, netText, valuesX, y.value, 12, 'right');
+    drawStrikethroughText(page, font, originalText, valuesX - netWidth - 8, y.value, 10, 'right');
+  } else {
+    drawText(page, font, `${formatNumber(totalHT)} ${facture.devise}`, valuesX, y.value, 12, 'right');
+  }
   y.value -= 25;
   drawText(page, font, `TVA 18 % :`, totalsX, y.value);
   drawText(page, font, `${formatNumber(tva)} ${facture.devise}`, valuesX, y.value, 12, 'right');
@@ -522,6 +541,24 @@ function drawText(
         textX = x - textWidth;
     }
     page.drawText(sanitizedText, { x: textX, y, size, font, color });
+}
+
+function drawStrikethroughText(
+  page: PDFPage,
+  font: PDFFont,
+  text: string,
+  x: number,
+  y: number,
+  size = 10,
+  align: 'left' | 'right' = 'left',
+  color = rgb(0.55, 0.55, 0.55)
+) {
+  const sanitizedText = cleanText(text);
+  const textWidth = font.widthOfTextAtSize(sanitizedText, size);
+  const textX = align === 'right' ? x - textWidth : x;
+  page.drawText(sanitizedText, { x: textX, y, size, font, color });
+  const lineY = y + size * 0.35;
+  page.drawLine({ start: { x: textX, y: lineY }, end: { x: textX + textWidth, y: lineY }, thickness: 1, color });
 }
 
 function centerText(

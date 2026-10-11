@@ -26,6 +26,9 @@ const updateInvoiceSchema = z.object({
   gestionnaireId: z.string().optional().nullable(),
   info: z.string().optional().nullable(),
   isTaxExempt: z.boolean().optional(),
+  isDiscountEnabled: z.boolean().optional(),
+  discountType: z.enum(["POURCENTAGE", "MONTANT"]).optional(),
+  discountValue: z.coerce.number().min(0).optional(),
 });
 
 // ---------- Helpers ----------
@@ -106,7 +109,10 @@ async function updateFacture(id: string, body: unknown) {
   }
 
   console.log("Validation réussie. Données validées:", validation.data);
-  const { statut, produits, devise, paymentConditionPercentage, objet, gestionnaireId, info, isTaxExempt } = validation.data;
+  const {
+    statut, produits, devise, paymentConditionPercentage, objet, gestionnaireId, info, isTaxExempt,
+    isDiscountEnabled, discountType, discountValue,
+  } = validation.data;
 
   let previousStatut: StatusFacture | undefined;
 
@@ -159,16 +165,35 @@ async function updateFacture(id: string, body: unknown) {
         console.log(`Mise à jour du gestionnaire pour la facture ${id}`);
       }
 
-      if (produits || isTaxExempt !== undefined) {
-        console.log("Mise à jour des produits ou de l'exonération de taxe et calcul des totaux.");
-        
+      if (
+        produits || isTaxExempt !== undefined ||
+        isDiscountEnabled !== undefined || discountType !== undefined || discountValue !== undefined
+      ) {
+        console.log("Mise à jour des produits, de l'exonération de taxe ou de la remise et calcul des totaux.");
+
         const finalIsTaxExempt = isTaxExempt ?? currentInvoice.isTaxExempt;
+        const finalIsDiscountEnabled = isDiscountEnabled ?? currentInvoice.isDiscountEnabled;
+        const finalDiscountType = discountType ?? currentInvoice.discountType;
+        const finalDiscountValue = discountValue ?? Number(currentInvoice.discountValue);
 
         const totalHT = produits ? produits.reduce((acc, p) => acc + computeLineTotal(p), 0) : Number(currentInvoice.totalHT);
-        const montantTVA = finalIsTaxExempt ? 0 : totalHT * 0.18;
-        const totalTTC = totalHT + montantTVA;
 
-        console.log(`Nouveaux totaux calculés: HT=${totalHT}, TVA_amount=${montantTVA}, TTC=${totalTTC}`);
+        const discountAmount = finalIsDiscountEnabled
+          ? Math.min(
+              finalDiscountType === "MONTANT" ? finalDiscountValue : totalHT * (finalDiscountValue / 100),
+              totalHT
+            )
+          : 0;
+        const totalHTApresRemise = totalHT - discountAmount;
+        const montantTVA = finalIsTaxExempt ? 0 : totalHTApresRemise * 0.18;
+        const totalTTC = totalHTApresRemise + montantTVA;
+
+        console.log(`Nouveaux totaux calculés: HT=${totalHT}, Remise=${discountAmount}, TVA_amount=${montantTVA}, TTC=${totalTTC}`);
+
+        updatedFactureData.isDiscountEnabled = finalIsDiscountEnabled;
+        updatedFactureData.discountType = finalDiscountType;
+        updatedFactureData.discountValue = finalIsDiscountEnabled ? finalDiscountValue : 0;
+        updatedFactureData.discountAmount = discountAmount;
 
         const payments = await tx.paiement.findMany({
           where: { invoiceId: id, type: 'PAIEMENT' },

@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
 import { ClientCombobox } from "./ClientCombobox";
-import { DEVISE, DEVISE_OPTIONS, UNITE_DUREE, UNITE_DUREE_OPTIONS } from "@/lib/constants";
+import { DEVISE, DEVISE_OPTIONS, UNITE_DUREE, UNITE_DUREE_OPTIONS, DISCOUNT_TYPE_OPTIONS } from "@/lib/constants";
 import { Textarea } from "./ui/textarea";
 import { 
     User, Info, Settings, Package, 
@@ -79,6 +79,9 @@ const schema = z.object({
   objet: z.string().min(1, "L'objet de la facture est requis."),
   info: z.string().optional(),
   isTaxExempt: z.boolean().optional(),
+  isDiscountEnabled: z.boolean().optional(),
+  discountType: z.enum(["POURCENTAGE", "MONTANT"]).optional(),
+  discountValue: z.coerce.number().min(0).optional(),
   produits: z.array(productSchema)
     .min(1, "Au moins un produit est requis.")
     .refine(
@@ -170,6 +173,9 @@ export default function FactureForm() {
       devise: "XOF",
       paymentConditionPercentage: 50,
       isTaxExempt: false,
+      isDiscountEnabled: false,
+      discountType: "POURCENTAGE",
+      discountValue: 0,
     },
   });
 
@@ -180,6 +186,9 @@ export default function FactureForm() {
   const watchedProduits = watch("produits");
   const watchedDevise = watch("devise");
   const watchedIsTaxExempt = watch("isTaxExempt");
+  const watchedIsDiscountEnabled = watch("isDiscountEnabled");
+  const watchedDiscountType = watch("discountType");
+  const watchedDiscountValue = watch("discountValue");
 
   const handleClientCreated = (newClient: Client) => {
     setClients((prevClients) => [...prevClients, newClient]);
@@ -197,8 +206,17 @@ export default function FactureForm() {
     return acc + totalLigne;
   }, 0);
 
-  const tva = watchedIsTaxExempt ? 0 : totalHT * 0.18;
-  const totalTTC = totalHT + tva;
+  const discountAmount = watchedIsDiscountEnabled
+    ? Math.min(
+        watchedDiscountType === "MONTANT"
+          ? Number(watchedDiscountValue) || 0
+          : totalHT * ((Number(watchedDiscountValue) || 0) / 100),
+        totalHT
+      )
+    : 0;
+  const totalHTApresRemise = totalHT - discountAmount;
+  const tva = watchedIsTaxExempt ? 0 : totalHTApresRemise * 0.18;
+  const totalTTC = totalHTApresRemise + tva;
 
   const onSubmit: SubmitHandler<FactureFormInput> = async (data) => {
     const validatedData: FactureFormOutput = schema.parse(data);
@@ -481,6 +499,47 @@ export default function FactureForm() {
                     )}
                 />
               </div>
+
+              <div className="p-4 bg-slate-50 rounded-xl space-y-3 border">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <label className="text-sm font-bold text-slate-700">Remise</label>
+                    <p className="text-[10px] text-muted-foreground">Déduire un montant du Total HT</p>
+                  </div>
+                  <Controller
+                    name="isDiscountEnabled"
+                    control={control}
+                    render={({ field }) => (
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    )}
+                  />
+                </div>
+                {watchedIsDiscountEnabled && (
+                  <div className="flex gap-2">
+                    <Controller
+                      name="discountType"
+                      control={control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DISCOUNT_TYPE_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      {...register("discountValue")}
+                      placeholder={watchedDiscountType === "MONTANT" ? watchedDevise : "%"}
+                    />
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -492,9 +551,20 @@ export default function FactureForm() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
+              {watchedIsDiscountEnabled && discountAmount > 0 && (
+                <div className="flex justify-between items-center text-sm text-red-200">
+                  <span>Remise {watchedDiscountType === "POURCENTAGE" ? `(${watchedDiscountValue || 0}%)` : ""}</span>
+                  <span className="font-mono">− {discountAmount.toLocaleString()} {watchedDevise}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center opacity-80 text-sm">
                 <span>Total HT</span>
-                <span className="font-mono">{totalHT.toLocaleString()} {watchedDevise}</span>
+                <span className="font-mono">
+                  {watchedIsDiscountEnabled && discountAmount > 0 && (
+                    <span className="line-through opacity-50 mr-2">{totalHT.toLocaleString()}</span>
+                  )}
+                  {totalHTApresRemise.toLocaleString()} {watchedDevise}
+                </span>
               </div>
               <div className="flex justify-between items-center opacity-80 text-sm">
                 <span>TVA (18%)</span>
