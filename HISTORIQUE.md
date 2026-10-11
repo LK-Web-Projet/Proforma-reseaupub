@@ -22,6 +22,88 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-11 (suite) — Correction timeout de transaction à la création d'une facture (P2028)
+
+**Demande / Contexte**
+L'utilisateur a rencontré une erreur lors de la création d'une facture : `PrismaClientKnownRequestError P2028 — Transaction API error: Transaction not found`, après ~19 secondes d'attente, en échouant sur `tx.produit.findUnique()`.
+
+**Erreurs rencontrées & solutions**
+- **Cause** : `POST /api/factures` ouvrait sa transaction Prisma (`prisma.$transaction(async (tx) => {...})`) sans timeout explicite, donc avec la valeur par défaut (5 secondes). La route d'édition (`PATCH /api/factures/[id]`) avait déjà été corrigée avec `{ timeout: 15000 }`, mais la route de création ne l'avait jamais reçu. Avec une réponse Supabase plus lente que d'habitude, la transaction a dépassé les 5 secondes et a été fermée côté serveur pendant que le code essayait encore de l'utiliser.
+- **Solution** :
+  - [app/api/factures/route.ts](app/api/factures/route.ts) : ajout de `{ timeout: 15000 }` sur la transaction de création (même valeur que la route d'édition).
+  - Dans la même transaction, la création des lignes de produits (`InvoiceProduit`) est passée de `Promise.all(produits.map(...))` à une boucle `for` séquentielle — une transaction interactive Prisma est liée à une seule connexion, donc des requêtes « concurrentes » sur `tx` ne s'exécutent pas réellement en parallèle et n'apportaient qu'une latence/charge inutile, augmentant le risque de dépasser le timeout sur les proformas à plusieurs lignes.
+
+**À tester / points d'attention**
+- Recréer une facture avec plusieurs produits pour confirmer que l'erreur ne se reproduit plus, y compris en cas de lenteur réseau vers Supabase.
+
+## 2026-10-11 — Remise sur le Total HT des proformas/factures
+
+**Demande / Contexte**
+Les proformas n'avaient aucune notion de remise. L'utilisateur veut pouvoir cocher une case « Remise » à la création et à l'édition d'une proforma, puis choisir entre un pourcentage du Total HT ou un montant fixe à déduire. Décision validée : la TVA (18%) se calcule sur le HT **après** remise (pratique standard de facturation), pas sur le HT brut — `Total TTC = (HT − Remise) + TVA`. Retour utilisateur sur l'affichage : la ligne « Remise » doit apparaître **avant** la ligne « Total HT », et la ligne « Total HT » doit montrer le montant original **barré** suivi du montant net, plutôt qu'une simple ligne de déduction après coup.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) : nouvel enum `DiscountType` (`POURCENTAGE`/`MONTANT`) et 4 nouveaux champs sur `Invoice` : `isDiscountEnabled`, `discountType`, `discountValue` (valeur brute saisie), `discountAmount` (montant calculé, toujours stocké comme `tva`/`totalTTC`, jamais recalculé à la lecture). Migration `prisma/migrations/20261011205929_add_remise_invoice/`, aucun backfill nécessaire (défauts `false`/`0` n'affectent pas les factures existantes).
+- [lib/constants.ts](lib/constants.ts) : `DISCOUNT_TYPE`/`DISCOUNT_TYPE_OPTIONS` (même pattern que `DEVISE`/`UNITE_DUREE`).
+- [app/api/factures/route.ts](app/api/factures/route.ts) (POST) et [app/api/factures/[id]/route.ts](app/api/factures/[id]/route.ts) (`updateFacture`, PATCH/PUT) : calcul `discountAmount` (plafonné au Total HT, ne peut pas rendre le HT net négatif) → TVA calculée sur `totalHT − discountAmount` → `totalTTC`. Côté édition, la condition de recalcul est élargie pour se déclencher aussi quand seuls les champs de remise changent (sans toucher aux produits) ; la cascade `resteAPayer = round(totalTTC − Σpaiements)` déjà existante reste inchangée, elle utilise simplement le nouveau `totalTTC`.
+- [components/FactureForm.tsx](components/FactureForm.tsx) : nouveau bloc Switch + Select(type) + Input(valeur) dans la carte Configuration (même pattern que le switch TVA existant) ; carte Récapitulatif mise à jour (Remise avant Total HT, Total HT barré + montant net).
+- [app/(main)/facture/[id]/page.tsx](app/(main)/facture/[id]/page.tsx) : mêmes contrôles en mode édition inline (header de la carte « Objet de la Mission »), mêmes calculs réactifs (`currentDiscountAmount`/`currentTotalHTApresRemise`), même affichage dans la carte « Récapitulatif Financier ».
+- [lib/pdf.ts](lib/pdf.ts) : nouveau helper `drawStrikethroughText` (pdf-lib n'a pas de style barré natif — dessine le texte puis trace un trait fin dessus) ; ligne « Remise » insérée avant « Total HT », qui affiche désormais le montant original barré suivi du montant net quand une remise est active.
+- [app/(main)/facture/page.tsx](app/(main)/facture/page.tsx) : colonne « Remise » ajoutée à l'export Excel, entre Total HT et TVA.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Créer une proforma avec une remise en % et vérifier HT (barré + net)/Remise/TVA/TTC dans le formulaire puis après création.
+- Idem avec un montant fixe, et vérifier le plafonnement (remise > HT ne doit pas donner un HT net négatif).
+- Éditer une proforma existante pour activer/modifier/désactiver la remise, en particulier si des paiements existent déjà (vérifier que `resteAPayer` se recalcule correctement).
+- Télécharger le PDF et vérifier l'affichage barré + montant net sur la ligne Total HT, et la ligne Remise juste au-dessus.
+- Vérifier la nouvelle colonne Remise dans l'export Excel.
+
+## 2026-10-11 (suite) — Workflow complet de validation des bons de commande fournisseurs (statut partout + édition en brouillon)
+
+**Demande / Contexte**
+L'admin doit pouvoir changer le statut d'un bon de commande fournisseur depuis n'importe quel écran (liste globale, onglet « Bons de Commande » d'un fournisseur, et la page de détail/PDF — qui n'avait jusqu'ici aucun contrôle de statut). Une fois un bon passé à « Validée », les autres utilisateurs (non-admin) doivent avoir accès à un seul bouton : confirmer l'envoi, ce qui fait passer le bon à « Livrée » (fin du processus pour un non-admin). Par ailleurs, tant qu'un bon est en « Brouillon », il doit être possible de le modifier intégralement (lignes/produits, TVA/AIB, proformas associées, date) via un bouton dédié — cette capacité d'édition n'existait pas du tout jusqu'ici (seule la création existait).
+
+**Modifications apportées**
+- [lib/commandeFournisseurCalc.ts](lib/commandeFournisseurCalc.ts) (nouveau) : extraction des calculs partagés (taux TVA/AIB, calcul de surface/prix d'une ligne, calcul HT→TVA→TTC→AIB→Net, liste des statuts de proforma associables) — précédemment dupliqués entre la route de création et maintenant aussi la route d'édition ; réutilisé par les deux pour éviter une 4ᵉ divergence de formule comme celles corrigées plus tôt aujourd'hui.
+- [app/api/fournisseurs/commandes/[commandeId]/route.ts](app/api/fournisseurs/commandes/[commandeId]/route.ts) :
+  - `PATCH` (changement de statut) : nouvelle règle d'autorisation — un admin (`BUDGET_ADMIN_EMAILS`) peut changer le statut librement ; un non-admin ne peut faire **qu'une seule transition** : confirmer l'envoi d'un bon `VALIDEE` → `LIVREE` (403 sinon).
+  - `PUT` (nouveau) : modification complète d'un bon de commande — remplace les lignes et les proformas associées, recalcule HT/TVA/AIB/TTC/Net, revalide les proformas (statuts associables). Refusé (403) si le bon n'est plus en `BROUILLON`.
+- [components/fournisseurs/CommandeStatutControl.tsx](components/fournisseurs/CommandeStatutControl.tsx) (nouveau) : composant partagé encapsulant la règle d'affichage — admin et statut non verrouillé → menu déroulant complet ; non-admin et statut `VALIDEE` → bouton « Confirmer l'envoi » ; sinon → badge en lecture seule. Réutilisé dans les 3 écrans pour éviter de dupliquer cette logique.
+- [components/fournisseurs/EditCommandeFournisseurModal.tsx](components/fournisseurs/EditCommandeFournisseurModal.tsx) (nouveau) : modale d'édition complète d'un bon de commande en brouillon (mêmes champs que la création — lignes/produits, dimensions, TVA/AIB, proformas — fournisseur fixe et non modifiable), soumet en `PUT`.
+- [app/(main)/fournisseur/commandes/page.tsx](app/(main)/fournisseur/commandes/page.tsx) et [components/fournisseurs/FournisseurCommandes.tsx](components/fournisseurs/FournisseurCommandes.tsx) : remplacement de l'affichage de statut par `CommandeStatutControl` (le second n'avait jusqu'ici aucun contrôle, juste un badge statique).
+- [app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx](app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx) : ajout du contrôle de statut dans l'en-tête (remplace le badge statique) ; nouveau bouton « Modifier » dans la barre d'actions, visible uniquement si `statut === BROUILLON`, ouvrant `EditCommandeFournisseurModal`.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Tester les 3 écrans avec un compte admin (menu déroulant complet partout) et un compte non-admin (badge partout, sauf bouton « Confirmer l'envoi » quand `VALIDEE`).
+- Tester directement l'API : `PATCH` avec un compte non-admin sur une transition autre que VALIDEE→LIVREE doit renvoyer 403 ; `PUT` sur un bon non-BROUILLON doit renvoyer 403.
+- Modifier un bon en brouillon (ajouter/retirer des lignes, changer TVA/AIB, changer les proformas associées) et vérifier que les totaux et le PDF reflètent bien les nouvelles valeurs après enregistrement.
+
+---
+
+## 2026-10-11 — Modification des produits fournisseur (fonctionnalité manquante)
+
+**Demande / Contexte**
+L'utilisateur a signalé ne pas pouvoir modifier les produits du catalogue d'un fournisseur sur son VPS. Après clarification, ce n'est pas un bug spécifique à la production : la fonctionnalité d'édition n'avait tout simplement jamais été construite pour `ProduitFournisseur` — seules la création et la gestion des photos (ajoutées le 2026-10-06) existaient.
+
+**Modifications apportées**
+- [app/api/fournisseurs/produits/[id]/route.ts](app/api/fournisseurs/produits/[id]/route.ts) (nouveau) : `PUT` pour modifier désignation/description/prixUnitaire/typeUnite d'un produit existant (JSON, validation Zod), renvoie le produit avec ses photos.
+- [components/fournisseurs/EditProduitDialog.tsx](components/fournisseurs/EditProduitDialog.tsx) (nouveau) : dialogue de modification, mêmes champs que le formulaire de création.
+- [components/fournisseurs/FournisseurProduits.tsx](components/fournisseurs/FournisseurProduits.tsx) : ajout d'un bouton crayon en haut à droite de chaque carte produit (indépendant du clic sur la carte qui ouvre la galerie photos) ouvrant `EditProduitDialog`.
+
+**Erreurs rencontrées & solutions**
+Aucune.
+
+**À tester / points d'attention**
+- Vérifier la modification d'un produit (prix, désignation, unité) et que les photos restent bien affichées après modification.
+- Déployer sur le VPS pour que l'utilisateur confirme que le bouton de modification est bien présent.
+
+---
+
 ## 2026-10-06 (suite 5) — Validation admin des bons de commande fournisseurs (email + restriction de statut)
 
 **Demande / Contexte**

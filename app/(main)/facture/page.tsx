@@ -198,6 +198,7 @@ export default function Home() {
         'Gestionnaire(s)': gestionnaires || '-',
         'Devise': f.devise,
         'Total HT': Number(f.totalHT),
+        'Remise': Number(f.discountAmount) || 0,
         'TVA': Number(f.tva),
         'Total TTC': totalTTC,
         'Payé': totalTTC - resteAPayer,

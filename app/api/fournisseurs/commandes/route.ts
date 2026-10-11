@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { sendCommandeFournisseurCreeeNotification } from "@/lib/email/commandeFournisseur";
+import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
@@ -20,14 +21,6 @@ const commandeSchema = z.object({
     appliquerAib: z.boolean().optional().default(false),
     proformaIds: z.array(z.string()).optional().default([]),
 });
-
-const TAUX_TVA = 0.18;
-const TAUX_AIB = 0.03;
-
-// Une proforma ne peut être associée à un bon de commande que si elle est confirmée
-// côté client (validée, payée ou soldée) — pas un brouillon, une proforma envoyée,
-// annulée ou archivée.
-const STATUTS_PROFORMA_ASSOCIABLES = ["Valider", "Payer", "Solde"];
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -96,39 +89,18 @@ export async function POST(request: Request) {
         // 2. Calcul du total et préparation des lignes
         let totalHT = 0;
 
-        // On récupère les infos produits pour être sûr (ou on fait confiance au front, ici on va vérifier/enrichir)
-        // Pour simplifier, on suppose que le front envoie le prix, mais on pourrait le revérifier en base.
-        // LE PLUS IMPORTANT : Le calcul de surface.
-
         const lignesToCreate = validatedData.lignes.map((ligne) => {
-            let surface: number | null = null;
-            let prixTotalLigne = 0;
-
-            // Si largeur et hauteur sont fournies, on suppose que c'est un produit en m².
-            // Les dimensions sont saisies en CENTIMÈTRES (usage métier imprimerie/bâche),
-            // conversion géométrique standard en m² : (L×H)/10000 (1 m² = 100cm × 100cm).
-            // Confirmé explicitement par l'utilisateur malgré un bon de commande papier réel
-            // qui utilisait /1000 — ce document papier contenait une erreur de calcul.
-            if (ligne.largeur && ligne.hauteur) {
-                surface = (Number(ligne.largeur) * Number(ligne.hauteur)) / 10000;
-                // Prix = Surface (m²) * Quantité (nb pièces) * PU (prix au m²)
-                prixTotalLigne = surface * ligne.quantite * ligne.prixUnitaire;
-            } else {
-                // Produit standard (Unité, Rouleau, Forfait...)
-                // Prix Total = Quantité * PU
-                prixTotalLigne = ligne.quantite * ligne.prixUnitaire;
-            }
-
-            totalHT += prixTotalLigne;
+            const { surface, prixTotal } = computeLigne(ligne);
+            totalHT += prixTotal;
 
             return {
                 produitFournisseurId: ligne.produitFournisseurId,
                 quantite: ligne.quantite,
                 largeur: ligne.largeur,
                 hauteur: ligne.hauteur,
-                surface: surface,
+                surface,
                 prixUnitaire: ligne.prixUnitaire,
-                prixTotal: prixTotalLigne,
+                prixTotal,
                 // On devra récupérer la désignation, on le fera dans la transaction ou juste avant
             };
         });
@@ -149,13 +121,11 @@ export async function POST(request: Request) {
         }));
 
         // 3bis. Calcul TVA (18%) et AIB (3%), chacun activable indépendamment.
-        // Confirmé sur un bon de commande papier réel : le Total TTC = HT + TVA (l'AIB n'y entre PAS).
-        // L'AIB se calcule sur le HT et se DÉDUIT du TTC pour obtenir le Montant Net,
-        // qui est le montant réellement versé au fournisseur (l'AIB étant reversée aux impôts).
-        const tva = validatedData.appliquerTva ? totalHT * TAUX_TVA : 0;
-        const totalTTC = totalHT + tva;
-        const montantAib = validatedData.appliquerAib ? totalHT * TAUX_AIB : 0;
-        const montantNet = totalTTC - montantAib;
+        const { tva, totalTTC, montantAib, montantNet } = computeTotaux(
+            totalHT,
+            validatedData.appliquerTva,
+            validatedData.appliquerAib
+        );
 
         // 4. Transaction Prisma
         const commande = await prisma.commandeFournisseur.create({

@@ -21,9 +21,10 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Plus, ImagePlus, Image as ImageIcon, X } from "lucide-react";
+import { Plus, ImagePlus, Image as ImageIcon, X, Pencil } from "lucide-react";
 import type { TypeUnite } from "@prisma/client";
 import { ProduitPhotosDialog, ProduitPhoto } from "./ProduitPhotosDialog";
+import { EditProduitDialog } from "./EditProduitDialog";
 
 interface FournisseurProduitsProps {
     fournisseurId: string;
@@ -48,6 +49,7 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [selectedProduit, setSelectedProduit] = useState<Produit | null>(null);
+    const [editingProduit, setEditingProduit] = useState<Produit | null>(null);
 
     const [newProduct, setNewProduct] = useState({
         designation: "",
@@ -139,6 +141,11 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
     const handlePhotosChange = (produitId: string, photos: ProduitPhoto[]) => {
         setProduits((prev) => prev.map((p) => (p.id === produitId ? { ...p, photos } : p)));
         setSelectedProduit((prev) => (prev && prev.id === produitId ? { ...prev, photos } : prev));
+    };
+
+    const handleProduitSaved = (updated: Produit) => {
+        setProduits((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+        setSelectedProduit((prev) => (prev && prev.id === updated.id ? updated : prev));
     };
 
     return (
@@ -290,6 +297,17 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                                         <ImageIcon className="h-10 w-10" />
                                     </div>
                                 )}
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingProduit(prod);
+                                    }}
+                                    className="absolute top-2 right-2 bg-white/90 text-gray-700 rounded-full p-1.5 shadow hover:bg-white hover:text-primary transition-colors"
+                                    title="Modifier le produit"
+                                >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                </button>
                                 {prod.photos.length > 1 && (
                                     <Badge className="absolute bottom-2 right-2 bg-black/60 text-white border-0 hover:bg-black/60">
                                         +{prod.photos.length - 1} photo{prod.photos.length - 1 > 1 ? "s" : ""}
@@ -321,6 +339,12 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                 photos={selectedProduit?.photos ?? []}
                 onClose={() => setSelectedProduit(null)}
                 onPhotosChange={(photos) => selectedProduit && handlePhotosChange(selectedProduit.id, photos)}
+            />
+
+            <EditProduitDialog
+                produit={editingProduit}
+                onClose={() => setEditingProduit(null)}
+                onSaved={handleProduitSaved}
             />
         </div>
     );

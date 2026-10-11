@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { FournisseurCombobox, Fournisseur } from '@/components/FournisseurCombobox';
 import { CommandeFournisseurModal } from '@/components/CommandeFournisseurModal';
+import { CommandeStatutControl, STATUT_LABELS } from '@/components/fournisseurs/CommandeStatutControl';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Plus, Eye, Building2, Wallet, PackageCheck, Clock, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
@@ -36,20 +37,6 @@ interface CommandeFournisseur {
 
 const formatMontant = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value);
-
-const STATUT_LABELS: Record<StatutCommandeFournisseur, string> = {
-  BROUILLON: 'Brouillon',
-  VALIDEE: 'Validée',
-  LIVREE: 'Livrée',
-  ANNULEE: 'Annulée',
-};
-
-const STATUT_BADGE_VARIANT: Record<StatutCommandeFournisseur, 'brouillon' | 'success' | 'annuler'> = {
-  BROUILLON: 'brouillon',
-  VALIDEE: 'success',
-  LIVREE: 'success',
-  ANNULEE: 'annuler',
-};
 
 const defaultFilters = {
   fournisseurId: '',
@@ -280,7 +267,6 @@ export default function CommandesFournisseursListPage() {
               <TableRow><TableCell colSpan={7} className="h-24 text-center">Aucun bon de commande trouvé.</TableCell></TableRow>
             ) : (
               commandes.map((commande) => {
-                const isLocked = commande.statut === 'LIVREE' || commande.statut === 'ANNULEE';
                 return (
                   <TableRow key={commande.id} className="hover:bg-muted/30">
                     <TableCell className="font-medium">
@@ -296,26 +282,13 @@ export default function CommandesFournisseursListPage() {
                     <TableCell className="text-center">{commande.lignes.length}</TableCell>
                     <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(commande.montantNet))}</TableCell>
                     <TableCell>
-                      {isLocked || !isAdmin ? (
-                        <Badge variant={STATUT_BADGE_VARIANT[commande.statut]}>{STATUT_LABELS[commande.statut]}</Badge>
-                      ) : (
-                        <Select
-                          value={commande.statut}
-                          onValueChange={(value: StatutCommandeFournisseur) => handleStatutChange(commande, value)}
-                        >
-                          <SelectTrigger className="border-none bg-transparent! p-0 h-auto cursor-pointer w-auto">
-                            <SelectValue>
-                              <Badge variant={STATUT_BADGE_VARIANT[commande.statut]}>{STATUT_LABELS[commande.statut]}</Badge>
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="BROUILLON">Brouillon</SelectItem>
-                            <SelectItem value="VALIDEE">Validée</SelectItem>
-                            <SelectItem value="LIVREE">Livrée</SelectItem>
-                            <SelectItem value="ANNULEE">Annulée</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
+                      <CommandeStatutControl
+                        statut={commande.statut}
+                        isAdmin={isAdmin}
+                        onChange={(value) => handleStatutChange(commande, value)}
+                        triggerClassName="border-none bg-transparent! p-0 h-auto cursor-pointer w-auto"
+                        buttonClassName="h-7 text-xs"
+                      />
                     </TableCell>
                     <TableCell className="text-center">
                       <TooltipProvider>
