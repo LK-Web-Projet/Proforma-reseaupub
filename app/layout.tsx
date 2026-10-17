@@ -24,21 +24,28 @@ export const metadata: Metadata = {
     "Système de facturation proforma avec Next.js, Prisma, Shadcn UI",
 };
 
+// L'archivage automatique ne doit JAMAIS bloquer le rendu d'une page : ce layout racine
+// s'exécute sur CHAQUE requête (force-dynamic), donc un `await` ici ajoute la latence d'une
+// requête DB à chaque chargement de page pour chaque utilisateur — si la base est lente
+// (déjà observé avec Supabase), ça retarde le HTML et peut faire échouer le chargement du
+// script Clerk côté client (timeout). On le lance en fire-and-forget, et on le limite à une
+// fois par heure par process serveur pour ne pas marteler la base à chaque requête.
+let lastArchiveRun = 0;
+const ARCHIVE_INTERVAL_MS = 60 * 60 * 1000; // 1 heure
 
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Exécuter l'archivage automatique au chargement (Server Side)
-  // Comme c'est un Server Component, cela s'exécute côté serveur.
-  // L'archivage est idempotent, donc pas de soucis de répétition.
-  try {
-    await archiveOldInvoices();
-  } catch (error) {
-    console.error("Échec de l'archivage automatique au démarrage:", error);
+  const now = Date.now();
+  if (now - lastArchiveRun > ARCHIVE_INTERVAL_MS) {
+    lastArchiveRun = now;
+    archiveOldInvoices().catch((error) => {
+      console.error("Échec de l'archivage automatique au démarrage:", error);
+    });
   }
-  
+
   return (
     <ClerkProvider afterSignOutUrl="/sign-in">
       <html lang="fr">

@@ -22,6 +22,59 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-17 (suite 2) — Vraie cause du crash identifiée : bug upstream React, contourné via le middleware
+
+**Demande / Contexte**
+Après la correction du `await` manquant sur `auth.protect()`, le crash « Rendered more hooks than during the previous render » s'est reproduit avec une stack trace complète et non minifiée, montrant que l'erreur se produit **entièrement à l'intérieur du code compilé de Next.js/React** (`Router`, `useMemo`, dans `next_dist_client`/`react-dom` compilé) — aucune frame de code applicatif. Recherche approfondie pour confirmer la cause exacte avant de tenter un nouveau correctif.
+
+**Erreurs rencontrées & solutions**
+- **Cause confirmée** : il s'agit d'un bug connu et documenté de **React lui-même** (facebook/react#33580, suivi côté Next.js sous vercel/next.js#63121 — des dizaines de rapports dupliqués), déclenché par le pattern exact utilisé dans [app/page.tsx](app/page.tsx) : un `redirect()` de Next.js appelé dans un Server Component **juste après** un `await currentUser()`/`await auth()`. C'est littéralement l'exemple de reproduction cité dans le rapport du bug upstream (`const session = await auth(); if (session) redirect("/dashboard")`). Le correctif officiel n'est arrivé dans React/Next que bien après la version utilisée ici (Next 15.4.4 / React 19.1.0) — aucun patch n'existait pour cette ligne de version au moment des faits.
+- **Solution retenue** : contourner complètement ce chemin de code bogué plutôt que d'attendre un correctif amont. La résolution de la destination post-connexion (`/sign-in` ou la première section autorisée par le rôle) est déplacée du Server Component `app/page.tsx` vers [middleware.ts](middleware.ts), sous forme de **redirection HTTP directe** (`NextResponse.redirect()`) — qui n'implique aucun rendu React côté client pour `/`, donc ne peut pas déclencher ce bug.
+
+**Modifications apportées**
+- [middleware.ts](middleware.ts) : `/` retirée de `isPublicRoute` ; nouveau bloc en tout début de middleware qui calcule la destination (`resolveLandingUrl`) et effectue la redirection HTTP directement, avant toute autre logique.
+- [app/page.tsx](app/page.tsx) : simplifié au strict minimum (plus de `await` suivi d'un `redirect()`) — ce composant ne devrait normalement plus jamais s'exécuter puisque le middleware intercepte systématiquement `/` en premier ; conservé uniquement comme filet de sécurité volontairement inoffensif.
+
+**À tester / points d'attention**
+- Redémarrer complètement le serveur (dev et prod) et tester le flux de connexion plusieurs fois de suite, y compris en visitant directement `/` déjà connecté et déjà déconnecté.
+- Si un crash similaire réapparaît ailleurs dans l'app, chercher le même pattern (`redirect()` après un `await` dans un Server Component avec un Suspense/`loading.tsx` dans l'arbre) — c'est la signature de ce même bug upstream, pas nécessairement un nouveau problème.
+
+## 2026-10-17 (suite) — `auth.protect()` appelé sans `await` dans le middleware (vraie cause probable du crash)
+
+**Demande / Contexte**
+Après la correction de `app/layout.tsx` (archivage bloquant), l'utilisateur a reproduit le crash en local et fourni les logs complets : une erreur d'hydratation sur `/sign-in` (bénigne, React se régénère tout seul), un crash « Rendered more hooks than during the previous render » survenant **à l'intérieur du code interne de Next.js** (`app-router.tsx`, pas dans le code applicatif), et surtout une vraie erreur serveur non gérée après rafraîchissement : `⨯ unhandledRejection: Error: NEXT_HTTP_ERROR_FALLBACK;404`, provenant de `authHandler.protect()` (Clerk).
+
+**Erreurs rencontrées & solutions**
+- **Cause trouvée** : [middleware.ts](middleware.ts) ligne 39 appelait `auth.protect()` (fonction **asynchrone** de Clerk) **sans `await`**, à l'intérieur d'un `try { ... } catch { ... }`. Comme l'appel n'était pas attendu, le `catch` ne pouvait jamais intercepter son rejet (qui survient de façon asynchrone, après que le bloc `try` synchrone se soit déjà terminé sans erreur apparente). Résultat concret : quand un utilisateur non authentifié arrivait sur une route protégée, `auth.protect()` rejetait en interne (Clerk appelle `notFound()` de Next.js par défaut), ce rejet partait en erreur serveur non gérée, et la redirection propre vers `/sign-in` prévue dans le `catch` ne s'exécutait **jamais**. Ça laissait le client recevoir une réponse incohérente, plausiblement à l'origine des mismatchs d'hydratation et du crash du routeur Next.js observés côté navigateur.
+- **Solution** : ajout du `await` manquant (`await auth.protect();`).
+- Le crash « Rendered more hooks » dans `app-router.tsx` (code interne Next.js, survenu juste après un rebuild Fast Refresh anormalement lent de ~100 secondes) est très probablement un artefact de Turbopack/HMR en développement local, aggravé par l'incohérence causée par le bug ci-dessus — pas un bug dans le code applicatif (audit complet des composants React de l'app n'a révélé aucune violation des règles des hooks).
+
+**Modifications apportées**
+- [middleware.ts](middleware.ts) : `auth.protect()` → `await auth.protect()`.
+
+**À tester / points d'attention**
+- Redémarrer complètement le serveur de dev (pas juste compter sur le Hot Reload) et retester le flux de connexion plusieurs fois de suite, y compris avec un compte non authentifié arrivant sur une route protégée.
+- Redéployer en production et surveiller si le crash signalé initialement se reproduit.
+
+## 2026-10-17 — Archivage automatique bloquant sur chaque page (crash au login en production)
+
+**Demande / Contexte**
+L'utilisateur a signalé un crash complet de l'app au chargement (« Application error: a client-side exception has occurred ») lors de la connexion, avec en console une erreur React minifiée #310 (« Rendered more hooks than during the previous render »), puis une seconde erreur `Clerk: Failed to load Clerk (code="failed_to_load_clerk_js_timeout")`. Un rafraîchissement de la page résout systématiquement le problème.
+
+**Erreurs rencontrées & solutions**
+- Audit complet de tous les composants React modifiés récemment (ordre des hooks, retours anticipés dans `CommandeStatutControl`, `EditCommandeFournisseurModal`, `FournisseurProduits`, `app/(main)/facture/[id]/page.tsx`, `app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx`, `AppSidebar`, etc.) : **aucune violation des règles des hooks trouvée** dans le code applicatif.
+- L'erreur React #310 est très probablement une **conséquence** du vrai problème, pas sa cause : le timeout de chargement de Clerk (`failed_to_load_clerk_js_timeout`) laisse l'app dans un état incohérent, ce qui perturbe le rendu des composants dépendant de `useUser()`/`ClerkProvider` (ex: `AppSidebar`).
+- **Cause racine identifiée** : [app/layout.tsx](app/layout.tsx) (layout racine, `force-dynamic`, donc exécuté à CHAQUE requête, pour CHAQUE utilisateur, sur CHAQUE page) faisait `await archiveOldInvoices()` — une requête d'écriture en base — avant de rendre quoi que ce soit. Ça bloquait l'envoi du HTML tant que la requête DB n'était pas terminée. Si Supabase répond lentement (déjà observé plusieurs fois durant cette session), ça retarde le chargement de la page entière, ce qui peut suffire à faire dépasser le délai de chargement du script Clerk côté navigateur → timeout → app cassée. Un rafraîchissement réussit généralement car Clerk a déjà mis son script en cache.
+- [lib/archive-service.ts](lib/archive-service.ts) : `archiveOldInvoices()` instanciait en plus son propre `new PrismaClient()` séparé du pool partagé de l'app (`lib/prisma.ts`), au lieu de le réutiliser — corrigé.
+
+**Modifications apportées**
+- [lib/archive-service.ts](lib/archive-service.ts) : utilise désormais le client Prisma partagé (`lib/prisma.ts`) au lieu d'en créer un nouveau.
+- [app/layout.tsx](app/layout.tsx) : `archiveOldInvoices()` n'est plus `await`é (fire-and-forget, ne bloque plus jamais le rendu d'une page) et est limité à une exécution par heure par process serveur (évite de marteler la base à chaque requête).
+
+**À tester / points d'attention**
+- Redéployer et surveiller si le crash au login se reproduit. Si ça persiste malgré cette correction, le problème serait alors probablement lié à la connectivité réseau du VPS vers les serveurs de Clerk (DNS, pare-feu, latence) plutôt qu'au code de l'application — à investiguer côté infra si besoin.
+- Envisager à terme de sortir complètement l'archivage automatique du cycle de requête HTTP (vrai cron job plutôt qu'un hook dans le layout), `lib/archive-service.ts` a déjà un point d'entrée CLI (`require.main === module`) prévu pour ça.
+
 ## 2026-10-11 (suite) — Correction timeout de transaction à la création d'une facture (P2028)
 
 **Demande / Contexte**
