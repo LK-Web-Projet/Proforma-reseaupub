@@ -22,6 +22,32 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-17 (suite) — Refonte complète du Tableau de bord (trésorerie, marge brute, indicateurs de décision)
+
+**Demande / Contexte**
+L'ancien tableau de bord (`/dashboard`) était statique (pas de filtres, totaux toutes années confondues peu actionnables). L'utilisateur (chef d'entreprise) voulait un vrai outil de pilotage avec deux vues — « Général » et « Ce mois » — centré sur ce qui aide à la décision : la trésorerie disponible et sa tendance, la marge brute par proforma, le détail des entrées/sorties du mois avec graphiques, et d'autres indicateurs utiles, le tout simple à lire pour un non-technicien. `/statistiques` (page plus riche, déjà existante) reste intouchée à part, décision actée avec l'utilisateur pour éviter la confusion entre les deux pages qui s'appelaient toutes les deux « Tableau de Bord ».
+
+Décisions actées avant l'implémentation :
+- Marge brute = uniquement `Paiement(PAIEMENT) − Paiement(DEPENSE)` par proforma (confirmé par de nombreux exemples réels en base : carburant, réparations, location de panneaux, etc., toujours rattachés à une facture). Demandes de Budget et Bons de Commande Fournisseurs volontairement exclus du calcul pour l'instant.
+- Suivi des campagnes CampTrack : hors scope de cette itération (aucun endpoint « campagnes en cours » n'existe encore côté CampTrack — à faire plus tard séparément).
+
+**Modifications apportées**
+- [app/api/dashboard/route.ts](app/api/dashboard/route.ts) : réécriture complète. Accepte `?view=global|month`. Trésorerie (soldes par caisse + tendance 30 jours) calculée une fois et partagée par les deux vues. Vue Général : évolution de trésorerie 12 mois (reconstruite à rebours depuis le solde réel actuel, pas depuis `CashJournal.solde` qui peut dériver), marge brute par proforma (`invoice.findMany` + `paiement.groupBy`, zéro N+1, conversion de devise via la même table que `/api/statistiques`), et 4 indicateurs supplémentaires (taux de conversion proforma→payée/soldée, top 5 clients débiteurs, délai moyen de règlement, impayés anciens +30j). Vue Ce mois : lignes d'entrée/sortie détaillées du mois (avec exclusion des transferts internes entre caisses visibles, logique reprise exactement de `journal-caisse/page.tsx`), totaux, fluctuation quotidienne, marge brute (paiements proforma) du mois.
+- [app/(main)/dashboard/page.tsx](app/(main)/dashboard/page.tsx) : réécriture complète. `Tabs` shadcn (Général/Ce mois), données hissées au niveau page (pas dans les onglets, pour éviter un refetch à chaque clic — Radix démonte le contenu inactif) ; vue Général chargée au montage, vue Ce mois chargée paresseusement au premier clic puis mise en cache.
+- [components/StatCard.tsx](components/StatCard.tsx) (nouveau) : carte KPI partagée, avec un nouveau prop `trend` optionnel (flèche + libellé, jamais de % complexe) — factorise les deux implémentations dupliquées qui existaient (`dashboard/page.tsx` et `statistiques/page.tsx`, cette dernière volontairement laissée inchangée).
+- [components/dashboard/](components/dashboard/) (nouveau dossier) : `TresorerieSection.tsx`, `CashFlowEvolutionChart.tsx`, `MargeProformaSection.tsx`, `CashJournalLinesCard.tsx`, `MonthlyFluctuationChart.tsx`, `ExtraIndicatorsSection.tsx`.
+- [components/DashboardPageSkeleton.tsx](components/DashboardPageSkeleton.tsx) (nouveau).
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres dès la première passe.
+
+**À tester / points d'attention**
+- Comparer les soldes par caisse affichés avec `/journal-caisse` (doivent être identiques).
+- Vérifier que les lignes « Transfert depuis/vers caisse ID X » entre deux caisses visibles n'apparaissent pas dans les totaux Entrées/Sorties du mois, alors qu'elles apparaissent dans le journal brut.
+- Comparer la marge brute de 3-5 proformas de la table avec la « Marge nette générée » déjà affichée sur `facture/[id]/page.tsx` pour ces mêmes factures — doivent être égales.
+- Vérifier dans les DevTools réseau qu'un seul appel `?view=month` est fait au premier clic sur l'onglet « Ce mois », jamais répété ensuite.
+- Le suivi des campagnes CampTrack reste à ajouter dans une itération séparée (nécessite un nouvel endpoint côté CampTrack).
+
 ## 2026-10-17 (suite 2) — Vraie cause du crash identifiée : bug upstream React, contourné via le middleware
 
 **Demande / Contexte**
