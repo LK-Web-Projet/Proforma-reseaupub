@@ -22,6 +22,22 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-20 — Refonte UI/UX de la page de connexion (sign-in)
+
+**Demande / Contexte**
+L'utilisateur a fourni le code source de la page de connexion de CampTrack (autre app de l'entreprise) comme référence de style — écran scindé en deux, panneau de marque sombre avec cercles lumineux flous et liste de fonctionnalités, panneau de formulaire épuré — et a demandé de reprendre cette structure pour Proforma, mais avec la charte graphique propre à Proforma (couleur `#ef0b53`, et non le `#d61353` de CampTrack).
+
+**Modifications apportées**
+- [app/sign-in/[[...sign-in]]/page.tsx](app/sign-in/[[...sign-in]]/page.tsx) : réécriture complète. Panneau gauche (visible ≥ lg) fond `#0a0a0a` avec 3 cercles dégradés `#ef0b53` en arrière-plan, badge « RP » + nom « Reseaupub », accroche, liste de 4 fonctionnalités clés de l'app (facturation, fournisseurs/BC, budget/trésorerie, tableaux de bord), pied de page. Panneau droit : logo `LOGO ROSE@300xcoupé.png` (choisi car entièrement rose, lisible sur fond clair — `rplogo.png` écarté car son texte noir ne convenait pas), titre « Bienvenue », composant `<SignIn>` de Clerk stylisé via le prop `appearance` (uniquement des clés d'éléments documentées : `rootBox`, `card`, `headerTitle/Subtitle`, `formButtonPrimary`, `formFieldInput/Label`, `footerActionLink`, `dividerLine/Text`, `socialButtonsBlockButton`) pour que les champs et le bouton reprennent la couleur `#ef0b53` et les arrondis de la charte. Le pied de page « Secured by Clerk » de Clerk n'a volontairement pas été masqué (conditions d'utilisation Clerk).
+
+**Erreurs rencontrées & solutions**
+- `pnpm build` a échoué avec `Cannot find module '.../next/dist/client/components/builtin/global-not-found'` (MODULE_NOT_FOUND) — même symptôme de corruption du store pnpm que lors d'un précédent build (dossier `node_modules/next` vidé), sans rapport avec le code modifié. Résolu par `pnpm install --force`, puis `pnpm build` a abouti (27 routes, exit code 0). Si ce symptôme réapparaît régulièrement, il peut être utile d'investiguer la cause sur cette machine (antivirus, synchronisation de fichiers, etc. qui viderait le store pnpm).
+
+**À tester / points d'attention**
+- `tsc --noEmit`, `next lint` et `pnpm build` tous propres (vérifiés après l'implémentation).
+- Vérifier visuellement le rendu sur mobile (le panneau gauche est masqué sous `lg`, un badge + logo compact apparaissent alors en haut du formulaire) et sur différents navigateurs avant mise en ligne.
+- Tester le flux de connexion complet (champs, bouton, lien "mot de passe oublié"/inscription selon configuration Clerk) en conditions réelles après déploiement.
+
 ## 2026-10-17 (suite) — Refonte complète du Tableau de bord (trésorerie, marge brute, indicateurs de décision)
 
 **Demande / Contexte**
