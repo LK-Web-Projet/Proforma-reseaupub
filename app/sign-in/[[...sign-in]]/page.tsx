@@ -73,7 +73,7 @@ export default function SignInPage() {
               <span className="text-white text-sm font-bold">RP</span>
             </div>
             <Image
-              src="/LOGO ROSE@300xcoupé.png"
+              src="/logo-rose.png"
               alt="Reseaupub"
               width={180}
               height={56}

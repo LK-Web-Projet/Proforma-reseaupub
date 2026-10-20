@@ -22,6 +22,24 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-20 (suite 4) — Bug : logo de la page de connexion invisible en production
+
+**Demande / Contexte**
+En production, le logo de la nouvelle page de connexion ne s'affichait pas, avec en log : `The requested resource isn't a valid image for /LOGO ROSE@300xcoupé.png received text/html; charset=utf-8`.
+
+**Erreurs rencontrées & solutions**
+- Écarté : problème de déploiement — `output: "standalone"` copie bien tout `public/` dans l'image Docker ([infra/Dockerfile](infra/Dockerfile) ligne `COPY --from=builder /app/public ./public`, un `COPY` Docker ne fait pas d'expansion shell donc gère les noms spéciaux sans souci), et le fichier était correctement suivi par git. `rplogo.png` (nom simple, utilisé ailleurs via `next/image`) fonctionne, lui, sans problème.
+- **Cause réelle** : l'optimiseur d'images intégré de Next.js (route `/_next/image`) refait une requête HTTP interne vers le fichier source avant de l'optimiser ; avec des caractères comme l'espace, `@` et l'accent `é` dans le nom de fichier, cette requête interne est mal réencodée et échoue (404), et Next renvoie sa page d'erreur HTML à la place de l'image — un problème connu de `next/image` avec les noms de fichiers non-ASCII/contenant des espaces.
+- **Solution** : renommer le fichier en un nom simple, sans espace ni caractère spécial.
+
+**Modifications apportées**
+- `public/LOGO ROSE@300xcoupé.png` renommé en [public/logo-rose.png](public/logo-rose.png) (`git mv`, historique conservé).
+- [app/sign-in/[[...sign-in]]/page.tsx](app/sign-in/[[...sign-in]]/page.tsx) : référence mise à jour vers `/logo-rose.png`.
+
+**À tester / points d'attention**
+- Confirmer l'affichage du logo en prod après déploiement.
+- Les autres fichiers du dossier `public/` avec des noms similaires (espaces/`@`/accents, ex. `RESEAUPUB LOGO MIX COLOR@300xcoupé.png`) ne sont actuellement référencés nulle part via `next/image` — mais s'ils venaient à l'être un jour, les renommer en premier pour éviter le même problème.
+
 ## 2026-10-20 (suite 3) — Ajustement du contenu de l'email de notification de paiement
 
 **Demande / Contexte**
