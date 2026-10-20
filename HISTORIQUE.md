@@ -22,6 +22,70 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-20 (suite 4) — Bug : logo de la page de connexion invisible en production
+
+**Demande / Contexte**
+En production, le logo de la nouvelle page de connexion ne s'affichait pas, avec en log : `The requested resource isn't a valid image for /LOGO ROSE@300xcoupé.png received text/html; charset=utf-8`.
+
+**Erreurs rencontrées & solutions**
+- Écarté : problème de déploiement — `output: "standalone"` copie bien tout `public/` dans l'image Docker ([infra/Dockerfile](infra/Dockerfile) ligne `COPY --from=builder /app/public ./public`, un `COPY` Docker ne fait pas d'expansion shell donc gère les noms spéciaux sans souci), et le fichier était correctement suivi par git. `rplogo.png` (nom simple, utilisé ailleurs via `next/image`) fonctionne, lui, sans problème.
+- **Cause réelle** : l'optimiseur d'images intégré de Next.js (route `/_next/image`) refait une requête HTTP interne vers le fichier source avant de l'optimiser ; avec des caractères comme l'espace, `@` et l'accent `é` dans le nom de fichier, cette requête interne est mal réencodée et échoue (404), et Next renvoie sa page d'erreur HTML à la place de l'image — un problème connu de `next/image` avec les noms de fichiers non-ASCII/contenant des espaces.
+- **Solution** : renommer le fichier en un nom simple, sans espace ni caractère spécial.
+
+**Modifications apportées**
+- `public/LOGO ROSE@300xcoupé.png` renommé en [public/logo-rose.png](public/logo-rose.png) (`git mv`, historique conservé).
+- [app/sign-in/[[...sign-in]]/page.tsx](app/sign-in/[[...sign-in]]/page.tsx) : référence mise à jour vers `/logo-rose.png`.
+
+**À tester / points d'attention**
+- Confirmer l'affichage du logo en prod après déploiement.
+- Les autres fichiers du dossier `public/` avec des noms similaires (espaces/`@`/accents, ex. `RESEAUPUB LOGO MIX COLOR@300xcoupé.png`) ne sont actuellement référencés nulle part via `next/image` — mais s'ils venaient à l'être un jour, les renommer en premier pour éviter le même problème.
+
+## 2026-10-20 (suite 3) — Ajustement du contenu de l'email de notification de paiement
+
+**Demande / Contexte**
+Après la première version de la notification « paiement reçu », l'utilisateur a demandé d'afficher plus clairement : le total de la proforma, le total déjà payé (cumulé), le montant payé à l'instant précis (ce paiement), et de remplacer le libellé « Progression du règlement » par « Payé à ...% » ; le « Reste à payer » doit être affiché en rouge pour attirer l'œil.
+
+**Modifications apportées**
+- [lib/email/proformaPaiement.ts](lib/email/proformaPaiement.ts) : le tableau récapitulatif affiche maintenant, dans l'ordre, « Total de la proforma », « Total payé » (cumulé = total − reste), « Payé à l'instant » (ce paiement précis), « Payé à X% » (libellé renommé), « Reste à payer » (en rouge `#b91c1c`/`#fef2f2`), puis la marge brute inchangée.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier le rendu de l'email reçu (couleurs, alignement) sur un vrai client mail après le prochain paiement réel.
+
+## 2026-10-20 (suite 2) — Bug : timeout de transaction Prisma (P2028) à l'enregistrement d'un paiement
+
+**Demande / Contexte**
+En conditions réelles, l'enregistrement d'un paiement sur une proforma a échoué avec `PrismaClientKnownRequestError P2028 : Transaction already closed... The timeout for this transaction was 5000 ms, however 7427 ms passed`. Même famille de bug que celui déjà corrigé sur [app/api/factures/route.ts](app/api/factures/route.ts) (création de facture) : le `prisma.$transaction()` de la route de paiement n'avait pas de timeout explicite, donc le défaut Prisma de 5000 ms s'appliquait, insuffisant quand la base (Supabase) répond un peu lentement.
+
+**Modifications apportées**
+- [app/api/factures/[id]/paiements/route.ts](app/api/factures/[id]/paiements/route.ts) : ajout de `{ timeout: 15000 }` (15 secondes) en second argument du `prisma.$transaction()`, même valeur que sur les routes de création/modification de facture.
+
+**Erreurs rencontrées & solutions**
+- `P2028 Transaction already closed` → timeout par défaut (5s) trop court pour cette transaction (plusieurs requêtes séquentielles : lecture/écriture CashJournal, CashRegister, Paiement, Invoice). Résolu en portant le timeout à 15s, comme pour les autres transactions de l'app.
+
+**À tester / points d'attention**
+- Refaire un paiement en conditions réelles (celles qui ont déclenché l'erreur) pour confirmer que la transaction va désormais au bout.
+- Si ce timeout revient à se produire même à 15s, il faudra regarder du côté de la latence réseau vers Supabase plutôt que d'augmenter encore le timeout (symptôme déjà observé ailleurs dans le projet comme transitoire).
+
+## 2026-10-20 (suite) — Notification Admin (avec confetti 🎊) à chaque paiement reçu sur une proforma
+
+**Demande / Contexte**
+L'utilisateur veut que les administrateurs soient notifiés par email dès qu'un paiement client est enregistré sur une proforma, avec un résumé complet : numéro et objet de la proforma, client, produits pris, montant payé, reste à payer, pourcentage réglé et marge brute. Demande explicite : utiliser directement les comptes Admin existants de l'app (table `User`/`Role`), pas une liste d'emails en dur ou une variable d'environnement comme pour les autres notifications (`BUDGET_ADMIN_EMAILS`).
+
+**Modifications apportées**
+- [lib/email/proformaPaiement.ts](lib/email/proformaPaiement.ts) (nouveau) : `sendProformaPaiementNotification()`. Les destinataires (`adminRecipients()`) sont déterminés en interrogeant directement `prisma.user.findMany({ where: { active: true, role: { canManageUsers: true } } })` — le vrai mécanisme Admin de l'app (même critère que [lib/authz.ts](lib/authz.ts) `requireCanManageUsers`), pas une liste figée. Email avec en-tête vert « 🎊 Paiement réalisé ! », tableau des produits de la proforma, puis montant payé / reste à payer / % de progression du règlement / marge brute (Σ Paiement(PAIEMENT) − Σ Paiement(DEPENSE) de la proforma, même formule que le tableau de bord).
+- [app/api/factures/[id]/paiements/route.ts](app/api/factures/[id]/paiements/route.ts) : la requête initiale de la facture inclut désormais `totalTTC`, `devise` et les `produits` (désignation + quantité). Après la transaction, uniquement pour `type === "PAIEMENT"` (pas pour une `DEPENSE`), recalcul de la marge via `paiement.groupBy` puis appel fire-and-forget (erreur seulement loguée, ne bloque jamais la réponse) à `sendProformaPaiementNotification`.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit`, `next lint` propres dès la première passe.
+
+**À tester / points d'attention**
+- Vérifier qu'au moins un utilisateur actif a un rôle avec `canManageUsers = true` et un email valide en base (sinon `adminRecipients()` renvoie une liste vide et aucun email n'est envoyé, silencieusement).
+- Tester un vrai paiement en conditions réelles (SMTP `EMAIL_HOST`/`EMAIL_USER`/`EMAIL_PASS` configurés) pour confirmer la réception et le rendu de l'email.
+- Confirmer qu'une `DEPENSE` (dépense rattachée à une proforma) ne déclenche bien aucune notification — seul un paiement client (`PAIEMENT`) le fait.
+
 ## 2026-10-20 — Refonte UI/UX de la page de connexion (sign-in)
 
 **Demande / Contexte**

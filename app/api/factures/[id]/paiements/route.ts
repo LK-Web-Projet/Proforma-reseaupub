@@ -7,6 +7,7 @@ import { writeFile } from "fs/promises";
 import { auth } from "@clerk/nextjs/server";
 import { recordDepensePaiement } from "@/lib/paiements";
 import { safeCreatedById } from "@/lib/authz";
+import { sendProformaPaiementNotification } from "@/lib/email/proformaPaiement";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
@@ -72,7 +73,10 @@ export async function POST(
         resteAPayer: true,
         numero: true,
         objet: true,
+        totalTTC: true,
+        devise: true,
         client: { select: { nom: true } },
+        produits: { select: { designation: true, quantite: true } },
       },
     });
 
@@ -198,7 +202,41 @@ export async function POST(
       });
 
       return { updatedInvoice, newCashJournalEntryId: newCashJournalEntry.id };
+    }, {
+      timeout: 15000, // 15 secondes (le défaut de 5s est parfois trop court, ex. latence Supabase)
     });
+
+    // Notification Admin (avec confetti) uniquement pour un vrai paiement client, pas une dépense.
+    if (type === "PAIEMENT") {
+      const margeSums = await prisma.paiement.groupBy({
+        by: ["type"],
+        where: { invoiceId },
+        _sum: { montant: true },
+      });
+      const paiementTotal = Number(
+        margeSums.find((s) => s.type === "PAIEMENT")?._sum.montant ?? 0,
+      );
+      const depenseTotal = Number(
+        margeSums.find((s) => s.type === "DEPENSE")?._sum.montant ?? 0,
+      );
+
+      sendProformaPaiementNotification({
+        invoice: {
+          id: invoiceId,
+          numero: invoice.numero,
+          objet: invoice.objet,
+          totalTTC: Number(invoice.totalTTC),
+          devise: invoice.devise,
+          client: { nom: invoice.client.nom },
+          produits: invoice.produits,
+        },
+        montantPaye: montantDecimal,
+        resteAPayer: Number(result.updatedInvoice!.resteAPayer),
+        margeBrute: paiementTotal - depenseTotal,
+      }).catch((err) => {
+        console.error("Erreur lors de l'envoi de la notification de paiement proforma :", err);
+      });
+    }
 
     if (files.length > 0) {
       const uploadDir = join(
