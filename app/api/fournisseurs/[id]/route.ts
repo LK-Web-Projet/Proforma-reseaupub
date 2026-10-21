@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     if (!fournisseur) {
       console.warn(`[API] Fournisseur not found for id: ${id}`);
-      return NextResponse.json({ message: 'Fournisseur non trouvé' }, { status: 404 });
+      return NextResponse.json({ message: 'Prestataire non trouvé' }, { status: 404 });
     }
 
     console.log(`[API] Successfully fetched fournisseur: ${fournisseur.entreprise}`);
@@ -51,7 +51,7 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
         contact,
         domaineActivite,
         adresse,
-        email,
+        email: email?.trim() ? email.trim() : null,
         typeFournisseur: typeFournisseur?.trim() || null,
       },
     });
@@ -62,10 +62,10 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
     const err = error as { code?: string; message?: string };
     console.error(`[API] Error updating fournisseur ${id}:`, err);
     if (err.code === 'P2025') { // Record to update not found
-      return NextResponse.json({ message: 'Fournisseur non trouvé' }, { status: 404 });
+      return NextResponse.json({ message: 'Prestataire non trouvé' }, { status: 404 });
     }
     if (err.code === 'P2002') { // Unique constraint violation
-      return NextResponse.json({ message: `Un fournisseur avec cet email ou nom d'entreprise existe déjà.` }, { status: 409 });
+      return NextResponse.json({ message: `Un prestataire avec cet email ou nom d'entreprise existe déjà.` }, { status: 409 });
     }
     return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
   }
@@ -86,7 +86,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const err = error as { code?: string; message?: string };
     console.error(`[API] Error deleting fournisseur ${id}:`, err);
     if (err.code === 'P2025') { // Record to delete not found
-      return NextResponse.json({ message: 'Fournisseur non trouvé' }, { status: 404 });
+      return NextResponse.json({ message: 'Prestataire non trouvé' }, { status: 404 });
     }
     return NextResponse.json(
       { message: "Erreur interne du serveur" },

@@ -17,18 +17,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { TYPE_FOURNISSEUR_COLORS, resolveTypeFournisseur } from "@/lib/typeFournisseur";
+import type { Fournisseur } from "@/components/FournisseurModal";
 
-// Using the same type definition as in the FournisseurModal
-export type Fournisseur = {
-  id: string;
-  nom: string | null;
-  prenom: string | null;
-  entreprise: string;
-  email: string;
-  contact: string;
-  domaineActivite: string;
-  adresse: string;
-};
+export type { Fournisseur };
 
 interface FournisseurComboboxProps {
   fournisseurs: Fournisseur[];
@@ -58,34 +51,43 @@ export function FournisseurCombobox({
         >
           {selectedFournisseur
             ? selectedFournisseur.entreprise
-            : "Sélectionner un fournisseur"}
+            : "Sélectionner un prestataire"}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
         <Command>
-          <CommandInput placeholder="Rechercher un fournisseur..." />
+          <CommandInput placeholder="Rechercher un prestataire..." />
           <CommandList>
-            <CommandEmpty>Aucun fournisseur trouvé.</CommandEmpty>
+            <CommandEmpty>Aucun prestataire trouvé.</CommandEmpty>
             <CommandGroup>
-              {fournisseurs.map((fournisseur) => (
-                <CommandItem
-                  key={fournisseur.id}
-                  value={fournisseur.entreprise} // Search by entreprise name
-                  onSelect={() => {
-                    onChange(fournisseur.id === value ? "" : fournisseur.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === fournisseur.id ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  {fournisseur.entreprise}
-                </CommandItem>
-              ))}
+              {fournisseurs.map((fournisseur) => {
+                const type = resolveTypeFournisseur(fournisseur.typeFournisseur);
+                return (
+                  <CommandItem
+                    key={fournisseur.id}
+                    value={fournisseur.entreprise} // Search by entreprise name
+                    onSelect={() => {
+                      onChange(fournisseur.id === value ? "" : fournisseur.id);
+                      setOpen(false);
+                    }}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center">
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === fournisseur.id ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {fournisseur.entreprise}
+                    </span>
+                    <Badge variant="outline" className={cn("font-normal shrink-0", TYPE_FOURNISSEUR_COLORS[type])}>
+                      {type}
+                    </Badge>
+                  </CommandItem>
+                );
+              })}
               <CommandItem
                 onSelect={() => {
                   setOpen(false);
@@ -94,7 +96,7 @@ export function FournisseurCombobox({
                 className="cursor-pointer"
               >
                 <PlusCircle className="mr-2 h-4 w-4" />
-                Nouveau fournisseur
+                Nouveau prestataire
               </CommandItem>
             </CommandGroup>
           </CommandList>

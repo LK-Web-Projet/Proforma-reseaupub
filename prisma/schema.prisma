@@ -220,7 +220,7 @@ model Fournisseur {
   contact         String
   domaineActivite String
   adresse         String
-  email           String                @unique
+  email           String?               @unique
   typeFournisseur String?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt

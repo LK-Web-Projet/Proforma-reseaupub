@@ -16,7 +16,7 @@ export type Fournisseur = {
   nom: string | null;
   prenom: string | null;
   entreprise: string;
-  email: string;
+  email: string | null;
   contact: string;
   domaineActivite: string;
   adresse: string;
@@ -53,8 +53,8 @@ export function FournisseurModal({ isOpen, onClose, onSuccess, initialData }: Fo
 
       toast.success(
         initialData
-          ? "Fournisseur mis à jour avec succès !"
-          : "Fournisseur créé avec succès !",
+          ? "Prestataire mis à jour avec succès !"
+          : "Prestataire créé avec succès !",
       );
       onSuccess(fournisseur); // Refetch data on parent page
       onClose(); // Close modal
@@ -75,7 +75,7 @@ export function FournisseurModal({ isOpen, onClose, onSuccess, initialData }: Fo
       <DialogContent className="sm:max-w-156.26">
         <DialogHeader>
           <DialogTitle>
-            {initialData ? 'Modifier le fournisseur' : 'Ajouter un nouveau fournisseur'}
+            {initialData ? 'Modifier le prestataire' : 'Ajouter un nouveau prestataire'}
           </DialogTitle>
         </DialogHeader>
         <FournisseurForm 

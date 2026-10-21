@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
 import { FournisseurCombobox, Fournisseur } from '@/components/FournisseurCombobox';
+import { FournisseurModal } from '@/components/FournisseurModal';
 import { FactureFournisseurModal } from '@/components/FactureFournisseurModal';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { FactureFournisseurStatusBadge, StatusDot } from '@/components/FactureFournisseurStatusBadge';
@@ -67,6 +68,7 @@ export default function FacturesListPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isFournisseurModalOpen, setIsFournisseurModalOpen] = useState(false);
   const [editingFacture, setEditingFacture] = useState<FactureFournisseur | null>(null);
 
   // Fetch all suppliers for the filter dropdown and the add-invoice modal
@@ -82,7 +84,7 @@ export default function FacturesListPage() {
       setFournisseurs(data);
     } catch (error) {
       console.error('Error fetching fournisseurs:', error);
-      toast.error("Erreur lors de la récupération des fournisseurs.");
+      toast.error("Erreur lors de la récupération des prestataires.");
     }
   }, []);
 
@@ -135,7 +137,7 @@ export default function FacturesListPage() {
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
     if (filters.fournisseurId) {
-      const nom = fournisseurs.find(f => f.id === filters.fournisseurId)?.entreprise ?? 'Fournisseur';
+      const nom = fournisseurs.find(f => f.id === filters.fournisseurId)?.entreprise ?? 'Prestataire';
       chips.push({ key: 'fournisseur', label: nom, onRemove: () => setFilters(prev => ({ ...prev, fournisseurId: '' })) });
     }
     if (filters.status && filters.status !== 'ALL') {
@@ -189,7 +191,7 @@ export default function FacturesListPage() {
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Liste des Factures Fournisseurs</h1>
+          <h1 className="text-2xl font-bold">Liste des Factures Prestataires</h1>
           <p className="text-sm text-muted-foreground mt-1">{summary.count} facture(s) sur la période sélectionnée</p>
         </div>
         <Button onClick={() => setIsAddModalOpen(true)}>
@@ -204,6 +206,11 @@ export default function FacturesListPage() {
         onSuccess={fetchFactures}
         fournisseurs={fournisseurs}
         onFournisseurCreated={handleFournisseurCreated}
+      />
+      <FournisseurModal
+        isOpen={isFournisseurModalOpen}
+        onClose={() => setIsFournisseurModalOpen(false)}
+        onSuccess={handleFournisseurCreated}
       />
       <FactureFournisseurModal
         isOpen={!!editingFacture}
@@ -288,7 +295,7 @@ export default function FacturesListPage() {
                 fournisseurs={fournisseurs}
                 value={filters.fournisseurId}
                 onChange={(id) => setFilters(prev => ({ ...prev, fournisseurId: id }))}
-                onAddNew={() => {}}
+                onAddNew={() => setIsFournisseurModalOpen(true)}
               />
               <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
                 <SelectTrigger><SelectValue placeholder="Statut" /></SelectTrigger>
@@ -336,7 +343,7 @@ export default function FacturesListPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead>Fournisseur</TableHead>
+              <TableHead>Prestataire</TableHead>
               <TableHead>Référence</TableHead>
               <TableHead>Date</TableHead>
               <TableHead className="text-right">Montant</TableHead>

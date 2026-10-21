@@ -25,6 +25,9 @@ import { AttachmentPreviewButton } from "@/components/AttachmentPreviewButton";
 import { FactureFournisseurModal, FactureFournisseurData } from "@/components/FactureFournisseurModal";
 import { FactureFournisseurStatusBadge, StatusDot } from "@/components/FactureFournisseurStatusBadge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { TYPE_FOURNISSEUR_COLORS, resolveTypeFournisseur } from "@/lib/typeFournisseur";
 
 interface FournisseurDetails extends Fournisseur {
   factures: FactureFournisseur[];
@@ -52,7 +55,7 @@ export default function FournisseurDetailsPage() {
       setFournisseur(data);
     } catch (error) {
       console.error(error);
-      toast.error("Erreur lors de la récupération des détails du fournisseur.");
+      toast.error("Erreur lors de la récupération des détails du prestataire.");
     } finally {
       setLoading(false);
     }
@@ -111,12 +114,19 @@ export default function FournisseurDetailsPage() {
   }
 
   if (!fournisseur) {
-    return <div>Fournisseur non trouvé.</div>;
+    return <div>Prestataire non trouvé.</div>;
   }
+
+  const type = resolveTypeFournisseur(fournisseur.typeFournisseur);
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">{fournisseur.entreprise}</h1>
+      <div className="flex items-center gap-3 mb-4">
+        <h1 className="text-2xl font-bold">{fournisseur.entreprise}</h1>
+        <Badge variant="outline" className={cn("font-normal", TYPE_FOURNISSEUR_COLORS[type])}>
+          {type}
+        </Badge>
+      </div>
 
       <FactureFournisseurModal
         isOpen={!!editingFacture}

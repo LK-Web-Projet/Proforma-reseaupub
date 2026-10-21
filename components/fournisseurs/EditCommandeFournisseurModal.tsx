@@ -231,7 +231,7 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label>Fournisseur</label>
+              <label>Prestataire</label>
               <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted text-sm text-muted-foreground">
                 <Building2 className="h-4 w-4" />
                 {commande?.fournisseur.entreprise}

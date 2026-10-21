@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { sendEmail, escapeHtml } from "./sendEmail";
+import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
 
 export type CommandeFournisseurForEmail = Prisma.CommandeFournisseurGetPayload<{
   include: { lignes: true; fournisseur: true };
@@ -34,7 +35,7 @@ function buildBaseHtml(opts: { title: string; intro: string; commande: CommandeF
   <div style="font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f8;padding:32px 0;">
     <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
       <div style="background:#0f172a;padding:26px 30px;">
-        <p style="margin:0;color:#94a3b8;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Bons de Commande Fournisseurs &middot; Réseaupub</p>
+        <p style="margin:0;color:#94a3b8;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Bons de Commande Prestataires &middot; Réseaupub</p>
         <h1 style="margin:8px 0 0;color:#ffffff;font-size:21px;">${title}</h1>
       </div>
 
@@ -47,7 +48,7 @@ function buildBaseHtml(opts: { title: string; intro: string; commande: CommandeF
             <td style="padding:5px 0;color:#0f172a;font-size:14px;font-weight:700;">${escapeHtml(commande.numero)}</td>
           </tr>
           <tr>
-            <td style="padding:5px 0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;vertical-align:top;">Fournisseur</td>
+            <td style="padding:5px 0;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;vertical-align:top;">${escapeHtml(resolveTypeFournisseur(commande.fournisseur.typeFournisseur))}</td>
             <td style="padding:5px 0;color:#0f172a;font-size:13px;">${escapeHtml(commande.fournisseur.entreprise)}</td>
           </tr>
         </table>
@@ -98,10 +99,10 @@ export async function sendCommandeFournisseurCreeeNotification(commande: Command
   if (recipients.length === 0) return;
   await sendEmail({
     to: recipients,
-    subject: `Nouveau bon de commande fournisseur ${commande.numero} à valider`,
+    subject: `Nouveau bon de commande prestataire ${commande.numero} à valider`,
     html: buildBaseHtml({
-      title: "🛒 Nouveau bon de commande fournisseur",
-      intro: `Un nouveau bon de commande fournisseur vient d'être créé et attend votre validation.`,
+      title: "🛒 Nouveau bon de commande prestataire",
+      intro: `Un nouveau bon de commande prestataire vient d'être créé et attend votre validation.`,
       commande,
     }),
   });

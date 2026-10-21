@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { FournisseurCombobox, Fournisseur } from '@/components/FournisseurCombobox';
+import { FournisseurModal } from '@/components/FournisseurModal';
 import { CommandeFournisseurModal } from '@/components/CommandeFournisseurModal';
 import { CommandeStatutControl, STATUT_LABELS } from '@/components/fournisseurs/CommandeStatutControl';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -50,6 +51,7 @@ export default function CommandesFournisseursListPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isFournisseurModalOpen, setIsFournisseurModalOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
@@ -59,7 +61,7 @@ export default function CommandesFournisseursListPage() {
       if (!res.ok) throw new Error();
       setFournisseurs(await res.json());
     } catch {
-      toast.error('Erreur lors de la récupération des fournisseurs.');
+      toast.error('Erreur lors de la récupération des prestataires.');
     }
   }, []);
 
@@ -105,7 +107,7 @@ export default function CommandesFournisseursListPage() {
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
     if (filters.fournisseurId) {
-      const nom = fournisseurs.find((f) => f.id === filters.fournisseurId)?.entreprise ?? 'Fournisseur';
+      const nom = fournisseurs.find((f) => f.id === filters.fournisseurId)?.entreprise ?? 'Prestataire';
       chips.push({ key: 'fournisseur', label: nom, onRemove: () => setFilters((p) => ({ ...p, fournisseurId: '' })) });
     }
     if (filters.statut) {
@@ -145,7 +147,7 @@ export default function CommandesFournisseursListPage() {
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Bons de Commande Fournisseurs</h1>
+          <h1 className="text-2xl font-bold">Bons de Commande Prestataires</h1>
           <p className="text-sm text-muted-foreground mt-1">{summary.count} bon(s) de commande</p>
         </div>
         <Button onClick={() => setIsAddModalOpen(true)}>
@@ -160,6 +162,12 @@ export default function CommandesFournisseursListPage() {
         onSuccess={fetchCommandes}
         fournisseurs={fournisseurs}
         onFournisseurCreated={handleFournisseurCreated}
+      />
+
+      <FournisseurModal
+        isOpen={isFournisseurModalOpen}
+        onClose={() => setIsFournisseurModalOpen(false)}
+        onSuccess={handleFournisseurCreated}
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -231,7 +239,7 @@ export default function CommandesFournisseursListPage() {
                 fournisseurs={fournisseurs}
                 value={filters.fournisseurId}
                 onChange={(id) => setFilters((prev) => ({ ...prev, fournisseurId: id }))}
-                onAddNew={() => {}}
+                onAddNew={() => setIsFournisseurModalOpen(true)}
               />
               <Select value={filters.statut} onValueChange={(value) => setFilters((prev) => ({ ...prev, statut: value }))}>
                 <SelectTrigger><SelectValue placeholder="Tous les statuts" /></SelectTrigger>
@@ -251,7 +259,7 @@ export default function CommandesFournisseursListPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead>Fournisseur</TableHead>
+              <TableHead>Prestataire</TableHead>
               <TableHead>Numéro</TableHead>
               <TableHead>Date</TableHead>
               <TableHead className="text-center">Articles</TableHead>
