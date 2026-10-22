@@ -239,6 +239,7 @@ model FournisseurStatutHistorique {
   fournisseurId String
   actif         Boolean
   motif         String?
+  dateContrat   DateTime?
   createdAt     DateTime    @default(now())
   createdById   String?
   fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
