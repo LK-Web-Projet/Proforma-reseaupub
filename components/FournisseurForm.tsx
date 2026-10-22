@@ -8,7 +8,7 @@ import { Fournisseur } from './FournisseurModal';
 import { TYPE_FOURNISSEUR_VALUES, resolveTypeFournisseur } from '@/lib/typeFournisseur';
 
 interface FournisseurFormProps {
-  onSubmit: (data: Omit<Fournisseur, 'id'>) => void;
+  onSubmit: (data: Omit<Fournisseur, 'id' | 'actif'>) => void;
   initialData?: Fournisseur | null;
   isSubmitting: boolean;
 }
@@ -25,6 +25,8 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
     domaineActivite: '',
     adresse: '',
     typeFournisseur: TYPE_FOURNISSEUR_VALUES[0] as string,
+    dateDebutContrat: '',
+    dateFinContrat: '',
   });
   const [isOtherDomain, setIsOtherDomain] = useState(false);
 
@@ -42,6 +44,8 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
         domaineActivite: initialDomain,
         adresse: initialData.adresse || '',
         typeFournisseur: resolveTypeFournisseur(initialData.typeFournisseur),
+        dateDebutContrat: initialData.dateDebutContrat ? initialData.dateDebutContrat.slice(0, 10) : '',
+        dateFinContrat: initialData.dateFinContrat ? initialData.dateFinContrat.slice(0, 10) : '',
       });
 
       setIsOtherDomain(!!isCustomDomain);
@@ -57,6 +61,8 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
         domaineActivite: '',
         adresse: '',
         typeFournisseur: TYPE_FOURNISSEUR_VALUES[0],
+        dateDebutContrat: '',
+        dateFinContrat: '',
       });
       setIsOtherDomain(false);
     }
@@ -83,7 +89,12 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ ...formData, email: formData.email.trim() || null });
+    onSubmit({
+      ...formData,
+      email: formData.email.trim() || null,
+      dateDebutContrat: formData.dateDebutContrat || null,
+      dateFinContrat: formData.dateFinContrat || null,
+    });
   };
 
   const selectValue = isOtherDomain ? 'Autre' : formData.domaineActivite;
@@ -166,6 +177,28 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
             name="email"
             type="email"
             value={formData.email}
+            onChange={handleChange}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label htmlFor="dateDebutContrat">Début de contrat</label>
+          <Input
+            id="dateDebutContrat"
+            name="dateDebutContrat"
+            type="date"
+            value={formData.dateDebutContrat}
+            onChange={handleChange}
+          />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="dateFinContrat">Fin de contrat</label>
+          <Input
+            id="dateFinContrat"
+            name="dateFinContrat"
+            type="date"
+            value={formData.dateFinContrat}
             onChange={handleChange}
           />
         </div>

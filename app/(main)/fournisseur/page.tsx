@@ -25,6 +25,8 @@ import {
   TYPE_FOURNISSEUR_ICONS,
   resolveTypeFournisseur,
 } from "@/lib/typeFournisseur";
+import { PrestataireStatutBadge } from "@/components/fournisseurs/PrestataireStatutBadge";
+import { PrestataireStatutToggle } from "@/components/fournisseurs/PrestataireStatutToggle";
 
 const TAB_ALL = "Tout";
 
@@ -139,6 +141,7 @@ export default function FournisseursPage() {
               <TableRow className="bg-muted/40">
                 <TableHead>Entreprise</TableHead>
                 <TableHead>Type</TableHead>
+                <TableHead>Statut</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Domaine d&apos;activité</TableHead>
@@ -150,7 +153,7 @@ export default function FournisseursPage() {
                 <FournisseurTableSkeleton />
               ) : filteredFournisseurs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-32">
+                  <TableCell colSpan={7} className="text-center h-32">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Building2 className="h-8 w-8" />
                       <p>Aucun prestataire trouvé.</p>
@@ -182,6 +185,17 @@ export default function FournisseursPage() {
                           <TypeIcon className="h-3 w-3" />
                           {type}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2">
+                          <PrestataireStatutBadge actif={fournisseur.actif} />
+                          <PrestataireStatutToggle
+                            fournisseurId={fournisseur.id}
+                            entreprise={fournisseur.entreprise}
+                            actif={fournisseur.actif}
+                            onSuccess={fetchFournisseurs}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="py-3">
                         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">

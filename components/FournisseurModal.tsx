@@ -21,6 +21,9 @@ export type Fournisseur = {
   domaineActivite: string;
   adresse: string;
   typeFournisseur: string | null;
+  actif: boolean;
+  dateDebutContrat: string | null;
+  dateFinContrat: string | null;
 };
 
 interface FournisseurModalProps {
@@ -33,7 +36,7 @@ interface FournisseurModalProps {
 export function FournisseurModal({ isOpen, onClose, onSuccess, initialData }: FournisseurModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (data: Omit<Fournisseur, 'id'>) => {
+  const handleSubmit = async (data: Omit<Fournisseur, 'id' | 'actif'>) => {
     setIsSubmitting(true);
     const method = initialData ? 'PUT' : 'POST';
     const url = initialData ? `/api/fournisseurs/${initialData.id}` : '/api/fournisseurs';

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
+import { safeCreatedById } from '@/lib/authz';
 
 // GET /api/fournisseurs/[id] - Récupérer un fournisseur par ID
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> },) {
@@ -11,6 +13,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       where: { id },
       include: {
         factures: true,
+        statutHistorique: {
+          orderBy: { createdAt: 'desc' },
+          include: { createdBy: { select: { nom: true } } },
+        },
       },
     });
 
@@ -40,7 +46,7 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
 
   try {
     const body = await req.json();
-    const { nom, prenom, entreprise, contact, domaineActivite, adresse, email, typeFournisseur } = body;
+    const { nom, prenom, entreprise, contact, domaineActivite, adresse, email, typeFournisseur, dateDebutContrat, dateFinContrat } = body;
 
     const updatedFournisseur = await prisma.fournisseur.update({
       where: { id },
@@ -53,6 +59,8 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
         adresse,
         email: email?.trim() ? email.trim() : null,
         typeFournisseur: typeFournisseur?.trim() || null,
+        dateDebutContrat: dateDebutContrat ? new Date(dateDebutContrat) : null,
+        dateFinContrat: dateFinContrat ? new Date(dateFinContrat) : null,
       },
     });
 
@@ -70,6 +78,52 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
     return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
   }
 }
+// PATCH /api/fournisseurs/[id] - Bascule rapide actif/inactif (+ motif optionnel),
+// avec création d'une ligne d'historique si la valeur change réellement.
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  try {
+    const { userId } = await auth();
+    const body = await req.json();
+    const { actif, motif } = body;
+
+    if (typeof actif !== 'boolean') {
+      return NextResponse.json({ message: 'Le champ actif (booléen) est requis.' }, { status: 400 });
+    }
+
+    const existing = await prisma.fournisseur.findUnique({ where: { id }, select: { actif: true } });
+    if (!existing) {
+      return NextResponse.json({ message: 'Prestataire non trouvé' }, { status: 404 });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.fournisseur.update({ where: { id }, data: { actif } });
+      if (existing.actif !== actif) {
+        const createdById = await safeCreatedById(tx, userId);
+        await tx.fournisseurStatutHistorique.create({
+          data: {
+            fournisseurId: id,
+            actif,
+            motif: motif?.trim() ? motif.trim() : null,
+            createdById,
+          },
+        });
+      }
+      return result;
+    });
+
+    return NextResponse.json(updated);
+  } catch (error: unknown) {
+    const err = error as { code?: string; message?: string };
+    console.error(`[API] Error updating fournisseur status ${id}:`, err);
+    if (err.code === 'P2025') {
+      return NextResponse.json({ message: 'Prestataire non trouvé' }, { status: 404 });
+    }
+    return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });
+  }
+}
+
 // DELETE /api/fournisseurs/[id] - Supprimer un fournisseur
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> },) {
   const { id } = await params;

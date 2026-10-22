@@ -22,6 +22,35 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-21 (suite 2) — Statut Actif/Inactif des prestataires, avec historique et dates de contrat
+
+**Demande / Contexte**
+L'utilisateur veut distinguer les prestataires avec qui l'entreprise travaille encore (actifs) de ceux avec qui elle ne travaille plus (inactifs), avec un historique clair des changements de statut dans le temps (actif → inactif → actif, etc.), et des dates de début/fin de contrat. Le badge devait reprendre le style « clignotant » déjà utilisé pour les statuts de paiement des proformas/factures fournisseurs. Décisions actées : Actif = badge vert clignotant (relation en cours), Inactif = badge rouge statique (état terminé) — même sémantique que `FactureStatusBadge`/`FactureFournisseurStatusBadge` déjà dans le projet ; chaque changement de statut peut porter un motif optionnel saisi dans une boîte de dialogue ; le contrôle de bascule vit uniquement dans le tableau de liste et la page détail (pas dans le formulaire d'ajout/modification).
+
+Aucun pattern d'historique n'existait déjà dans ce projet (`Invoice.historiqueModifications Json?` est mort, jamais lu/écrit nulle part) — le nouveau modèle suit le pattern établi "un événement = une ligne, FK vers le parent, cascade" déjà utilisé par `ProduitFournisseurPhoto`/`CashJournalAttachment`/`Paiement`.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) + migration `add_fournisseur_statut_historique` : `Fournisseur` gagne `actif Boolean @default(true)`, `dateDebutContrat`/`dateFinContrat DateTime?` ; nouveau modèle `FournisseurStatutHistorique` (id, fournisseurId FK cascade, actif, motif optionnel, createdAt, createdById FK nullable vers `User`) ; relation inverse ajoutée sur `User`. Tous les prestataires existants deviennent `actif = true` automatiquement (opération de métadonnées seule, aucune ligne d'historique rétroactive créée).
+- [components/fournisseurs/PrestataireStatutBadge.tsx](components/fournisseurs/PrestataireStatutBadge.tsx) (nouveau) : badge + `PrestataireStatutDot`, repris de `FactureFournisseurStatusBadge.tsx` mais pour un booléen, `animate` valant `actif` par défaut (clignote seulement si actif).
+- [components/fournisseurs/PrestataireStatutToggle.tsx](components/fournisseurs/PrestataireStatutToggle.tsx) (nouveau) : `Switch` + `Dialog` avec `Textarea` motif optionnel, titre/placeholder adaptés selon le sens du bascule, `PATCH` vers l'API à la confirmation.
+- [app/api/fournisseurs/[id]/route.ts](app/api/fournisseurs/[id]/route.ts) : `GET` inclut désormais `statutHistorique` (ordonné, avec le nom de l'auteur) ; `PUT` gère les deux dates de contrat (pass-through, ne touche jamais `actif`) ; nouveau `PATCH` qui bascule `actif` et ne crée une ligne d'historique que si la valeur change réellement (via `safeCreatedById` pour l'attribution).
+- [components/FournisseurModal.tsx](components/FournisseurModal.tsx) : type partagé `Fournisseur` gagne `actif`, `dateDebutContrat`, `dateFinContrat` ; `onSubmit`/`handleSubmit` typés `Omit<Fournisseur, 'id' | 'actif'>` (le formulaire ne gère jamais `actif`).
+- [components/FournisseurForm.tsx](components/FournisseurForm.tsx) : deux nouveaux champs date (Début/Fin de contrat) après Contact/Email, avant Adresse.
+- [app/(main)/fournisseur/page.tsx](app/(main)/fournisseur/page.tsx) : nouvelle colonne « Statut » (badge + interrupteur) entre Type et Email ; `colSpan` de l'état vide passé à 7.
+- [components/FournisseurTableSkeleton.tsx](components/FournisseurTableSkeleton.tsx) : 2 cellules ajoutées pour matcher exactement les 7 colonnes du tableau (corrige au passage une incohérence déjà présente avant ce correctif).
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : badge + interrupteur dans l'en-tête, ligne dates de contrat, carte « Historique de statut » (liste chronologique avec motif et auteur, points statiques même pour l'entrée actuellement « actif »).
+
+**Erreurs rencontrées & solutions**
+- `tsc --noEmit` et `next lint` propres (vérifiés séparément du build, avec le vrai code de sortie — pas celui d'un `tail`/pipe qui masquerait un échec).
+- `pnpm build` a de nouveau échoué avec `Cannot find module '.../next/dist/client/components/builtin/global-not-found'` (MODULE_NOT_FOUND) — 5ᵉ occurrence de cette corruption du store pnpm dans la session, résolue à nouveau par `pnpm install --force`. Build relancé en arrière-plan, confirmation finale non bloquante sur cette entrée (voir « À tester »).
+
+**À tester / points d'attention**
+- Confirmer que le dernier `pnpm build` relancé après réparation aboutit bien (27+ routes, exit code 0).
+- Basculer un prestataire en inactif avec un motif depuis la liste → badge rouge/statique immédiat ; ouvrir sa fiche → historique montre « Marqué inactif », date, motif, « par {nom de l'utilisateur connecté} » (pas « par Système »).
+- Rebasculer en actif sans motif → badge vert/clignotant, nouvelle ligne d'historique sans motif affiché.
+- Modifier les dates de contrat via le formulaire, confirmer la persistance et qu'aucune ligne d'historique n'est créée par cette édition (le formulaire ne touche jamais `actif`).
+- Cette corruption pnpm récurrente (5 fois en une session) continue de pointer vers un problème d'environnement sur cette machine (antivirus/EDR scannant `node_modules`, synchronisation de fichiers) — déjà signalé à plusieurs reprises dans ce journal, mérite une investigation côté admin.
+
 ## 2026-10-21 (suite) — Renommage oublié : libellé de section dans la gestion des rôles
 
 **Demande / Contexte**
