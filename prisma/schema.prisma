@@ -36,10 +36,11 @@ model User {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  facturesCreees           Invoice[]            @relation("InvoiceCreatedBy")
-  paiementsCrees           Paiement[]           @relation("PaiementCreatedBy")
-  cashJournalEntriesCrees  CashJournal[]        @relation("CashJournalCreatedBy")
-  facturesFournisseurCrees FactureFournisseur[] @relation("FactureFournisseurCreatedBy")
+  facturesCreees                   Invoice[]                      @relation("InvoiceCreatedBy")
+  paiementsCrees                   Paiement[]                     @relation("PaiementCreatedBy")
+  cashJournalEntriesCrees          CashJournal[]                  @relation("CashJournalCreatedBy")
+  facturesFournisseurCrees         FactureFournisseur[]           @relation("FactureFournisseurCreatedBy")
+  fournisseurStatutHistoriqueCrees FournisseurStatutHistorique[]  @relation("FournisseurStatutHistoriqueCreatedBy")
 }
 
 model EntrepriseConfig {
@@ -213,20 +214,35 @@ model CashJournalAttachment {
 }
 
 model Fournisseur {
-  id              String                @id @default(cuid())
-  nom             String?
-  prenom          String?
-  entreprise      String                @unique
-  contact         String
-  domaineActivite String
-  adresse         String
-  email           String                @unique
-  typeFournisseur String?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  commandes       CommandeFournisseur[]
-  factures        FactureFournisseur[]
-  produits        ProduitFournisseur[]
+  id               String                        @id @default(cuid())
+  nom              String?
+  prenom           String?
+  entreprise       String                        @unique
+  contact          String
+  domaineActivite  String
+  adresse          String
+  email            String?                       @unique
+  typeFournisseur  String?
+  actif            Boolean                       @default(true)
+  dateDebutContrat DateTime?
+  dateFinContrat   DateTime?
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+  commandes        CommandeFournisseur[]
+  factures         FactureFournisseur[]
+  produits         ProduitFournisseur[]
+  statutHistorique FournisseurStatutHistorique[]
+}
+
+model FournisseurStatutHistorique {
+  id            String      @id @default(uuid())
+  fournisseurId String
+  actif         Boolean
+  motif         String?
+  createdAt     DateTime    @default(now())
+  createdById   String?
+  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  createdBy     User?       @relation("FournisseurStatutHistoriqueCreatedBy", fields: [createdById], references: [id])
 }
 
 model FactureFournisseur {

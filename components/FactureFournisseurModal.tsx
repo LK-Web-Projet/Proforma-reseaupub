@@ -112,7 +112,7 @@ export function FactureFournisseurModal({
         return;
       }
     } else if (!formData.fournisseurId) {
-      toast.error('Veuillez sélectionner un fournisseur.');
+      toast.error('Veuillez sélectionner un prestataire.');
       return;
     }
 
@@ -142,7 +142,7 @@ export function FactureFournisseurModal({
       }
 
       toast.success(
-        isEditing ? 'Facture fournisseur mise à jour avec succès !' : 'Facture fournisseur créée avec succès !',
+        isEditing ? 'Facture prestataire mise à jour avec succès !' : 'Facture prestataire créée avec succès !',
       );
       onSuccess();
       onClose();
@@ -168,7 +168,7 @@ export function FactureFournisseurModal({
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {isEditing ? 'Modifier la facture fournisseur' : 'Ajouter une facture fournisseur'}
+              {isEditing ? 'Modifier la facture prestataire' : 'Ajouter une facture prestataire'}
             </DialogTitle>
           </DialogHeader>
 
@@ -187,7 +187,7 @@ export function FactureFournisseurModal({
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label>Fournisseur *</label>
+                <label>Prestataire *</label>
                 {isLocked ? (
                   <div className="rounded-md border bg-muted px-3 py-2 text-sm">
                     {selectedFournisseur?.entreprise ?? '—'}

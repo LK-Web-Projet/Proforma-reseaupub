@@ -5,15 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Fournisseur } from './FournisseurModal';
+import { TYPE_FOURNISSEUR_VALUES, resolveTypeFournisseur } from '@/lib/typeFournisseur';
 
 interface FournisseurFormProps {
-  onSubmit: (data: Omit<Fournisseur, 'id'>) => void;
+  onSubmit: (data: Omit<Fournisseur, 'id' | 'actif'>) => void;
   initialData?: Fournisseur | null;
   isSubmitting: boolean;
 }
 
 const domainOptions = ["Informatique", "BTP", "Communication", "Prestation de service"];
-const typeFournisseurOptions = ["Prestataire", "Fournisseur", "Prestataire interne", "Prestataire externe"];
 
 export function FournisseurForm({ onSubmit, initialData, isSubmitting }: FournisseurFormProps) {
   const [formData, setFormData] = useState({
@@ -24,17 +24,16 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
     contact: '',
     domaineActivite: '',
     adresse: '',
-    typeFournisseur: '',
+    typeFournisseur: TYPE_FOURNISSEUR_VALUES[0] as string,
+    dateDebutContrat: '',
+    dateFinContrat: '',
   });
   const [isOtherDomain, setIsOtherDomain] = useState(false);
-  const [isOtherType, setIsOtherType] = useState(false);
 
   useEffect(() => {
     if (initialData) {
       const initialDomain = initialData.domaineActivite || '';
       const isCustomDomain = initialDomain && !domainOptions.includes(initialDomain);
-      const initialType = initialData.typeFournisseur || '';
-      const isCustomType = initialType && !typeFournisseurOptions.includes(initialType);
 
       setFormData({
         entreprise: initialData.entreprise || '',
@@ -44,11 +43,12 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
         contact: initialData.contact || '',
         domaineActivite: initialDomain,
         adresse: initialData.adresse || '',
-        typeFournisseur: initialType,
+        typeFournisseur: resolveTypeFournisseur(initialData.typeFournisseur),
+        dateDebutContrat: initialData.dateDebutContrat ? initialData.dateDebutContrat.slice(0, 10) : '',
+        dateFinContrat: initialData.dateFinContrat ? initialData.dateFinContrat.slice(0, 10) : '',
       });
 
       setIsOtherDomain(!!isCustomDomain);
-      setIsOtherType(!!isCustomType);
 
     } else {
       // Reset form for new entry
@@ -60,10 +60,11 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
         contact: '',
         domaineActivite: '',
         adresse: '',
-        typeFournisseur: '',
+        typeFournisseur: TYPE_FOURNISSEUR_VALUES[0],
+        dateDebutContrat: '',
+        dateFinContrat: '',
       });
       setIsOtherDomain(false);
-      setIsOtherType(false);
     }
   }, [initialData]);
 
@@ -83,35 +84,49 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
   };
 
   const handleTypeChange = (value: string) => {
-    if (value === 'Autre') {
-      setIsOtherType(true);
-      setFormData((prev) => ({ ...prev, typeFournisseur: '' }));
-    } else {
-      setIsOtherType(false);
-      setFormData((prev) => ({ ...prev, typeFournisseur: value }));
-    }
+    setFormData((prev) => ({ ...prev, typeFournisseur: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      email: formData.email.trim() || null,
+      dateDebutContrat: formData.dateDebutContrat || null,
+      dateFinContrat: formData.dateFinContrat || null,
+    });
   };
 
   const selectValue = isOtherDomain ? 'Autre' : formData.domaineActivite;
-  const typeSelectValue = isOtherType ? 'Autre' : formData.typeFournisseur;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <label htmlFor="entreprise">Entreprise ou Nom &amp; Prénom *</label>
+        <Input
+          id="entreprise"
+          name="entreprise"
+          value={formData.entreprise}
+          onChange={handleChange}
+          placeholder="Ex : ACME SARL ou Jean Dupont"
+          required
+        />
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label htmlFor="entreprise">Entreprise *</label>
-          <Input
-            id="entreprise"
-            name="entreprise"
-            value={formData.entreprise}
-            onChange={handleChange}
-            required
-          />
+          <label htmlFor="typeFournisseur">Type de prestataire *</label>
+          <Select onValueChange={handleTypeChange} value={formData.typeFournisseur}>
+            <SelectTrigger>
+              <SelectValue placeholder="Sélectionner un type" />
+            </SelectTrigger>
+            <SelectContent>
+              {TYPE_FOURNISSEUR_VALUES.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <label htmlFor="domaineActivite">Domaine d&apos;activité</label>
@@ -144,64 +159,7 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
           />
         </div>
       )}
-      <div className="space-y-2">
-        <label htmlFor="typeFournisseur">Type de fournisseur</label>
-        <Select onValueChange={handleTypeChange} value={typeSelectValue}>
-          <SelectTrigger>
-            <SelectValue placeholder="Sélectionner un type" />
-          </SelectTrigger>
-          <SelectContent>
-            {typeFournisseurOptions.map((option) => (
-              <SelectItem key={option} value={option}>
-                {option}
-              </SelectItem>
-            ))}
-            <SelectItem value="Autre">Autre</SelectItem>
-          </SelectContent>
-        </Select>
-        {isOtherType && (
-          <Input
-            id="customTypeFournisseur"
-            name="typeFournisseur"
-            value={formData.typeFournisseur}
-            onChange={handleChange}
-            placeholder="Précisez le type de fournisseur"
-            className="mt-2"
-          />
-        )}
-      </div>
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label htmlFor="nom">Nom</label>
-          <Input
-            id="nom"
-            name="nom"
-            value={formData.nom}
-            onChange={handleChange}
-          />
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="prenom">Prénom</label>
-          <Input
-            id="prenom"
-            name="prenom"
-            value={formData.prenom}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label htmlFor="email">Email *</label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            value={formData.email}
-            onChange={handleChange}
-            required
-          />
-        </div>
         <div className="space-y-2">
           <label htmlFor="contact">Contact *</label>
           <Input
@@ -210,6 +168,38 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
             value={formData.contact}
             onChange={handleChange}
             required
+          />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="email">Email</label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label htmlFor="dateDebutContrat">Début de contrat</label>
+          <Input
+            id="dateDebutContrat"
+            name="dateDebutContrat"
+            type="date"
+            value={formData.dateDebutContrat}
+            onChange={handleChange}
+          />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="dateFinContrat">Fin de contrat</label>
+          <Input
+            id="dateFinContrat"
+            name="dateFinContrat"
+            type="date"
+            value={formData.dateFinContrat}
+            onChange={handleChange}
           />
         </div>
       </div>

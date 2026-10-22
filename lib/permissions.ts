@@ -25,7 +25,7 @@ export const PAGE_LABELS: Record<PageKey, string> = {
   dashboard: "Tableau de bord",
   proforma: "Proforma (factures, statistiques)",
   client: "Clients",
-  fournisseurs: "Fournisseurs",
+  fournisseurs: "Prestataires",
   commercial: "Commercial",
   finance: "Finance (journal de caisse)",
   parametres: "Paramètres",

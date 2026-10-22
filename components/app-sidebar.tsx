@@ -97,7 +97,7 @@ const Commercial = [
 
 const fournisseur = [
   {
-    title: "Liste Fournisseurs",
+    title: "Liste Prestataires",
     url: "/fournisseur",
     icon: Users,
   },
@@ -313,7 +313,7 @@ export function AppSidebar() {
             <CollapsibleTrigger asChild>
               <SidebarMenuButton>
                 <Building2 className="w-5 h-5" />
-                <span className="font-bold">Fournisseurs</span>
+                <span className="font-bold">Prestataires</span>
                 <ChevronRight
                   className={cn(
                     "ml-auto w-4 h-4 transition-transform",

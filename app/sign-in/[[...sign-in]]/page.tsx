@@ -6,7 +6,7 @@ import { FileText, Building2, Wallet, BarChart3 } from "lucide-react";
 
 const FEATURES = [
   { icon: FileText, text: "Facturation proforma professionnelle" },
-  { icon: Building2, text: "Gestion fournisseurs & bons de commande" },
+  { icon: Building2, text: "Gestion prestataires & bons de commande" },
   { icon: Wallet, text: "Suivi budget & trésorerie" },
   { icon: BarChart3, text: "Tableaux de bord en temps réel" },
 ];
@@ -41,7 +41,7 @@ export default function SignInPage() {
             </h1>
             <p className="mt-4 text-gray-400 text-sm leading-relaxed max-w-sm">
               Une plateforme centralisée pour générer vos proformas, gérer vos
-              fournisseurs et suivre votre trésorerie en temps réel.
+              prestataires et suivre votre trésorerie en temps réel.
             </p>
           </div>
 

@@ -22,6 +22,7 @@ import type { StatutCommandeFournisseur } from "@prisma/client";
 import { FactureStatusBadge } from "@/components/FactureStatusBadge";
 import { CommandeStatutControl } from "@/components/fournisseurs/CommandeStatutControl";
 import { EditCommandeFournisseurModal } from "@/components/fournisseurs/EditCommandeFournisseurModal";
+import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
 
 interface ProduitFournisseur {
     id: string;
@@ -47,10 +48,11 @@ interface Fournisseur {
     entreprise: string;
     nom: string | null;
     prenom: string | null;
-    email: string;
+    email: string | null;
     contact: string;
     adresse: string;
     domaineActivite: string;
+    typeFournisseur: string | null;
 }
 
 interface EntrepriseConfig {
@@ -175,7 +177,7 @@ async function generatePDF(commande: CommandeDetail, entreprise: EntrepriseConfi
         font: fontBold,
         color: colorWhite,
     });
-    page.drawText("FOURNISSEUR", {
+    page.drawText(resolveTypeFournisseur(commande.fournisseur.typeFournisseur).toUpperCase(), {
         x: 40,
         y: y + 65,
         size: 14,
@@ -196,11 +198,11 @@ async function generatePDF(commande: CommandeDetail, entreprise: EntrepriseConfi
 
     y -= 65;
 
-    // ── Informations Fournisseur ───────────────────────────────────────────────
+    // ── Informations Prestataire ───────────────────────────────────────────────
     page.drawRectangle({ x: 40, y: y - 80, width: width - 80, height: 95, color: colorLight });
     page.drawRectangle({ x: 40, y: y + 10, width: width - 80, height: 18, color: colorPrimary });
 
-    page.drawText("FOURNISSEUR", {
+    page.drawText(resolveTypeFournisseur(commande.fournisseur.typeFournisseur).toUpperCase(), {
         x: 50,
         y: y + 14,
         size: 9,
@@ -230,7 +232,7 @@ async function generatePDF(commande: CommandeDetail, entreprise: EntrepriseConfi
         x: 50, y, size: 10, font: fontRegular, color: colorGray,
     });
     y -= 14;
-    page.drawText(commande.fournisseur.email, {
+    page.drawText(commande.fournisseur.email || "", {
         x: 50, y, size: 10, font: fontRegular, color: colorGray,
     });
     y -= 14;
@@ -571,13 +573,13 @@ export default function CommandeDetailPage() {
                 </div>
             </Card>
 
-            {/* Informations Fournisseur */}
+            {/* Informations Prestataire */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card className="md:col-span-2">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center gap-2 text-[#ef0b53]">
                             <Building2 className="h-4 w-4" />
-                            Informations Fournisseur
+                            Informations {resolveTypeFournisseur(commande.fournisseur.typeFournisseur)}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -598,7 +600,7 @@ export default function CommandeDetailPage() {
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-gray-600">
                                     <Mail className="h-4 w-4 text-[#ef0b53] flex-shrink-0" />
-                                    <span>{commande.fournisseur.email}</span>
+                                    <span>{commande.fournisseur.email || "—"}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-gray-600">
                                     <Phone className="h-4 w-4 text-[#ef0b53] flex-shrink-0" />

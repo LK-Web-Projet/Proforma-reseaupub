@@ -25,9 +25,23 @@ import { AttachmentPreviewButton } from "@/components/AttachmentPreviewButton";
 import { FactureFournisseurModal, FactureFournisseurData } from "@/components/FactureFournisseurModal";
 import { FactureFournisseurStatusBadge, StatusDot } from "@/components/FactureFournisseurStatusBadge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { TYPE_FOURNISSEUR_COLORS, resolveTypeFournisseur } from "@/lib/typeFournisseur";
+import { PrestataireStatutBadge, PrestataireStatutDot } from "@/components/fournisseurs/PrestataireStatutBadge";
+import { PrestataireStatutToggle } from "@/components/fournisseurs/PrestataireStatutToggle";
+
+interface StatutHistoriqueEntry {
+  id: string;
+  actif: boolean;
+  motif: string | null;
+  createdAt: string;
+  createdBy: { nom: string } | null;
+}
 
 interface FournisseurDetails extends Fournisseur {
   factures: FactureFournisseur[];
+  statutHistorique: StatutHistoriqueEntry[];
 }
 
 export default function FournisseurDetailsPage() {
@@ -52,7 +66,7 @@ export default function FournisseurDetailsPage() {
       setFournisseur(data);
     } catch (error) {
       console.error(error);
-      toast.error("Erreur lors de la récupération des détails du fournisseur.");
+      toast.error("Erreur lors de la récupération des détails du prestataire.");
     } finally {
       setLoading(false);
     }
@@ -111,12 +125,55 @@ export default function FournisseurDetailsPage() {
   }
 
   if (!fournisseur) {
-    return <div>Fournisseur non trouvé.</div>;
+    return <div>Prestataire non trouvé.</div>;
   }
+
+  const type = resolveTypeFournisseur(fournisseur.typeFournisseur);
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">{fournisseur.entreprise}</h1>
+      <div className="flex items-center gap-3 mb-4">
+        <h1 className="text-2xl font-bold">{fournisseur.entreprise}</h1>
+        <Badge variant="outline" className={cn("font-normal", TYPE_FOURNISSEUR_COLORS[type])}>
+          {type}
+        </Badge>
+        <PrestataireStatutBadge actif={fournisseur.actif} />
+        <PrestataireStatutToggle
+          fournisseurId={id}
+          entreprise={fournisseur.entreprise}
+          actif={fournisseur.actif}
+          onSuccess={fetchFournisseurDetails}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mb-4">
+        <span>Début de contrat : {fournisseur.dateDebutContrat ? format(new Date(fournisseur.dateDebutContrat), "dd/MM/yyyy") : "—"}</span>
+        <span>Fin de contrat : {fournisseur.dateFinContrat ? format(new Date(fournisseur.dateFinContrat), "dd/MM/yyyy") : "—"}</span>
+      </div>
+
+      <div className="rounded-md border bg-white p-4 mb-8 max-h-48 overflow-y-auto text-sm">
+        <h3 className="font-medium mb-2 text-muted-foreground">Historique de statut</h3>
+        {fournisseur.statutHistorique.length === 0 ? (
+          <p className="text-muted-foreground">Aucun changement de statut enregistré.</p>
+        ) : (
+          <ul className="space-y-2">
+            {fournisseur.statutHistorique.map((h) => (
+              <li key={h.id} className="flex items-start gap-2">
+                <div className="mt-1">
+                  <PrestataireStatutDot actif={h.actif} animate={false} />
+                </div>
+                <div>
+                  <span className="font-medium">{h.actif ? "Marqué actif" : "Marqué inactif"}</span>
+                  {" — "}
+                  {format(new Date(h.createdAt), "dd/MM/yyyy HH:mm")}
+                  {h.motif && <p className="text-muted-foreground italic">{h.motif}</p>}
+                  <p className="text-xs text-muted-foreground">par {h.createdBy?.nom ?? "Système"}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <FactureFournisseurModal
         isOpen={!!editingFacture}

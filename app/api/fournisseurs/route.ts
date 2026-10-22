@@ -23,8 +23,8 @@ export async function POST(req: Request) {
     const { nom, prenom, entreprise, contact, domaineActivite, adresse, email, typeFournisseur } = body;
 
     // Basic validation
-    if (!entreprise || !contact || !email) {
-      return NextResponse.json({ message: 'Les champs entreprise, contact et email sont requis' }, { status: 400 });
+    if (!entreprise || !contact) {
+      return NextResponse.json({ message: 'Les champs entreprise et contact sont requis' }, { status: 400 });
     }
 
     const newFournisseur = await prisma.fournisseur.create({
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
         contact,
         domaineActivite,
         adresse,
-        email,
+        email: email?.trim() ? email.trim() : null,
         typeFournisseur: typeFournisseur?.trim() || null,
       },
     });
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     if (typeof error === 'object' && error !== null && 'code' in error) {
       const errWithCode = error as { code?: string };
       if (errWithCode.code === 'P2002') { // Unique constraint violation
-        return NextResponse.json({ message: `Un fournisseur avec cet email ou nom d'entreprise existe déjà.` }, { status: 409 });
+        return NextResponse.json({ message: `Un prestataire avec cet email ou nom d'entreprise existe déjà.` }, { status: 409 });
       }
     }
     return NextResponse.json({ message: 'Erreur interne du serveur' }, { status: 500 });

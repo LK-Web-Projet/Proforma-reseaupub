@@ -176,7 +176,7 @@ export function CommandeFournisseurModal({
     e.preventDefault();
 
     if (!fournisseurId) {
-      toast.error('Veuillez sélectionner un fournisseur.');
+      toast.error('Veuillez sélectionner un prestataire.');
       return;
     }
 
@@ -235,13 +235,13 @@ export function CommandeFournisseurModal({
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Nouveau Bon de Commande Fournisseur</DialogTitle>
+            <DialogTitle>Nouveau Bon de Commande Prestataire</DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label>Fournisseur *</label>
+                <label>Prestataire *</label>
                 <FournisseurCombobox
                   fournisseurs={fournisseurs}
                   value={fournisseurId}
@@ -279,7 +279,7 @@ export function CommandeFournisseurModal({
 
               {!fournisseurId ? (
                 <p className="text-sm text-muted-foreground py-4 text-center border rounded-md">
-                  Sélectionnez d&apos;abord un fournisseur pour choisir ses produits.
+                  Sélectionnez d&apos;abord un prestataire pour choisir ses produits.
                 </p>
               ) : (
                 <div className="rounded-md border overflow-x-auto">
