@@ -22,6 +22,136 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-24 (suite 7) — Renommage colonne "Entreprise" + placeholder de recherche
+
+**Demande / Contexte**
+L'utilisateur a demandé de renommer la colonne "Entreprise" en "Entreprise / Prestataire" (cohérent avec le champ du formulaire déjà relabellisé "Entreprise ou Nom & Prénom") et de préciser dans le placeholder de la barre de recherche qu'on cherche un fournisseur ou un prestataire.
+
+**Modifications apportées**
+- [app/(main)/fournisseur/page.tsx](app/(main)/fournisseur/page.tsx) : en-tête de colonne "Entreprise" → "Entreprise / Prestataire" ; placeholder de recherche → "Rechercher un fournisseur ou prestataire (entreprise, contact, email)...".
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+Aucun point particulier — changement textuel uniquement.
+
+## 2026-10-24 (suite 6) — Colonnes Email/Contact compactées + copie au clic sur la liste prestataires
+
+**Demande / Contexte**
+L'utilisateur a demandé de réduire/tronquer les colonnes Email et Contact du tableau de liste des prestataires pour que tout reste visible sans scroll horizontal, et de pouvoir copier l'email ou le contact d'un simple clic, avec un toast de confirmation, de façon intuitive.
+
+**Modifications apportées**
+- [app/(main)/fournisseur/page.tsx](app/(main)/fournisseur/page.tsx) : colonnes Email (`max-w-[140px]`), Contact (`max-w-[110px]`) et Domaine d'activité (`max-w-[130px]`) tronquées avec ellipsis. Email et Contact sont désormais des boutons cliquables (`e.stopPropagation()` pour ne pas déclencher la navigation de la ligne) qui copient la valeur dans le presse-papier (`navigator.clipboard.writeText`) et affichent un toast "Email copié !"/"Contact copié !" ; une icône `Copy` apparaît au survol pour rendre l'action découvrable, avec un `title` natif en complément.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement qu'avec les colonnes réduites, le tableau ne nécessite plus de scroll horizontal sur un écran standard.
+- Confirmer que le clic sur Email/Contact copie bien la valeur complète (non tronquée) et n'ouvre pas la fiche du prestataire.
+
+## 2026-10-24 (suite 5) — Réordonnancement de l'onglet "Documents"
+
+**Demande / Contexte**
+L'utilisateur a demandé à placer l'onglet "Documents" juste à droite de celui des factures (qui affiche l'historique des factures), plutôt qu'en dernière position.
+
+**Modifications apportées**
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : ordre des onglets passé de Factures / Catalogue Produits / Bons de Commande / Documents à Factures / **Documents** / Catalogue Produits / Bons de Commande.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement le nouvel ordre des onglets sur la fiche prestataire.
+
+## 2026-10-24 (suite 4) — Documents liés au prestataire (CV, pièces administratives, etc.)
+
+**Demande / Contexte**
+L'utilisateur veut pouvoir attacher des documents à une fiche prestataire (CV, pièces administratives, IFU, etc.) depuis la page détail, via un dialogue avec un type de document à choisir (préréglages + "Autre" en texte libre) et un fichier à uploader, de tout type (image, PDF, Word). Exigence explicite : le type doit être stocké en base en texte libre, sans enum — seul le frontend restreint les choix. La gestion des contraintes de taille côté serveur m'a été déléguée.
+
+Découverte en cours de route : `lib/compressImage.ts` (compression d'image côté client construite plus tôt dans la session pour un autre flux d'upload) n'existe plus du tout sur le disque — jamais commité, probablement perdu lors d'un changement de branche (le projet est maintenant sur `feature/gestionPrestataire`). Non réutilisé pour cette fonctionnalité ; décision actée : pas de compression (hors scope, et de toute façon inutile pour les PDF/Word que cette fonctionnalité doit aussi accepter), seulement une vérification de taille (10 Mo/fichier) côté client ET côté serveur.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) + migration `add_fournisseur_document` : nouveau modèle `FournisseurDocument` (id, fournisseurId FK cascade, `type` en texte libre, url, fileName, fileType, createdAt, createdById FK nullable vers `User`) ; relations inverses ajoutées sur `Fournisseur` et `User`.
+- [lib/documentFournisseurTypes.ts](lib/documentFournisseurTypes.ts) (nouveau) : préréglages de type (CV, Pièce d'identité, Document administratif, IFU, RCCM, Contrat, Diplôme / Attestation) + couleur de badge par type avec repli gris pour un texte "Autre" imprévisible.
+- [lib/uploadFournisseurDocument.ts](lib/uploadFournisseurDocument.ts) (nouveau) : `saveFournisseurDocuments()` (écrit dans `public/Upload/FournisseurDocument/<id>/...`, rejette tout fichier > 10 Mo avant d'écrire) + sa propre copie de `describeFsError` (même convention dupliquée que les autres libs d'upload du projet).
+- [app/api/fournisseurs/[id]/documents/route.ts](app/api/fournisseurs/[id]/documents/route.ts) (nouveau) : `GET` (liste triée, avec l'auteur), `POST` (type + fichiers du FormData, une ligne par fichier avec le même type).
+- [app/api/fournisseurs/[id]/documents/[documentId]/route.ts](app/api/fournisseurs/[id]/documents/[documentId]/route.ts) (nouveau) : `DELETE` avec vérification d'appartenance au prestataire + suppression best-effort du fichier physique (try/catch jamais bloquant — améliore le précédent `ProduitFournisseurPhoto` qui ne supprimait que la ligne DB).
+- [components/fournisseurs/FournisseurDocuments.tsx](components/fournisseurs/FournisseurDocuments.tsx) (nouveau) : onglet autonome (fetch propre), liste des documents (badge coloré, nom, auteur/date, `AttachmentPreviewButton` réutilisé tel quel, bouton supprimer) + dialogue d'ajout intégré (Select type + "Autre", input fichier sans restriction de type, vérification de taille à la sélection).
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : nouvel onglet "Documents" (4ᵉ onglet, `grid-cols-3` → `grid-cols-4`), délègue à `FournisseurDocuments`.
+
+**Erreurs rencontrées & solutions**
+- `tsc --noEmit` et `next lint` propres dès la première passe.
+- `pnpm build` a de nouveau échoué avec la corruption pnpm habituelle (`MODULE_NOT_FOUND` sur `next/dist/...`) — résolue par `pnpm install --force`, build confirmé ensuite (27+ routes, les 2 nouvelles routes `/api/fournisseurs/[id]/documents` et `/api/fournisseurs/[id]/documents/[documentId]` bien présentes, exit code réel 0).
+
+**À tester / points d'attention**
+- Ajouter un document avec un type préréglagé puis un autre avec "Autre" + texte libre, vérifier les badges.
+- Vérifier l'aperçu pour une image, un PDF, et un document Word (repli + lien "Ouvrir/Télécharger").
+- Supprimer un document, tenter d'uploader un fichier > 10 Mo (doit être bloqué côté client avant tout envoi réseau).
+- La limite éventuelle d'un proxy (nginx `client_max_body_size`) reste hors de portée de ce code, comme déjà signalé précédemment dans ce journal.
+
+## 2026-10-24 (suite 3) — Affichage amélioré de l'historique de statut (mini-timeline scrollable)
+
+**Demande / Contexte**
+L'utilisateur a demandé d'améliorer visuellement la carte « Historique de statut » et de s'assurer qu'elle reste correctement scrollable si la liste devient longue (défensif, UI/UX).
+
+**Modifications apportées**
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : l'en-tête « Historique de statut » (+ badge du nombre d'entrées) est désormais fixe, hors de la zone de défilement (avant il scrollait avec la liste). La liste elle-même est dans une zone `max-h-64 overflow-y-auto` dédiée, présentée comme une mini-timeline : ligne verticale reliant les points de statut, date alignée à droite de chaque entrée, motif et auteur toujours affichés sous le libellé.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement sur une fiche avec peu d'entrées (0, 1) et, si possible, en créer plusieurs pour confirmer que le défilement se déclenche bien au-delà de la hauteur plafonnée sans casser la mise en page, et que l'en-tête reste visible pendant le scroll.
+
+## 2026-10-24 (suite 2) — Motifs présélectionnés (+ Autre) dans le dialogue de changement de statut
+
+**Demande / Contexte**
+L'utilisateur a demandé à remplacer le champ motif en texte libre par une liste de motifs prédéfinis à sélectionner (différente selon qu'on passe actif ou inactif), avec une option « Autre » qui laisse saisir un texte libre — même pattern déjà utilisé ailleurs dans l'app pour « Domaine d'activité ».
+
+**Modifications apportées**
+- [components/fournisseurs/PrestataireStatutToggle.tsx](components/fournisseurs/PrestataireStatutToggle.tsx) : le `Textarea` motif libre est remplacé par un `Select` dont les options dépendent du sens du changement — `MOTIF_OPTIONS_ACTIF` (« Nouveau contrat signé », « Reconduction de contrat », « Repris après une interruption ») pour passer actif, `MOTIF_OPTIONS_INACTIF` (« Fin de contrat », « Résiliation de contrat », « Remplacé par un autre prestataire ») pour passer inactif — plus une option « Autre » qui révèle un `Textarea` pour préciser librement. Le motif envoyé à l'API reste optionnel comme avant.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que les options proposées changent bien selon qu'on bascule vers actif ou inactif, que « Autre » affiche le champ libre, et que le motif choisi (préréglage ou texte libre) apparaît correctement dans l'historique de la fiche.
+
+## 2026-10-24 (suite) — La date du changement met aussi à jour Début/Fin de contrat
+
+**Demande / Contexte**
+L'utilisateur a demandé si la date saisie lors d'une bascule actif/inactif se répercutait bien sur les champs « Début de contrat »/« Fin de contrat » de la fiche (pas seulement dans l'historique). Confirmé : oui, en fonction du sens du changement.
+
+**Modifications apportées**
+- [app/api/fournisseurs/[id]/route.ts](app/api/fournisseurs/[id]/route.ts) (handler `PATCH`) : quand le statut change réellement, la date saisie est désormais aussi écrite sur `Fournisseur.dateDebutContrat` (si on repasse actif) ou `Fournisseur.dateFinContrat` (si on passe inactif), en plus de la ligne d'historique. L'autre champ (non concerné par ce changement) n'est jamais touché — reste modifiable librement via le formulaire d'édition.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Marquer un prestataire inactif avec une date → vérifier que « Fin de contrat » sur sa fiche affiche cette date. Le remarquer actif avec une autre date → vérifier que « Début de contrat » se met à jour, et que « Fin de contrat » n'est pas effacé (comportement actuel : seul le champ du sens concerné est écrit, l'ancien reste affiché tel quel sauf modification manuelle).
+
+## 2026-10-24 — Date obligatoire du changement de statut dans l'historique prestataire
+
+**Demande / Contexte**
+Suite à la fonctionnalité actif/inactif, l'utilisateur a ajouté lui-même un champ `dateContrat DateTime?` sur `FournisseurStatutHistorique` (migration `20261022085247_add_date_contrat_to_fournisseur_statut_historique`, déjà appliquée) et a demandé que la boîte de dialogue de bascule actif/inactif propose désormais une date du changement obligatoire (pré-remplie avec la date du jour, modifiable — utile pour saisir un changement survenu quelques jours plus tôt), en plus du motif déjà optionnel, et que cette date soit conservée et affichée dans l'historique.
+
+**Modifications apportées**
+- [components/fournisseurs/PrestataireStatutToggle.tsx](components/fournisseurs/PrestataireStatutToggle.tsx) : nouveau champ `<Input type="date" required>` "Date du changement *" (pré-rempli à la date du jour à chaque ouverture du dialogue), placé avant le motif optionnel inchangé ; garde côté client si la date est vide avant l'envoi ; la date est incluse dans le corps du `PATCH`.
+- [app/api/fournisseurs/[id]/route.ts](app/api/fournisseurs/[id]/route.ts) (handler `PATCH`) : `dateContrat` lu depuis le body, validé (date requise et valide) uniquement quand le statut change réellement, puis stocké sur la ligne `FournisseurStatutHistorique` créée.
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : `StatutHistoriqueEntry` gagne `dateContrat` ; la carte « Historique de statut » affiche désormais `dateContrat` (date effective choisie par l'utilisateur) avec repli sur `createdAt` pour les lignes créées avant ce changement (où `dateContrat` est `null`).
+- `GET /api/fournisseurs/[id]` n'a pas eu besoin d'être modifié : son `include` sans `select` restrictif ramène déjà tous les champs scalaires de `statutHistorique`, dont le nouveau `dateContrat`.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Basculer un statut, modifier la date proposée (ex. la veille), confirmer, et vérifier que l'historique affiche bien cette date choisie et non la date/heure système de la validation.
+- Confirmer qu'une ancienne ligne d'historique (créée avant ce changement, `dateContrat = null`) s'affiche toujours correctement via le repli sur `createdAt`.
+- Confirmer que la validation serveur bloque bien une tentative de bascule sans date valide (défense en profondeur derrière le `required` côté client).
+
 ## 2026-10-21 (suite 2) — Statut Actif/Inactif des prestataires, avec historique et dates de contrat
 
 **Demande / Contexte**

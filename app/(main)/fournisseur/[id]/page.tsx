@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import FournisseurProduits from "@/components/fournisseurs/FournisseurProduits";
 import FournisseurCommandes from "@/components/fournisseurs/FournisseurCommandes";
+import FournisseurDocuments from "@/components/fournisseurs/FournisseurDocuments";
 import { AttachmentPreviewButton } from "@/components/AttachmentPreviewButton";
 import { FactureFournisseurModal, FactureFournisseurData } from "@/components/FactureFournisseurModal";
 import { FactureFournisseurStatusBadge, StatusDot } from "@/components/FactureFournisseurStatusBadge";
@@ -35,6 +36,7 @@ interface StatutHistoriqueEntry {
   id: string;
   actif: boolean;
   motif: string | null;
+  dateContrat: string | null;
   createdAt: string;
   createdBy: { nom: string } | null;
 }
@@ -151,28 +153,43 @@ export default function FournisseurDetailsPage() {
         <span>Fin de contrat : {fournisseur.dateFinContrat ? format(new Date(fournisseur.dateFinContrat), "dd/MM/yyyy") : "—"}</span>
       </div>
 
-      <div className="rounded-md border bg-white p-4 mb-8 max-h-48 overflow-y-auto text-sm">
-        <h3 className="font-medium mb-2 text-muted-foreground">Historique de statut</h3>
-        {fournisseur.statutHistorique.length === 0 ? (
-          <p className="text-muted-foreground">Aucun changement de statut enregistré.</p>
-        ) : (
-          <ul className="space-y-2">
-            {fournisseur.statutHistorique.map((h) => (
-              <li key={h.id} className="flex items-start gap-2">
-                <div className="mt-1">
-                  <PrestataireStatutDot actif={h.actif} animate={false} />
-                </div>
-                <div>
-                  <span className="font-medium">{h.actif ? "Marqué actif" : "Marqué inactif"}</span>
-                  {" — "}
-                  {format(new Date(h.createdAt), "dd/MM/yyyy HH:mm")}
-                  {h.motif && <p className="text-muted-foreground italic">{h.motif}</p>}
-                  <p className="text-xs text-muted-foreground">par {h.createdBy?.nom ?? "Système"}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="rounded-md border bg-white mb-8">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="font-medium text-sm">Historique de statut</h3>
+          {fournisseur.statutHistorique.length > 0 && (
+            <Badge variant="secondary" className="text-xs font-normal">
+              {fournisseur.statutHistorique.length}
+            </Badge>
+          )}
+        </div>
+        <div className="max-h-64 overflow-y-auto p-4 text-sm">
+          {fournisseur.statutHistorique.length === 0 ? (
+            <p className="text-muted-foreground">Aucun changement de statut enregistré.</p>
+          ) : (
+            <ul>
+              {fournisseur.statutHistorique.map((h, idx) => (
+                <li key={h.id} className="relative flex gap-3 pb-4 last:pb-0">
+                  {idx !== fournisseur.statutHistorique.length - 1 && (
+                    <span className="absolute left-[3px] top-3 bottom-0 w-px bg-border" aria-hidden="true" />
+                  )}
+                  <div className="relative z-10 mt-1 shrink-0">
+                    <PrestataireStatutDot actif={h.actif} animate={false} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{h.actif ? "Marqué actif" : "Marqué inactif"}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {format(new Date(h.dateContrat ?? h.createdAt), "dd/MM/yyyy")}
+                      </span>
+                    </div>
+                    {h.motif && <p className="mt-0.5 italic text-muted-foreground">{h.motif}</p>}
+                    <p className="mt-0.5 text-xs text-muted-foreground">par {h.createdBy?.nom ?? "Système"}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <FactureFournisseurModal
@@ -185,8 +202,9 @@ export default function FournisseurDetailsPage() {
       />
 
       <Tabs defaultValue={defaultTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
+        <TabsList className="grid w-full grid-cols-4 mb-8">
           <TabsTrigger value="factures">Factures</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="catalogue">Catalogue Produits</TabsTrigger>
           <TabsTrigger value="commandes">Bons de Commande</TabsTrigger>
         </TabsList>
@@ -304,6 +322,10 @@ export default function FournisseurDetailsPage() {
               </TableBody>
             </Table>
           </div>
+        </TabsContent>
+
+        <TabsContent value="documents">
+          <FournisseurDocuments fournisseurId={id} />
         </TabsContent>
 
         <TabsContent value="catalogue">

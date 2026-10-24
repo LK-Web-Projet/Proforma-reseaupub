@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +15,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+
+const MOTIF_OPTIONS_ACTIF = ['Nouveau contrat signé', 'Reconduction de contrat', 'Repris après une interruption'];
+const MOTIF_OPTIONS_INACTIF = ['Fin de contrat', 'Résiliation de contrat', 'Remplacé par un autre prestataire'];
 
 interface PrestataireStatutToggleProps {
   fournisseurId: string;
@@ -24,22 +29,34 @@ interface PrestataireStatutToggleProps {
 export function PrestataireStatutToggle({ fournisseurId, entreprise, actif, onSuccess }: PrestataireStatutToggleProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingActif, setPendingActif] = useState(actif);
-  const [motif, setMotif] = useState('');
+  const [motifOption, setMotifOption] = useState('');
+  const [motifCustom, setMotifCustom] = useState('');
+  const [dateContrat, setDateContrat] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const motifOptions = pendingActif ? MOTIF_OPTIONS_ACTIF : MOTIF_OPTIONS_INACTIF;
+  const isOtherMotif = motifOption === 'Autre';
 
   const openDialog = (checked: boolean) => {
     setPendingActif(checked);
-    setMotif('');
+    setMotifOption('');
+    setMotifCustom('');
+    setDateContrat(new Date().toISOString().slice(0, 10));
     setDialogOpen(true);
   };
 
   const handleConfirm = async () => {
+    if (!dateContrat) {
+      toast.error('La date du changement est requise.');
+      return;
+    }
+    const motif = isOtherMotif ? motifCustom.trim() : motifOption;
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/fournisseurs/${fournisseurId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actif: pendingActif, motif: motif.trim() || null }),
+        body: JSON.stringify({ actif: pendingActif, motif: motif || null, dateContrat }),
       });
 
       if (!res.ok) {
@@ -72,11 +89,39 @@ export function PrestataireStatutToggle({ fournisseurId, entreprise, actif, onSu
                 : "Ce prestataire n'apparaîtra plus comme actif. Vous pouvez préciser un motif (optionnel)."}
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            value={motif}
-            onChange={(e) => setMotif(e.target.value)}
-            placeholder={pendingActif ? 'Ex : repris en janvier, nouveau contrat signé…' : 'Ex : contrat terminé, remplacé par un autre prestataire…'}
-          />
+          <div className="space-y-2">
+            <label htmlFor="dateContrat" className="text-sm font-medium">Date du changement *</label>
+            <Input
+              id="dateContrat"
+              type="date"
+              value={dateContrat}
+              onChange={(e) => setDateContrat(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="motif" className="text-sm font-medium">Motif (optionnel)</label>
+            <Select value={motifOption} onValueChange={setMotifOption}>
+              <SelectTrigger id="motif">
+                <SelectValue placeholder="Sélectionner un motif" />
+              </SelectTrigger>
+              <SelectContent>
+                {motifOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+                <SelectItem value="Autre">Autre</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {isOtherMotif && (
+            <Textarea
+              value={motifCustom}
+              onChange={(e) => setMotifCustom(e.target.value)}
+              placeholder="Précisez le motif"
+            />
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSubmitting}>
               Annuler
