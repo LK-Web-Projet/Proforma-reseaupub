@@ -35,6 +35,7 @@ interface StatutHistoriqueEntry {
   id: string;
   actif: boolean;
   motif: string | null;
+  dateContrat: string | null;
   createdAt: string;
   createdBy: { nom: string } | null;
 }
@@ -165,7 +166,7 @@ export default function FournisseurDetailsPage() {
                 <div>
                   <span className="font-medium">{h.actif ? "Marqué actif" : "Marqué inactif"}</span>
                   {" — "}
-                  {format(new Date(h.createdAt), "dd/MM/yyyy HH:mm")}
+                  {format(new Date(h.dateContrat ?? h.createdAt), "dd/MM/yyyy")}
                   {h.motif && <p className="text-muted-foreground italic">{h.motif}</p>}
                   <p className="text-xs text-muted-foreground">par {h.createdBy?.nom ?? "Système"}</p>
                 </div>

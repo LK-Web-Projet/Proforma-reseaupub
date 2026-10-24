@@ -86,7 +86,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { userId } = await auth();
     const body = await req.json();
-    const { actif, motif } = body;
+    const { actif, motif, dateContrat } = body;
 
     if (typeof actif !== 'boolean') {
       return NextResponse.json({ message: 'Le champ actif (booléen) est requis.' }, { status: 400 });
@@ -97,15 +97,30 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ message: 'Prestataire non trouvé' }, { status: 404 });
     }
 
+    const statutChange = existing.actif !== actif;
+    const parsedDateContrat = dateContrat ? new Date(dateContrat) : null;
+    if (statutChange && (!dateContrat || Number.isNaN(parsedDateContrat?.getTime()))) {
+      return NextResponse.json({ message: 'La date du changement est requise.' }, { status: 400 });
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
-      const result = await tx.fournisseur.update({ where: { id }, data: { actif } });
-      if (existing.actif !== actif) {
+      const result = await tx.fournisseur.update({
+        where: { id },
+        data: {
+          actif,
+          // La date saisie alimente aussi le contrat : début si on repasse actif, fin si on passe inactif.
+          ...(statutChange && actif ? { dateDebutContrat: parsedDateContrat } : {}),
+          ...(statutChange && !actif ? { dateFinContrat: parsedDateContrat } : {}),
+        },
+      });
+      if (statutChange) {
         const createdById = await safeCreatedById(tx, userId);
         await tx.fournisseurStatutHistorique.create({
           data: {
             fournisseurId: id,
             actif,
             motif: motif?.trim() ? motif.trim() : null,
+            dateContrat: parsedDateContrat,
             createdById,
           },
         });

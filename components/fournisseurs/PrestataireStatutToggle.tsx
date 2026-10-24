@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -25,21 +26,27 @@ export function PrestataireStatutToggle({ fournisseurId, entreprise, actif, onSu
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingActif, setPendingActif] = useState(actif);
   const [motif, setMotif] = useState('');
+  const [dateContrat, setDateContrat] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const openDialog = (checked: boolean) => {
     setPendingActif(checked);
     setMotif('');
+    setDateContrat(new Date().toISOString().slice(0, 10));
     setDialogOpen(true);
   };
 
   const handleConfirm = async () => {
+    if (!dateContrat) {
+      toast.error('La date du changement est requise.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/fournisseurs/${fournisseurId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actif: pendingActif, motif: motif.trim() || null }),
+        body: JSON.stringify({ actif: pendingActif, motif: motif.trim() || null, dateContrat }),
       });
 
       if (!res.ok) {
@@ -72,6 +79,16 @@ export function PrestataireStatutToggle({ fournisseurId, entreprise, actif, onSu
                 : "Ce prestataire n'apparaîtra plus comme actif. Vous pouvez préciser un motif (optionnel)."}
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="dateContrat" className="text-sm font-medium">Date du changement *</label>
+            <Input
+              id="dateContrat"
+              type="date"
+              value={dateContrat}
+              onChange={(e) => setDateContrat(e.target.value)}
+              required
+            />
+          </div>
           <Textarea
             value={motif}
             onChange={(e) => setMotif(e.target.value)}

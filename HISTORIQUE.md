@@ -22,6 +22,39 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-24 (suite) — La date du changement met aussi à jour Début/Fin de contrat
+
+**Demande / Contexte**
+L'utilisateur a demandé si la date saisie lors d'une bascule actif/inactif se répercutait bien sur les champs « Début de contrat »/« Fin de contrat » de la fiche (pas seulement dans l'historique). Confirmé : oui, en fonction du sens du changement.
+
+**Modifications apportées**
+- [app/api/fournisseurs/[id]/route.ts](app/api/fournisseurs/[id]/route.ts) (handler `PATCH`) : quand le statut change réellement, la date saisie est désormais aussi écrite sur `Fournisseur.dateDebutContrat` (si on repasse actif) ou `Fournisseur.dateFinContrat` (si on passe inactif), en plus de la ligne d'historique. L'autre champ (non concerné par ce changement) n'est jamais touché — reste modifiable librement via le formulaire d'édition.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Marquer un prestataire inactif avec une date → vérifier que « Fin de contrat » sur sa fiche affiche cette date. Le remarquer actif avec une autre date → vérifier que « Début de contrat » se met à jour, et que « Fin de contrat » n'est pas effacé (comportement actuel : seul le champ du sens concerné est écrit, l'ancien reste affiché tel quel sauf modification manuelle).
+
+## 2026-10-24 — Date obligatoire du changement de statut dans l'historique prestataire
+
+**Demande / Contexte**
+Suite à la fonctionnalité actif/inactif, l'utilisateur a ajouté lui-même un champ `dateContrat DateTime?` sur `FournisseurStatutHistorique` (migration `20261022085247_add_date_contrat_to_fournisseur_statut_historique`, déjà appliquée) et a demandé que la boîte de dialogue de bascule actif/inactif propose désormais une date du changement obligatoire (pré-remplie avec la date du jour, modifiable — utile pour saisir un changement survenu quelques jours plus tôt), en plus du motif déjà optionnel, et que cette date soit conservée et affichée dans l'historique.
+
+**Modifications apportées**
+- [components/fournisseurs/PrestataireStatutToggle.tsx](components/fournisseurs/PrestataireStatutToggle.tsx) : nouveau champ `<Input type="date" required>` "Date du changement *" (pré-rempli à la date du jour à chaque ouverture du dialogue), placé avant le motif optionnel inchangé ; garde côté client si la date est vide avant l'envoi ; la date est incluse dans le corps du `PATCH`.
+- [app/api/fournisseurs/[id]/route.ts](app/api/fournisseurs/[id]/route.ts) (handler `PATCH`) : `dateContrat` lu depuis le body, validé (date requise et valide) uniquement quand le statut change réellement, puis stocké sur la ligne `FournisseurStatutHistorique` créée.
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : `StatutHistoriqueEntry` gagne `dateContrat` ; la carte « Historique de statut » affiche désormais `dateContrat` (date effective choisie par l'utilisateur) avec repli sur `createdAt` pour les lignes créées avant ce changement (où `dateContrat` est `null`).
+- `GET /api/fournisseurs/[id]` n'a pas eu besoin d'être modifié : son `include` sans `select` restrictif ramène déjà tous les champs scalaires de `statutHistorique`, dont le nouveau `dateContrat`.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Basculer un statut, modifier la date proposée (ex. la veille), confirmer, et vérifier que l'historique affiche bien cette date choisie et non la date/heure système de la validation.
+- Confirmer qu'une ancienne ligne d'historique (créée avant ce changement, `dateContrat = null`) s'affiche toujours correctement via le repli sur `createdAt`.
+- Confirmer que la validation serveur bloque bien une tentative de bascule sans date valide (défense en profondeur derrière le `required` côté client).
+
 ## 2026-10-21 (suite 2) — Statut Actif/Inactif des prestataires, avec historique et dates de contrat
 
 **Demande / Contexte**
