@@ -41,6 +41,7 @@ model User {
   cashJournalEntriesCrees          CashJournal[]                  @relation("CashJournalCreatedBy")
   facturesFournisseurCrees         FactureFournisseur[]           @relation("FactureFournisseurCreatedBy")
   fournisseurStatutHistoriqueCrees FournisseurStatutHistorique[]  @relation("FournisseurStatutHistoriqueCreatedBy")
+  fournisseurDocumentsCrees        FournisseurDocument[]          @relation("FournisseurDocumentCreatedBy")
 }
 
 model EntrepriseConfig {
@@ -232,6 +233,7 @@ model Fournisseur {
   factures         FactureFournisseur[]
   produits         ProduitFournisseur[]
   statutHistorique FournisseurStatutHistorique[]
+  documents        FournisseurDocument[]
 }
 
 model FournisseurStatutHistorique {
@@ -244,6 +246,19 @@ model FournisseurStatutHistorique {
   createdById   String?
   fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
   createdBy     User?       @relation("FournisseurStatutHistoriqueCreatedBy", fields: [createdById], references: [id])
+}
+
+model FournisseurDocument {
+  id            String      @id @default(uuid())
+  fournisseurId String
+  type          String
+  url           String
+  fileName      String
+  fileType      String
+  createdAt     DateTime    @default(now())
+  createdById   String?
+  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  createdBy     User?       @relation("FournisseurDocumentCreatedBy", fields: [createdById], references: [id])
 }
 
 model FactureFournisseur {

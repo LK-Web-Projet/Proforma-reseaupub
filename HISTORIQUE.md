@@ -22,6 +22,74 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-24 (suite 5) — Réordonnancement de l'onglet "Documents"
+
+**Demande / Contexte**
+L'utilisateur a demandé à placer l'onglet "Documents" juste à droite de celui des factures (qui affiche l'historique des factures), plutôt qu'en dernière position.
+
+**Modifications apportées**
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : ordre des onglets passé de Factures / Catalogue Produits / Bons de Commande / Documents à Factures / **Documents** / Catalogue Produits / Bons de Commande.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement le nouvel ordre des onglets sur la fiche prestataire.
+
+## 2026-10-24 (suite 4) — Documents liés au prestataire (CV, pièces administratives, etc.)
+
+**Demande / Contexte**
+L'utilisateur veut pouvoir attacher des documents à une fiche prestataire (CV, pièces administratives, IFU, etc.) depuis la page détail, via un dialogue avec un type de document à choisir (préréglages + "Autre" en texte libre) et un fichier à uploader, de tout type (image, PDF, Word). Exigence explicite : le type doit être stocké en base en texte libre, sans enum — seul le frontend restreint les choix. La gestion des contraintes de taille côté serveur m'a été déléguée.
+
+Découverte en cours de route : `lib/compressImage.ts` (compression d'image côté client construite plus tôt dans la session pour un autre flux d'upload) n'existe plus du tout sur le disque — jamais commité, probablement perdu lors d'un changement de branche (le projet est maintenant sur `feature/gestionPrestataire`). Non réutilisé pour cette fonctionnalité ; décision actée : pas de compression (hors scope, et de toute façon inutile pour les PDF/Word que cette fonctionnalité doit aussi accepter), seulement une vérification de taille (10 Mo/fichier) côté client ET côté serveur.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) + migration `add_fournisseur_document` : nouveau modèle `FournisseurDocument` (id, fournisseurId FK cascade, `type` en texte libre, url, fileName, fileType, createdAt, createdById FK nullable vers `User`) ; relations inverses ajoutées sur `Fournisseur` et `User`.
+- [lib/documentFournisseurTypes.ts](lib/documentFournisseurTypes.ts) (nouveau) : préréglages de type (CV, Pièce d'identité, Document administratif, IFU, RCCM, Contrat, Diplôme / Attestation) + couleur de badge par type avec repli gris pour un texte "Autre" imprévisible.
+- [lib/uploadFournisseurDocument.ts](lib/uploadFournisseurDocument.ts) (nouveau) : `saveFournisseurDocuments()` (écrit dans `public/Upload/FournisseurDocument/<id>/...`, rejette tout fichier > 10 Mo avant d'écrire) + sa propre copie de `describeFsError` (même convention dupliquée que les autres libs d'upload du projet).
+- [app/api/fournisseurs/[id]/documents/route.ts](app/api/fournisseurs/[id]/documents/route.ts) (nouveau) : `GET` (liste triée, avec l'auteur), `POST` (type + fichiers du FormData, une ligne par fichier avec le même type).
+- [app/api/fournisseurs/[id]/documents/[documentId]/route.ts](app/api/fournisseurs/[id]/documents/[documentId]/route.ts) (nouveau) : `DELETE` avec vérification d'appartenance au prestataire + suppression best-effort du fichier physique (try/catch jamais bloquant — améliore le précédent `ProduitFournisseurPhoto` qui ne supprimait que la ligne DB).
+- [components/fournisseurs/FournisseurDocuments.tsx](components/fournisseurs/FournisseurDocuments.tsx) (nouveau) : onglet autonome (fetch propre), liste des documents (badge coloré, nom, auteur/date, `AttachmentPreviewButton` réutilisé tel quel, bouton supprimer) + dialogue d'ajout intégré (Select type + "Autre", input fichier sans restriction de type, vérification de taille à la sélection).
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : nouvel onglet "Documents" (4ᵉ onglet, `grid-cols-3` → `grid-cols-4`), délègue à `FournisseurDocuments`.
+
+**Erreurs rencontrées & solutions**
+- `tsc --noEmit` et `next lint` propres dès la première passe.
+- `pnpm build` a de nouveau échoué avec la corruption pnpm habituelle (`MODULE_NOT_FOUND` sur `next/dist/...`) — résolue par `pnpm install --force`, build confirmé ensuite (27+ routes, les 2 nouvelles routes `/api/fournisseurs/[id]/documents` et `/api/fournisseurs/[id]/documents/[documentId]` bien présentes, exit code réel 0).
+
+**À tester / points d'attention**
+- Ajouter un document avec un type préréglagé puis un autre avec "Autre" + texte libre, vérifier les badges.
+- Vérifier l'aperçu pour une image, un PDF, et un document Word (repli + lien "Ouvrir/Télécharger").
+- Supprimer un document, tenter d'uploader un fichier > 10 Mo (doit être bloqué côté client avant tout envoi réseau).
+- La limite éventuelle d'un proxy (nginx `client_max_body_size`) reste hors de portée de ce code, comme déjà signalé précédemment dans ce journal.
+
+## 2026-10-24 (suite 3) — Affichage amélioré de l'historique de statut (mini-timeline scrollable)
+
+**Demande / Contexte**
+L'utilisateur a demandé d'améliorer visuellement la carte « Historique de statut » et de s'assurer qu'elle reste correctement scrollable si la liste devient longue (défensif, UI/UX).
+
+**Modifications apportées**
+- [app/(main)/fournisseur/[id]/page.tsx](app/(main)/fournisseur/[id]/page.tsx) : l'en-tête « Historique de statut » (+ badge du nombre d'entrées) est désormais fixe, hors de la zone de défilement (avant il scrollait avec la liste). La liste elle-même est dans une zone `max-h-64 overflow-y-auto` dédiée, présentée comme une mini-timeline : ligne verticale reliant les points de statut, date alignée à droite de chaque entrée, motif et auteur toujours affichés sous le libellé.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement sur une fiche avec peu d'entrées (0, 1) et, si possible, en créer plusieurs pour confirmer que le défilement se déclenche bien au-delà de la hauteur plafonnée sans casser la mise en page, et que l'en-tête reste visible pendant le scroll.
+
+## 2026-10-24 (suite 2) — Motifs présélectionnés (+ Autre) dans le dialogue de changement de statut
+
+**Demande / Contexte**
+L'utilisateur a demandé à remplacer le champ motif en texte libre par une liste de motifs prédéfinis à sélectionner (différente selon qu'on passe actif ou inactif), avec une option « Autre » qui laisse saisir un texte libre — même pattern déjà utilisé ailleurs dans l'app pour « Domaine d'activité ».
+
+**Modifications apportées**
+- [components/fournisseurs/PrestataireStatutToggle.tsx](components/fournisseurs/PrestataireStatutToggle.tsx) : le `Textarea` motif libre est remplacé par un `Select` dont les options dépendent du sens du changement — `MOTIF_OPTIONS_ACTIF` (« Nouveau contrat signé », « Reconduction de contrat », « Repris après une interruption ») pour passer actif, `MOTIF_OPTIONS_INACTIF` (« Fin de contrat », « Résiliation de contrat », « Remplacé par un autre prestataire ») pour passer inactif — plus une option « Autre » qui révèle un `Textarea` pour préciser librement. Le motif envoyé à l'API reste optionnel comme avant.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que les options proposées changent bien selon qu'on bascule vers actif ou inactif, que « Autre » affiche le champ libre, et que le motif choisi (préréglage ou texte libre) apparaît correctement dans l'historique de la fiche.
+
 ## 2026-10-24 (suite) — La date du changement met aussi à jour Début/Fin de contrat
 
 **Demande / Contexte**
