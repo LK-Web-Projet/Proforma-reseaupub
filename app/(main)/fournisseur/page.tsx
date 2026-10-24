@@ -12,7 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { FournisseurTableSkeleton } from "@/components/FournisseurTableSkeleton";
 import { FournisseurModal, Fournisseur } from "@/components/FournisseurModal";
-import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2, Search } from 'lucide-react';
+import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2, Search, Copy } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,6 +92,12 @@ export default function FournisseursPage() {
     fetchFournisseurs();
   };
 
+  const copyToClipboard = (e: React.MouseEvent, value: string, label: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(value);
+    toast.success(`${label} copié !`);
+  };
+
   return (
     <>
       <FournisseurModal
@@ -129,7 +135,7 @@ export default function FournisseursPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher par entreprise, contact, email..."
+              placeholder="Rechercher un fournisseur ou prestataire (entreprise, contact, email)..."
               className="pl-9"
             />
           </div>
@@ -139,7 +145,7 @@ export default function FournisseursPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
-                <TableHead>Entreprise</TableHead>
+                <TableHead>Entreprise / Prestataire</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead>Email</TableHead>
@@ -197,22 +203,40 @@ export default function FournisseursPage() {
                           />
                         </div>
                       </TableCell>
-                      <TableCell className="py-3">
-                        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <Mail className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate max-w-[180px]">{fournisseur.email || "—"}</span>
-                        </span>
+                      <TableCell className="py-3 max-w-[140px]">
+                        {fournisseur.email ? (
+                          <button
+                            type="button"
+                            onClick={(e) => copyToClipboard(e, fournisseur.email!, "Email")}
+                            title="Cliquer pour copier l'email"
+                            className="group flex w-full items-center gap-1.5 rounded px-1 -mx-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <Mail className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{fournisseur.email}</span>
+                            <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100" />
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <Mail className="h-3.5 w-3.5 shrink-0" />—
+                          </span>
+                        )}
                       </TableCell>
-                      <TableCell className="py-3">
-                        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <TableCell className="py-3 max-w-[110px]">
+                        <button
+                          type="button"
+                          onClick={(e) => copyToClipboard(e, fournisseur.contact, "Contact")}
+                          title="Cliquer pour copier le contact"
+                          className="group flex w-full items-center gap-1.5 rounded px-1 -mx-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                        >
                           <Phone className="h-3.5 w-3.5 shrink-0" />
-                          {fournisseur.contact}
-                        </span>
+                          <span className="truncate">{fournisseur.contact}</span>
+                          <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100" />
+                        </button>
                       </TableCell>
-                      <TableCell className="py-3">
+                      <TableCell className="py-3 max-w-[130px]">
                         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                           <Briefcase className="h-3.5 w-3.5 shrink-0" />
-                          {fournisseur.domaineActivite}
+                          <span className="truncate">{fournisseur.domaineActivite}</span>
                         </span>
                       </TableCell>
                       <TableCell className="py-3 text-center">

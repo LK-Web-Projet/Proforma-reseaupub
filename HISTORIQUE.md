@@ -22,6 +22,35 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-24 (suite 7) — Renommage colonne "Entreprise" + placeholder de recherche
+
+**Demande / Contexte**
+L'utilisateur a demandé de renommer la colonne "Entreprise" en "Entreprise / Prestataire" (cohérent avec le champ du formulaire déjà relabellisé "Entreprise ou Nom & Prénom") et de préciser dans le placeholder de la barre de recherche qu'on cherche un fournisseur ou un prestataire.
+
+**Modifications apportées**
+- [app/(main)/fournisseur/page.tsx](app/(main)/fournisseur/page.tsx) : en-tête de colonne "Entreprise" → "Entreprise / Prestataire" ; placeholder de recherche → "Rechercher un fournisseur ou prestataire (entreprise, contact, email)...".
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+Aucun point particulier — changement textuel uniquement.
+
+## 2026-10-24 (suite 6) — Colonnes Email/Contact compactées + copie au clic sur la liste prestataires
+
+**Demande / Contexte**
+L'utilisateur a demandé de réduire/tronquer les colonnes Email et Contact du tableau de liste des prestataires pour que tout reste visible sans scroll horizontal, et de pouvoir copier l'email ou le contact d'un simple clic, avec un toast de confirmation, de façon intuitive.
+
+**Modifications apportées**
+- [app/(main)/fournisseur/page.tsx](app/(main)/fournisseur/page.tsx) : colonnes Email (`max-w-[140px]`), Contact (`max-w-[110px]`) et Domaine d'activité (`max-w-[130px]`) tronquées avec ellipsis. Email et Contact sont désormais des boutons cliquables (`e.stopPropagation()` pour ne pas déclencher la navigation de la ligne) qui copient la valeur dans le presse-papier (`navigator.clipboard.writeText`) et affichent un toast "Email copié !"/"Contact copié !" ; une icône `Copy` apparaît au survol pour rendre l'action découvrable, avec un `title` natif en complément.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement qu'avec les colonnes réduites, le tableau ne nécessite plus de scroll horizontal sur un écran standard.
+- Confirmer que le clic sur Email/Contact copie bien la valeur complète (non tronquée) et n'ouvre pas la fiche du prestataire.
+
 ## 2026-10-24 (suite 5) — Réordonnancement de l'onglet "Documents"
 
 **Demande / Contexte**
