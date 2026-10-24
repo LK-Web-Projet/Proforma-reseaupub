@@ -22,6 +22,20 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-24 (suite 8) — Numéro de proforma copiable + client cliquable vers sa fiche
+
+**Demande / Contexte**
+L'utilisateur a demandé, sur la liste des proformas, le même pattern "copie au clic" que celui mis en place pour email/contact côté prestataires (appliqué ici au numéro de proforma), et que le nom du client soit cliquable pour renvoyer directement vers sa fiche détail.
+
+**Modifications apportées**
+- [app/(main)/facture/page.tsx](app/(main)/facture/page.tsx) : la cellule "Numéro" devient un bouton copiant la valeur dans le presse-papier avec toast de confirmation (icône `Copy` au survol, même pattern que `fournisseur/page.tsx`) ; la cellule "Client" devient un `Link` vers `/client/{id}` (souligné au survol, tooltip "Voir la fiche de {nom}"), avec repli en texte simple si `facture.client` est absent.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que le clic sur le nom du client navigue bien vers `/client/{id}` et que le clic sur le numéro copie la valeur sans déclencher d'autre action.
+
 ## 2026-10-24 (suite 7) — Renommage colonne "Entreprise" + placeholder de recherche
 
 **Demande / Contexte**

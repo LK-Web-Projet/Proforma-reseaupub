@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff, Download } from 'lucide-react';
+import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff, Download, Copy } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
 import { FactureStatusBadge, FACTURE_STATUS_META } from '@/components/FactureStatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -160,6 +160,12 @@ export default function Home() {
     { label: "Annulée", value: "Annuler", stats: stats["Annuler"], icon: XCircle },
     { label: "Archivée", value: "Archiver", stats: stats["Archiver"], icon: Archive },
   ];
+
+  const copyToClipboard = (e: React.MouseEvent, value: string, label: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(value);
+    toast.success(`${label} copié !`);
+  };
 
   const toggleCardVisibility = (label: string) => {
     setVisibleCardLabels(prev =>
@@ -443,20 +449,37 @@ export default function Home() {
               filteredFactures.map((facture) => (
                 <TableRow key={facture.id} className="hover:bg-muted/50 transition-colors">
                   <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
-                  <TableCell className="font-mono text-sm">{facture.numero}</TableCell>
-                  <TableCell>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="truncate max-w-[150px] inline-block cursor-default">
-                            {facture.client?.nom || "-"}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{facture.client?.nom || "-"}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                  <TableCell className="font-mono text-sm">
+                    <button
+                      type="button"
+                      onClick={(e) => copyToClipboard(e, facture.numero, "Numéro")}
+                      title="Cliquer pour copier le numéro"
+                      className="group inline-flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-muted"
+                    >
+                      {facture.numero}
+                      <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100" />
+                    </button>
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {facture.client?.id ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link
+                              href={`/client/${facture.client.id}`}
+                              className="truncate max-w-[150px] inline-block text-primary hover:underline"
+                            >
+                              {facture.client?.nom || "-"}
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Voir la fiche de {facture.client?.nom || "-"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <span className="truncate max-w-[150px] inline-block cursor-default">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <TooltipProvider>
