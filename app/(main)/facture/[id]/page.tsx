@@ -444,7 +444,7 @@ export default function FactureDetailPage() {
   const currentTotalTTC = currentTotalHTApresRemise + currentTVA;
 
   return (
-    <div className="container mx-auto py-8 space-y-8 max-w-6xl">
+    <div className="container mx-auto py-8 space-y-8 max-w-7xl">
       <ProduitModal
         isOpen={isProduitModalOpen}
         onClose={() => setIsProduitModalOpen(false)}
@@ -606,11 +606,11 @@ export default function FactureDetailPage() {
                     <Table>
                         <TableHeader className="bg-slate-50/30">
                             <TableRow>
-                                <TableHead className="pl-6">Désignation</TableHead>
-                                <TableHead className="text-center w-20">Qté</TableHead>
-                                <TableHead className="text-right w-32">Prix Unit.</TableHead>
+                                <TableHead className="pl-6 min-w-[260px]">Désignation</TableHead>
+                                <TableHead className="text-center w-24">Qté</TableHead>
+                                <TableHead className="text-right w-36">Prix Unit.</TableHead>
                                 <TableHead className="text-center w-32">Durée</TableHead>
-                                <TableHead className="text-right pr-6 w-32">Total</TableHead>
+                                <TableHead className="text-right pr-6 w-40">Total</TableHead>
                                 {isEditing && <TableHead className="w-10"></TableHead>}
                             </TableRow>
                         </TableHeader>
@@ -634,10 +634,10 @@ export default function FactureDetailPage() {
                                         ) : <span className="font-semibold text-slate-700">{p.designation}</span>}
                                     </TableCell>
                                     <TableCell className="text-center align-top">
-                                        {isEditing ? <Input type="number" name="quantite" value={p.quantite} onChange={(e) => handleProductChange(idx, e)} className="text-center px-1" /> : p.quantite}
+                                        {isEditing ? <Input type="number" name="quantite" value={p.quantite} onChange={(e) => handleProductChange(idx, e)} className="text-center px-2" /> : p.quantite}
                                     </TableCell>
                                     <TableCell className="text-right align-top">
-                                        {isEditing ? <Input type="number" name="prixUnitaire" value={p.prixUnitaire} onChange={(e) => handleProductChange(idx, e)} className="text-right px-1" /> : <span className="font-medium">{formatMoney(p.prixUnitaire)}</span>}
+                                        {isEditing ? <Input type="number" name="prixUnitaire" value={p.prixUnitaire} onChange={(e) => handleProductChange(idx, e)} className="text-right px-2" /> : <span className="font-medium whitespace-nowrap tabular-nums">{formatMoney(p.prixUnitaire)}</span>}
                                     </TableCell>
                                     <TableCell className="text-center align-top">
                                         {isEditing ? (
@@ -660,7 +660,7 @@ export default function FactureDetailPage() {
                                             </div>
                                         ) : (p.includeduree ? `${p.duree} ${p.uniteDuree}` : "-")}
                                     </TableCell>
-                                    <TableCell className="text-right pr-6 align-top font-bold text-slate-900">
+                                    <TableCell className="text-right pr-6 align-top font-bold text-slate-900 whitespace-nowrap tabular-nums">
                                         {isEditing ? formatMoney(computeLineTotal(p)) : formatMoney(p.montantTotal)}
                                     </TableCell>
                                     {isEditing && (
