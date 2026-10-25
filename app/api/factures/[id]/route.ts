@@ -7,7 +7,7 @@ import { sendProformaValidatedNotification } from "@/lib/email/proformaValidatio
 // ---------- Schéma de validation ----------
 const productSchema = z.object({
   id: z.string().optional(),
-  produitId: z.string().optional(),
+  produitId: z.string().min(1, "produitId est requis"),
   designation: z.string().min(1, "designation est requise"),
   quantite: z.coerce.number().min(1, "quantité min 1"),
   prixUnitaire: z.coerce.number().min(0, "prix unitaire >= 0"),
@@ -223,35 +223,19 @@ async function updateFacture(id: string, body: unknown) {
           await tx.invoiceProduit.deleteMany({ where: { invoiceId: id } });
 
           for (const p of produits) {
-            let productId = p.produitId;
-
-            if (!productId && p.designation) {
-              const product = await tx.produit.upsert({
-                where: { nom: p.designation },
-                update: { prixUnitaire: toNumber(p.prixUnitaire) },
-                create: {
-                  nom: p.designation,
-                  prixUnitaire: toNumber(p.prixUnitaire),
-                },
-              });
-              productId = product.id;
-            }
-
-            if (productId) {
-              await tx.invoiceProduit.create({
-                data: {
-                  invoiceId: id,
-                  productId: productId,
-                  designation: p.designation,
-                  quantite: toNumber(p.quantite),
-                  prixUnitaire: toNumber(p.prixUnitaire),
-                  duree: p.duree ? toNumber(p.duree) : 0,
-                  uniteDuree: p.uniteDuree ?? "jour",
-                  montantTotal: Math.round(computeLineTotal(p)),
-                  includeduree: p.includeduree ?? false,
-                },
-              });
-            }
+            await tx.invoiceProduit.create({
+              data: {
+                invoiceId: id,
+                productId: p.produitId,
+                designation: p.designation,
+                quantite: toNumber(p.quantite),
+                prixUnitaire: toNumber(p.prixUnitaire),
+                duree: p.duree ? toNumber(p.duree) : 0,
+                uniteDuree: p.uniteDuree ?? "jour",
+                montantTotal: Math.round(computeLineTotal(p)),
+                includeduree: p.includeduree ?? false,
+              },
+            });
           }
           console.log("Produits de la facture mis à jour.");
         }

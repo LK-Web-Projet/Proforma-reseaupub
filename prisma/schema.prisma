@@ -73,6 +73,7 @@ model Produit {
   id              String           @id @default(uuid())
   nom             String           @unique
   prixUnitaire    Decimal
+  actif           Boolean          @default(true)
   produitsFacture InvoiceProduit[]
 }
 

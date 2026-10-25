@@ -22,6 +22,230 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-25 (suite 7) — Égalisation de la hauteur des cartes Client & Mission / Configuration
+
+**Demande / Contexte**
+L'utilisateur a demandé de réduire la carte « Configuration » (à droite, en haut) pour qu'elle ait la même hauteur que la carte « Détails du Client & Mission » (à gauche), les deux cartes du haut devant avoir une taille homogène.
+
+**Modifications apportées**
+- [components/FactureForm.tsx](components/FactureForm.tsx) :
+  - Carte « Détails du Client & Mission » : ajout de `h-full` pour qu'elle occupe toute la hauteur de sa colonne de grille.
+  - Carte « Configuration » : ajout de `h-full` également ; densifié son contenu pour réduire sa hauteur naturelle (`CardContent` passé de `space-y-6` à `space-y-4`, encarts TVA et Remise réduits de `p-4` à `p-3`, encart Remise de `space-y-3` à `space-y-2`).
+  - La grille parente (`grid grid-cols-1 lg:grid-cols-3 gap-8`) étire déjà ses colonnes par défaut (`align-items: stretch`) : avec `h-full` sur les deux cartes, elles s'alignent désormais exactement sur la même hauteur, quelle que soit la carte la plus haute (y compris si la Remise est activée et ajoute une ligne).
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` propre.
+
+**À tester / points d'attention**
+- Vérifier visuellement que les deux cartes du haut (Client & Mission / Configuration) ont bien la même hauteur, y compris quand la Remise est activée (ligne supplémentaire) ou sur différentes largeurs d'écran.
+- Confirmer que la lisibilité du bloc Configuration reste bonne malgré le resserrement des espacements.
+
+## 2026-10-25 (suite 6) — Carte Produits & Services en pleine largeur + repositionnement du Récapitulatif
+
+**Demande / Contexte**
+L'utilisateur a demandé de redesigner la page de création de proforma pour que la carte « Produits & Services » occupe toute la largeur disponible, et de déplacer la carte « Récapitulatif » vers un emplacement plus cohérent, tout en gardant une mise en page harmonieuse (UI/UX, user first).
+
+**Modifications apportées**
+- [components/FactureForm.tsx](components/FactureForm.tsx) :
+  - La grille 2/3 + 1/3 d'origine (Client & Mission + Produits à gauche, Configuration + Récapitulatif à droite) est restructurée :
+    - Une première rangée (grille 2/3 + 1/3) regroupe désormais « Détails du Client & Mission » et « Configuration » côte à côte.
+    - La carte « Produits & Services » (tableau des lignes de facturation) devient un bloc autonome en pleine largeur de page, juste après cette rangée.
+    - La carte « Récapitulatif » (totaux) est repositionnée juste après le tableau de produits, alignée à droite (`flex justify-end`, largeur plafonnée `max-w-md`), reprenant le schéma classique « tableau de lignes + bloc de totaux en bas à droite » des factures.
+  - Aucune logique métier, calcul ou donnée n'a été modifiée : uniquement la structure JSX/CSS de mise en page.
+
+**Erreurs rencontrées & solutions**
+- Après la restructuration par étapes, une erreur JSX temporaire (« JSX expressions must have one parent element », balise `form` non fermée) est apparue car une des trois modifications de structure n'avait pas encore été appliquée au moment de la vérification. Résolu en appliquant la modification manquante (fermeture du tableau Produits + ouverture du nouveau conteneur du Récapitulatif). `tsc --noEmit` propre après correction.
+
+**À tester / points d'attention**
+- Vérifier visuellement la nouvelle mise en page de création de proforma : carte Produits & Services en pleine largeur, Récapitulatif bien aligné à droite sous le tableau, Configuration bien à côté de Détails Client & Mission en haut.
+- Vérifier le rendu responsive (mobile/tablette) : le Récapitulatif doit repasser en pleine largeur sur petit écran (`w-full max-w-md`).
+- Ce changement ne concerne que la page de création (`components/FactureForm.tsx`) ; la page de détail/édition (`app/(main)/facture/[id]/page.tsx`), dont la carte équivalente s'appelle « Prestations & Tarification » (nom différent), n'a pas été touchée — à confirmer si une harmonisation est aussi souhaitée là-bas.
+
+## 2026-10-25 (suite 5) — Élargissement du conteneur principal des formulaires de proforma
+
+**Demande / Contexte**
+L'utilisateur a demandé d'élargir légèrement la carte/le conteneur principal des formulaires de proforma pour que tout le contenu (notamment le tableau de produits) ait plus d'espace et reste bien visible.
+
+**Modifications apportées**
+- [components/FactureForm.tsx](components/FactureForm.tsx) : conteneur principal passé de `container` (largeur implicite liée aux breakpoints Tailwind) à `container max-w-7xl`.
+- [app/(main)/facture/[id]/page.tsx](app/(main)/facture/[id]/page.tsx) : conteneur principal élargi de `max-w-6xl` à `max-w-7xl`, pour une largeur cohérente entre création et édition.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement que le formulaire (création et édition) dispose de plus d'espace horizontal, en particulier pour le tableau de produits, sans casser la mise en page sur les écrans plus petits.
+
+## 2026-10-25 (suite 4) — Retour à la troncature sur le select, élargissement du champ désignation modifiable
+
+**Demande / Contexte**
+Après coup, l'utilisateur a précisé : pour le bouton du sélecteur de produit (le "select" lui-même), revenir à l'affichage tronqué (une ligne, ellipsis) plutôt que le retour à la ligne multi-lignes ajouté juste avant. En revanche, le champ "Désignation (modifiable)" séparé peut être élargi pour montrer davantage de texte avant d'avoir à défiler dedans.
+
+**Modifications apportées**
+- [components/ProduitCombobox.tsx](components/ProduitCombobox.tsx) : bouton déclencheur revenu à `truncate` sur une seule ligne (retour en arrière sur le changement précédent) ; le plafond de largeur du menu déroulant (`max-w-80`) reste inchangé.
+- [components/FactureForm.tsx](components/FactureForm.tsx) et [app/(main)/facture/[id]/page.tsx](app/(main)/facture/[id]/page.tsx) : colonne "Désignation" avec un `min-w-[260px]` pour garantir plus de place au champ modifiable.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que le nom sélectionné dans le combobox est de nouveau tronqué avec "..." sur une seule ligne, et que le champ de désignation modifiable affiche bien davantage de texte avant de nécessiter un défilement horizontal.
+
+## 2026-10-25 (suite 3) — Largeur plafonnée du menu de sélection produit + nom sélectionné sur plusieurs lignes
+
+**Demande / Contexte**
+L'utilisateur a précisé qu'il parlait du dialogue de sélection (`ProduitCombobox`) lui-même, pas des colonnes du tableau : le menu déroulant prenait toute la largeur disponible (pas de plafond), et il a demandé à tronquer les noms trop longs dans la liste déroulante, mais à l'inverse, une fois un produit sélectionné, ne plus tronquer son nom dans le bouton — plutôt le laisser revenir à la ligne (comme un texte multi-lignes) pour rester entièrement visible.
+
+**Modifications apportées**
+- [components/ProduitCombobox.tsx](components/ProduitCombobox.tsx) :
+  - `PopoverContent` : ajout de `max-w-80` en plus de la largeur liée au déclencheur — le menu ne s'étire plus indéfiniment même si la cellule qui le contient est large. Les noms trop longs dans la liste restent tronqués (ellipsis) comme avant, maintenant dans une largeur plafonnée.
+  - Bouton déclencheur (nom du produit sélectionné) : remplacement de `truncate` par un retour à la ligne (`whitespace-normal`, `break-words`, hauteur `h-auto`/`min-h-9` au lieu d'une hauteur fixe) — le nom complet reste toujours visible, sur plusieurs lignes si besoin, au lieu d'être coupé par "...".
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Sélectionner un produit avec un nom très long et vérifier qu'il s'affiche entièrement (sur 2 lignes ou plus si besoin) dans le bouton, sans jamais être coupé par des points de suspension.
+- Ouvrir le menu déroulant et vérifier qu'il reste compact (largeur plafonnée) même si la colonne Désignation est large, avec les noms trop longs tronqués dans la liste.
+
+## 2026-10-25 (suite 2) — Plus d'espace pour les lignes de produits dans le formulaire de proforma
+
+**Demande / Contexte**
+Depuis l'ajout du sélecteur de produit (combobox + désignation modifiable, empilés verticalement), les lignes du tableau de produits sont devenues plus hautes, et les colonnes Quantité/Prix/Montant, restées étroites, rendaient parfois ces valeurs peu lisibles. L'utilisateur a demandé de resserrer l'espace devenu "trop long" et d'élargir ce qu'il faut pour que ces valeurs restent toujours bien visibles.
+
+**Modifications apportées** (appliqué de façon cohérente dans [components/FactureForm.tsx](components/FactureForm.tsx) — création — et [app/(main)/facture/[id]/page.tsx](app/(main)/facture/[id]/page.tsx) — édition) :
+- Cellule Désignation (combobox + champ modifiable) : espacement vertical resserré (`space-y-2` → `space-y-1.5`) pour réduire la hauteur de ligne ajoutée par le nouveau sélecteur.
+- Colonne Qté élargie (`w-20` → `w-24`) et centrée.
+- Colonne Prix Unitaire élargie (`w-32` → `w-36`).
+- Colonne Montant/Total élargie (`w-32` → `w-40`), alignée à droite, `whitespace-nowrap` + `tabular-nums` pour que le montant ne se coupe/retourne jamais à la ligne et que les chiffres restent bien alignés.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier visuellement sur une proforma avec plusieurs lignes de produits que les montants (notamment les gros montants) restent toujours entièrement visibles sans retour à la ligne, en création comme en édition.
+
+## 2026-10-25 (suite) — Redirection vers la facture créée après soumission du formulaire
+
+**Demande / Contexte**
+Après la création d'une nouvelle proforma, le formulaire redirigeait vers `/` (puis vers la section par défaut de l'utilisateur, en général la liste des factures) au lieu d'ouvrir directement la facture qui vient d'être créée.
+
+**Modifications apportées**
+- [components/FactureForm.tsx](components/FactureForm.tsx) : `onSubmit` récupère désormais la facture créée depuis la réponse de `POST /api/factures` et redirige vers `/facture/{id}` au lieu de `/`.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Créer une nouvelle proforma et confirmer l'ouverture directe de sa page de détail après soumission.
+
+## 2026-10-25 — Masquer aussi les produits désactivés par défaut sur la page Statistiques
+
+**Demande / Contexte**
+Même demande que sur la liste des produits, appliquée à `/produits/statistiques` : masquer les produits désactivés par défaut du tableau, avec le même interrupteur pour les réafficher.
+
+**Modifications apportées**
+- [app/(main)/produits/statistiques/page.tsx](app/(main)/produits/statistiques/page.tsx) : même interrupteur "Afficher les produits désactivés" (+ badge du nombre) que sur `/produits`, filtrant les lignes du tableau. Les 4 cartes KPI en haut (CA total réalisé, quantité vendue, produits actifs/total, produit le plus vendu) restent volontairement basées sur l'ensemble des produits, actifs ou non — le CA historique réalisé par un produit depuis désactivé reste un fait réel qui ne doit pas disparaître des totaux.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Désactiver un produit ayant déjà du CA réalisé, confirmer qu'il disparaît du tableau par défaut mais que les cartes KPI (CA total, etc.) continuent de l'inclure ; réafficher via l'interrupteur pour le retrouver dans le tableau.
+
+## 2026-10-24 (suite 12) — Masquer les produits désactivés par défaut sur la liste
+
+**Demande / Contexte**
+L'utilisateur a demandé que les produits désactivés soient masqués par défaut sur `/produits`, avec un contrôle séparé pour décider de les afficher ou non — dissocier les deux plutôt que tout montrer en permanence.
+
+**Modifications apportées**
+- [app/(main)/produits/page.tsx](app/(main)/produits/page.tsx) : nouvel interrupteur "Afficher les produits désactivés" (avec badge indiquant leur nombre) à côté de la barre de recherche, par défaut désactivé — donc par défaut, seuls les produits actifs apparaissent dans la liste. Le fetch continue de ramener tous les produits (nécessaire pour pouvoir réactiver un produit désactivé), seul le filtrage d'affichage change.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Désactiver un produit, confirmer qu'il disparaît immédiatement de la liste ; activer l'interrupteur et confirmer qu'il réapparaît, toujours modifiable/réactivable.
+
+## 2026-10-24 (suite 11) — Refonte UI/UX de la page Statistiques Produits
+
+**Demande / Contexte**
+L'utilisateur a demandé de tronquer les colonnes trop larges sur `/produits/statistiques` et de revoir l'UI/UX pour un rendu plus soigné.
+
+**Modifications apportées**
+- [app/(main)/produits/statistiques/page.tsx](app/(main)/produits/statistiques/page.tsx) : refonte complète.
+  - 4 cartes KPI en haut (réutilisation de `components/StatCard.tsx`, déjà construit pour le tableau de bord) : CA total réalisé, quantité totale vendue, nombre de produits actifs/total, produit le plus vendu.
+  - Barre de recherche par nom (filtre côté client).
+  - Colonne "Produit" tronquée (`max-w-[220px]` + ellipsis + tooltip natif).
+  - Tri par colonne : la flèche change de sens (haut/bas) et se met en évidence sur la colonne triée, au lieu d'une icône neutre fixe.
+  - Badges Statut recolorés (vert pour Actif, gris pour Inactif, au lieu du `destructive` rouge générique).
+  - État vide avec icône, montants en `tabular-nums` pour un alignement propre des chiffres.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+Aucun point particulier — refonte visuelle, logique de données inchangée.
+
+## 2026-10-24 (suite 10) — Colonne "Nom" tronquée sur la liste des produits
+
+**Demande / Contexte**
+Sur `/produits`, certains noms de produits trop longs déformaient le tableau. L'utilisateur a confirmé que les fonctionnalités de modification/statut étaient bien là — le seul souci était la largeur de la colonne "Nom".
+
+**Modifications apportées**
+- [app/(main)/produits/page.tsx](app/(main)/produits/page.tsx) : colonne "Nom" plafonnée à `max-w-[280px]` avec troncature (ellipsis) et tooltip natif (`title`) affichant le nom complet au survol.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+Aucun point particulier — ajustement visuel uniquement.
+
+## 2026-10-24 (suite 9) — Gestion des Produits (catalogue, statistiques) + nouveau sélecteur de produit dans les proformas
+
+**Demande / Contexte**
+L'utilisateur a demandé une nouvelle section "Produits" (le catalogue utilisé comme lignes de facture — sans rapport avec `ProduitFournisseur`, le catalogue fournisseur déjà existant, non touché) avec deux pages : liste/ajout/modification, et statistiques. Il a aussi demandé un nouvel attribut pour masquer un produit de la sélection dans les proformas, et de remplacer la création de produit à la volée (texte libre + datalist) par un vrai sélecteur parmi les produits existants, avec recherche, et une option "Nouveau produit" explicite si besoin. Ajout également de "Produits" à la gestion des rôles.
+
+En creusant le code existant, deux découvertes importantes : (1) `app/api/produits/route.ts`/`[id]/route.ts` existaient déjà mais n'étaient utilisés que comme simple liste pour un `<datalist>` texte libre, sans validation ; (2) la vraie création à la volée se trouvait dans `app/api/factures/route.ts` (POST, `findUnique` par nom puis `create` si absent) et surtout `app/api/factures/[id]/route.ts` (PUT, un `upsert` par nom qui **écrasait silencieusement le prix d'un produit existant** comme effet de bord de la simple modification d'une ligne de facture sans rapport). Le nouvel attribut `actif` est un simple interrupteur (comme `User.active`), volontairement **sans** le système motif+historique construit pour `Fournisseur.actif` — disproportionné ici.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) + migration `add_actif_to_produit` : `Produit.actif Boolean @default(true)`.
+- [app/api/produits/route.ts](app/api/produits/route.ts) : `GET` accepte `?actif=true|false` ; `POST` validé (zod) avec message clair en cas de nom dupliqué (`P2002`).
+- [app/api/produits/[id]/route.ts](app/api/produits/[id]/route.ts) : `PUT` validé (+ `actif`) ; `DELETE` renvoie un message clair ("désactivez-le à la place") si le produit est référencé par une facture (`P2003`/`P2014`) au lieu d'un 500 brut.
+- [app/api/factures/route.ts](app/api/factures/route.ts) (POST) et [app/api/factures/[id]/route.ts](app/api/factures/[id]/route.ts) (PUT) : suppression complète de la création/`upsert` à la volée — `produitId` est désormais obligatoire pour chaque ligne (400 sinon), corrigeant au passage le bug de prix écrasé par effet de bord.
+- [components/ProduitCombobox.tsx](components/ProduitCombobox.tsx) (nouveau) : même architecture que `FournisseurCombobox.tsx` (délégation au parent, pas de Dialog interne), recherche par nom, prix affiché, badge "Inactif" pour une ligne existante référençant un produit désactivé, option "Nouveau produit".
+- [components/ProduitModal.tsx](components/ProduitModal.tsx) (nouveau) : créer/modifier un produit (nom, prix, + interrupteur actif en édition — sans confirmation ni motif).
+- [components/FactureForm.tsx](components/FactureForm.tsx) et [app/(main)/facture/[id]/page.tsx](app/(main)/facture/[id]/page.tsx) : le champ désignation en texte libre + datalist est remplacé par `ProduitCombobox` (lié à `produitId`) ; la désignation reste un champ texte séparé, librement modifiable, pré-rempli au nom du produit choisi. La page d'édition continue de charger tous les produits (actifs et inactifs) pour que les lignes déjà créées sur un produit désormais désactivé continuent de s'afficher correctement.
+- [app/(main)/produits/page.tsx](app/(main)/produits/page.tsx) (nouveau) : liste, recherche, interrupteur actif/inactif direct, modifier/supprimer.
+- [app/api/produits/statistiques/route.ts](app/api/produits/statistiques/route.ts) (nouveau) + [app/(main)/produits/statistiques/page.tsx](app/(main)/produits/statistiques/page.tsx) (nouveau) : agrégat par produit (quantité vendue, CA réalisé converti en XOF, nb de factures), même convention de statuts "CA réalisé" (Valider/Payer/Solde) que `topProducts` dans `/api/statistiques`, triable par colonne.
+- [lib/permissions.ts](lib/permissions.ts) : nouvelle clé `"produits"` (4 endroits : `PAGE_KEYS`, `PAGE_LABELS`, règles de `resolvePageKeyFromPathname`, `PAGE_DEFAULT_URLS`) — aucun changement nécessaire dans `parametres/roles/page.tsx` (déjà dynamique).
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : nouveau groupe de navigation autonome "Produits" (Liste des produits, Statistiques), gated par `canSeePage("produits", true)`.
+
+**Erreurs rencontrées & solutions**
+- `prisma generate` a échoué (`EPERM`, fichier verrouillé) car le serveur de dev (`pnpm dev`) avait le moteur Prisma chargé en mémoire sur Windows — résolu en arrêtant le serveur de dev avant de régénérer le client.
+- `pnpm build` a de nouveau rencontré la corruption pnpm habituelle (`MODULE_NOT_FOUND`) — résolue par `pnpm install --force`, build ensuite confirmé réussi avec toutes les nouvelles routes/pages présentes.
+
+**À tester / points d'attention**
+- Désactiver un produit existant et confirmer qu'il n'apparaît plus dans le sélecteur d'une nouvelle proforma, mais reste visible/fonctionnel sur une ligne déjà existante qui le référence.
+- Créer un produit via "Nouveau produit" en pleine création de proforma, confirmer qu'il est immédiatement sélectionné (prix + désignation pré-remplis).
+- Modifier une ligne d'une proforma existante et vérifier dans `/produits` que le prix d'un AUTRE produit n'a pas changé par effet de bord (confirme la correction du bug d'upsert).
+- Attribuer/retirer l'accès "Produits" à un rôle dans Paramètres → Rôles, confirmer l'apparition/disparition du groupe dans la barre latérale.
+- Vérifier les chiffres de `/produits/statistiques` contre une facture connue.
+
+## 2026-10-24 (suite 8) — Numéro de proforma copiable + client cliquable vers sa fiche
+
+**Demande / Contexte**
+L'utilisateur a demandé, sur la liste des proformas, le même pattern "copie au clic" que celui mis en place pour email/contact côté prestataires (appliqué ici au numéro de proforma), et que le nom du client soit cliquable pour renvoyer directement vers sa fiche détail.
+
+**Modifications apportées**
+- [app/(main)/facture/page.tsx](app/(main)/facture/page.tsx) : la cellule "Numéro" devient un bouton copiant la valeur dans le presse-papier avec toast de confirmation (icône `Copy` au survol, même pattern que `fournisseur/page.tsx`) ; la cellule "Client" devient un `Link` vers `/client/{id}` (souligné au survol, tooltip "Voir la fiche de {nom}"), avec repli en texte simple si `facture.client` est absent.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que le clic sur le nom du client navigue bien vers `/client/{id}` et que le clic sur le numéro copie la valeur sans déclencher d'autre action.
+
 ## 2026-10-24 (suite 7) — Renommage colonne "Entreprise" + placeholder de recherche
 
 **Demande / Contexte**

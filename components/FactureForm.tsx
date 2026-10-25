@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
 import { ClientCombobox } from "./ClientCombobox";
+import { ProduitCombobox } from "./ProduitCombobox";
+import { ProduitModal } from "./ProduitModal";
 import { DEVISE, DEVISE_OPTIONS, UNITE_DUREE, UNITE_DUREE_OPTIONS, DISCOUNT_TYPE_OPTIONS } from "@/lib/constants";
 import { Textarea } from "./ui/textarea";
 import { 
@@ -56,6 +58,7 @@ interface Produit {
   id: string;
   nom: string;
   prixUnitaire: number;
+  actif: boolean;
 }
 
 // --- Schéma de validation ---
@@ -63,6 +66,7 @@ const uniteDureeKeys = Object.keys(UNITE_DUREE) as [string, ...string[]];
 const deviseKeys = Object.keys(DEVISE) as [string, ...string[]];
 
 const productSchema = z.object({
+  produitId: z.string().min(1, "Veuillez sélectionner un produit."),
   designation: z.string().min(1, "La désignation est requise.").default(""),
   quantite: z.coerce.number().min(1, "Qté. min. 1.").default(1),
   prixUnitaire: z.coerce
@@ -86,8 +90,8 @@ const schema = z.object({
     .min(1, "Au moins un produit est requis.")
     .refine(
       (items) => {
-        const designations = items.map((item) => item.designation);
-        return new Set(designations).size === designations.length;
+        const produitIds = items.map((item) => item.produitId);
+        return new Set(produitIds).size === produitIds.length;
       },
       {
         message: "Chaque produit ne peut être ajouté qu'une seule fois.",
@@ -102,6 +106,7 @@ type FactureFormInput = z.input<typeof schema>;
 type FactureFormOutput = z.output<typeof schema>;
 
 const defaultProduct = {
+  produitId: "",
   designation: "",
   quantite: 1,
   prixUnitaire: 0,
@@ -117,6 +122,8 @@ export default function FactureForm() {
     { id: string; nom: string; prenom: string }[]
   >([]);
   const [loading, setLoading] = useState(false);
+  const [isProduitModalOpen, setIsProduitModalOpen] = useState(false);
+  const [activeProductRowIndex, setActiveProductRowIndex] = useState<number | null>(null);
   const router = useRouter();
 
   // --- Chargement des données initiales ---
@@ -133,7 +140,7 @@ export default function FactureForm() {
 
     const fetchProduits = async () => {
       try {
-        const res = await fetch("/api/produits");
+        const res = await fetch("/api/produits?actif=true");
         const data = await res.json();
         setProduits(data);
       } catch {
@@ -235,8 +242,10 @@ export default function FactureForm() {
         throw new Error(errorData.error || "Une erreur est survenue.");
       }
 
+      const nouvelleFacture = await res.json();
+
       toast.success("Facture enregistrée avec succès !");
-      router.push("/");
+      router.push(`/facture/${nouvelleFacture.id}`);
     } catch (error) {
       toast.error((error as Error).message);
     } finally {
@@ -244,16 +253,29 @@ export default function FactureForm() {
     }
   };
 
-  const handleProductChange = (index: number, value: string) => {
-    const selectedProduit = produits.find((p) => p.nom === value);
-    setValue(`produits.${index}.designation`, value);
-    if (selectedProduit) {
-      setValue(`produits.${index}.prixUnitaire`, selectedProduit.prixUnitaire);
+  const handleProduitSelected = (index: number, produitId: string) => {
+    setValue(`produits.${index}.produitId`, produitId);
+    const selected = produits.find((p) => p.id === produitId);
+    if (selected) {
+      setValue(`produits.${index}.designation`, selected.nom);
+      setValue(`produits.${index}.prixUnitaire`, selected.prixUnitaire);
+    }
+  };
+
+  const handleProduitCreated = (produit: Produit) => {
+    setProduits((prev) => [...prev, produit]);
+    if (activeProductRowIndex !== null) {
+      handleProduitSelected(activeProductRowIndex, produit.id);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="container mx-auto py-8 space-y-8 pb-32">
+    <form onSubmit={handleSubmit(onSubmit)} className="container mx-auto py-8 space-y-8 pb-32 max-w-10xl">
+      <ProduitModal
+        isOpen={isProduitModalOpen}
+        onClose={() => setIsProduitModalOpen(false)}
+        onSuccess={handleProduitCreated}
+      />
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl border shadow-sm">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Nouvelle Facture</h1>
@@ -268,9 +290,9 @@ export default function FactureForm() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+        <div className="lg:col-span-2">
           {/* Section Client & Objet */}
-          <Card className="border-none shadow-md overflow-hidden">
+          <Card className="border-none shadow-md overflow-hidden h-full">
             <CardHeader className="bg-slate-50 border-b">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <User className="w-5 h-5 text-primary" /> Détails du Client & Mission
@@ -312,124 +334,22 @@ export default function FactureForm() {
                 <Textarea 
                     {...register("info")} 
                     placeholder="Précisions sur la mission, conditions de livraison, etc..." 
-                    className="min-h-[100px] resize-none"
+                    className="min-h-[200px] resize-none"
                 />
               </div>
             </CardContent>
           </Card>
-
-          {/* Section Produits */}
-          <Card className="border-none shadow-md overflow-hidden">
-            <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Package className="w-5 h-5 text-primary" /> Produits & Services
-                </CardTitle>
-                <CardDescription>Détaillez les prestations à facturer.</CardDescription>
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => append(defaultProduct)} className="bg-white">
-                <Plus className="w-4 h-4 mr-2" /> Ajouter
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-slate-50/50">
-                  <TableRow>
-                    <TableHead className="pl-6">Désignation</TableHead>
-                    <TableHead className="w-20">Qté</TableHead>
-                    <TableHead className="w-32">Prix Unitaire</TableHead>
-                    <TableHead className="w-32">Durée (Option)</TableHead>
-                    <TableHead className="w-32">Montant</TableHead>
-                    <TableHead className="w-12 pr-6"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {fields.map((field, index) => (
-                    <TableRow key={field.id} className="group transition-colors hover:bg-slate-50/50">
-                      <TableCell className="pl-6 align-top">
-                        <Input
-                          list={`produits-list-${index}`}
-                          {...register(`produits.${index}.designation`)}
-                          placeholder="Désignation"
-                          autoComplete="off"
-                          onChange={(e) => handleProductChange(index, e.target.value)}
-                        />
-                        <datalist id={`produits-list-${index}`}>
-                          {produits.map((p) => <option key={p.id} value={p.nom} />)}
-                        </datalist>
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <Input type="number" {...register(`produits.${index}.quantite`)} className="px-2" />
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <div className="relative">
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground uppercase font-bold">{watchedDevise}</span>
-                            <Input type="number" step="0.01" {...register(`produits.${index}.prixUnitaire`)} className="pr-12" />
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-top space-y-2">
-                        <div className="flex items-center gap-2">
-                            <Input type="number" step="1" {...register(`produits.${index}.duree`)} className="w-16 h-8" disabled={!watchedProduits[index]?.includeduree} />
-                            <Controller
-                                name={`produits.${index}.uniteDuree`}
-                                control={control}
-                                render={({ field }) => (
-                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!watchedProduits[index]?.includeduree}>
-                                        <SelectTrigger className="h-8 w-20 text-[10px]"><SelectValue /></SelectTrigger>
-                                        <SelectContent>{UNITE_DUREE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                                    </Select>
-                                )}
-                            />
-                        </div>
-                        <div className="flex items-center gap-2">
-                             <Controller
-                                name={`produits.${index}.includeduree`}
-                                control={control}
-                                render={({ field }) => (
-                                    <Switch checked={field.value} onCheckedChange={field.onChange} className="scale-75" />
-                                )}
-                            />
-                            <span className="text-[10px] font-bold uppercase text-muted-foreground">Appliquer durée</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-top font-bold text-slate-700 pt-5">
-                        {(() => {
-                           const p = watchedProduits[index];
-                           const qte = Number(p?.quantite) || 0;
-                           const pu = Number(p?.prixUnitaire) || 0;
-                           const duree = Number(p?.duree) || 1;
-                           let total = qte * pu;
-                           if (p?.includeduree) total *= duree;
-                           return total.toLocaleString() + " " + watchedDevise;
-                        })()}
-                      </TableCell>
-                      <TableCell className="align-top pr-6 pt-3">
-                        <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {fields.length === 0 && (
-                  <div className="p-8 text-center border-t border-dashed">
-                      <p className="text-muted-foreground italic">Aucun produit ajouté. Cliquez sur &quot;Ajouter&quot; pour commencer.</p>
-                  </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
-        <div className="space-y-6">
+        <div>
           {/* Section Paramètres */}
-          <Card className="border-none shadow-md overflow-hidden">
+          <Card className="border-none shadow-md overflow-hidden h-full">
             <CardHeader className="bg-slate-50 border-b">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Settings className="w-5 h-5 text-primary" /> Configuration
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-6 space-y-6">
+            <CardContent className="pt-6 space-y-4">
                <div className="space-y-2">
                 <label className="text-sm font-bold uppercase text-muted-foreground flex items-center gap-2">
                   <ShieldCheck className="w-3 h-3" /> Commercial
@@ -483,7 +403,7 @@ export default function FactureForm() {
                 </div>
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-xl flex items-center justify-between border">
+              <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between border">
                 <div className="space-y-0.5">
                     <label className="text-sm font-bold text-slate-700">TVA 18%</label>
                     <p className="text-[10px] text-muted-foreground">Appliquer ou exonérer</p>
@@ -500,7 +420,7 @@ export default function FactureForm() {
                 />
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-xl space-y-3 border">
+              <div className="p-3 bg-slate-50 rounded-xl space-y-2 border">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <label className="text-sm font-bold text-slate-700">Remise</label>
@@ -542,7 +462,123 @@ export default function FactureForm() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      </div>
 
+          {/* Section Produits */}
+          <Card className="border-none shadow-md overflow-hidden">
+            <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Package className="w-5 h-5 text-primary" /> Produits & Services
+                </CardTitle>
+                <CardDescription>Détaillez les prestations à facturer.</CardDescription>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => append(defaultProduct)} className="bg-white">
+                <Plus className="w-4 h-4 mr-2" /> Ajouter
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader className="bg-slate-50/50">
+                  <TableRow>
+                    <TableHead className="pl-6 min-w-[260px]">Désignation</TableHead>
+                    <TableHead className="w-24 text-center">Qté</TableHead>
+                    <TableHead className="w-42">Prix Unitaire</TableHead>
+                    <TableHead className="w-32">Durée (Option)</TableHead>
+                    <TableHead className="w-40 text-right">Montant</TableHead>
+                    <TableHead className="w-12 pr-6"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fields.map((field, index) => (
+                    <TableRow key={field.id} className="group transition-colors hover:bg-slate-50/50">
+                      <TableCell className="pl-6 align-top space-y-1.5">
+                        <Controller
+                          name={`produits.${index}.produitId`}
+                          control={control}
+                          render={({ field }) => (
+                            <ProduitCombobox
+                              produits={produits}
+                              value={field.value}
+                              onChange={(produitId) => handleProduitSelected(index, produitId)}
+                              onAddNew={() => {
+                                setActiveProductRowIndex(index);
+                                setIsProduitModalOpen(true);
+                              }}
+                            />
+                          )}
+                        />
+                        <Input
+                          {...register(`produits.${index}.designation`)}
+                          placeholder="Désignation (modifiable)"
+                          autoComplete="off"
+                        />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <Input type="number" {...register(`produits.${index}.quantite`)} className="px-2 text-center" />
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="relative">
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground uppercase font-bold">{watchedDevise}</span>
+                            <Input type="number" step="0.01" {...register(`produits.${index}.prixUnitaire`)} className="pr-12" />
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top space-y-2">
+                        <div className="flex items-center gap-2">
+                            <Input type="number" step="1" {...register(`produits.${index}.duree`)} className="w-16 h-8" disabled={!watchedProduits[index]?.includeduree} />
+                            <Controller
+                                name={`produits.${index}.uniteDuree`}
+                                control={control}
+                                render={({ field }) => (
+                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!watchedProduits[index]?.includeduree}>
+                                        <SelectTrigger className="h-8 w-20 text-[10px]"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{UNITE_DUREE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                )}
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <Controller
+                                name={`produits.${index}.includeduree`}
+                                control={control}
+                                render={({ field }) => (
+                                    <Switch checked={field.value} onCheckedChange={field.onChange} className="scale-75" />
+                                )}
+                            />
+                            <span className="text-[10px] font-bold uppercase text-muted-foreground">Appliquer durée</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top font-bold text-slate-700 pt-5 text-right whitespace-nowrap tabular-nums">
+                        {(() => {
+                           const p = watchedProduits[index];
+                           const qte = Number(p?.quantite) || 0;
+                           const pu = Number(p?.prixUnitaire) || 0;
+                           const duree = Number(p?.duree) || 1;
+                           let total = qte * pu;
+                           if (p?.includeduree) total *= duree;
+                           return total.toLocaleString() + " " + watchedDevise;
+                        })()}
+                      </TableCell>
+                      <TableCell className="align-top pr-6 pt-3">
+                        <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {fields.length === 0 && (
+                  <div className="p-8 text-center border-t border-dashed">
+                      <p className="text-muted-foreground italic">Aucun produit ajouté. Cliquez sur &quot;Ajouter&quot; pour commencer.</p>
+                  </div>
+              )}
+            </CardContent>
+          </Card>
+
+      <div className="flex justify-end">
+        <div className="w-full max-w-md">
           {/* Section Totaux */}
           <Card className="border-none shadow-lg bg-primary text-primary-foreground overflow-hidden">
             <CardHeader className="pb-2 border-b border-white/10">

@@ -77,10 +77,17 @@ export async function POST(request: Request) {
       );
     }
     
-    // Vérification des doublons de produits
-    const productDesignations = produits.map((p: { designation: string }) => p.designation);
-    const uniqueProductDesignations = new Set(productDesignations);
-    if (uniqueProductDesignations.size !== productDesignations.length) {
+    // Vérification : un produit existant (produitId) est requis pour chaque ligne,
+    // et impossible d'ajouter le même produit plusieurs fois.
+    const produitIds = produits.map((p: { produitId?: string }) => p.produitId);
+    if (produitIds.some((id: string | undefined) => !id)) {
+      return NextResponse.json(
+        { error: "Un produit existant (produitId) est requis pour chaque ligne." },
+        { status: 400 }
+      );
+    }
+    const uniqueProduitIds = new Set(produitIds);
+    if (uniqueProduitIds.size !== produitIds.length) {
       return NextResponse.json(
         { error: "Impossible d'ajouter le même produit plusieurs fois." },
         { status: 400 }
@@ -184,7 +191,7 @@ export async function POST(request: Request) {
       // est liée à une seule connexion, donc des requêtes concurrentes via Promise.all ne
       // s'exécutent pas réellement en parallèle — elles ajoutent juste de la latence et
       // risquent de dépasser le timeout de la transaction).
-      for (const p of produits as { quantite: number; prixUnitaire: number; duree: number; includeduree: boolean; designation: string; uniteDuree: "jour" | "heure" | "mois"; }[]) {
+      for (const p of produits as { produitId: string; quantite: number; prixUnitaire: number; duree: number; includeduree: boolean; designation: string; uniteDuree: "jour" | "heure" | "mois"; }[]) {
         const quantite = Number(p.quantite) || 1;
         const prixUnitaire = Number(p.prixUnitaire) || 0;
         const duree = Number(p.duree) || 1;
@@ -194,17 +201,11 @@ export async function POST(request: Request) {
           montantTotal *= duree;
         }
 
-        let produit = await tx.produit.findUnique({
-          where: { nom: p.designation },
+        const produit = await tx.produit.findUnique({
+          where: { id: p.produitId },
         });
-
         if (!produit) {
-          produit = await tx.produit.create({
-            data: {
-              nom: p.designation,
-              prixUnitaire: prixUnitaire,
-            },
-          });
+          throw new Error(`Produit introuvable (produitId: ${p.produitId}).`);
         }
 
         await tx.invoiceProduit.create({
@@ -248,6 +249,9 @@ export async function POST(request: Request) {
           { status: 409 }
         );
       }
+    }
+    if (error instanceof Error && error.message.startsWith("Produit introuvable")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     return NextResponse.json(
       { error: "Erreur Interne du Serveur" },
