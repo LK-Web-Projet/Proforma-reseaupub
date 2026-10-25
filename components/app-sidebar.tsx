@@ -25,6 +25,7 @@ import {
   Settings,
   Loader2,
   ClipboardList,
+  Package,
   PiggyBank,
   FilePlus,
   Eye,
@@ -110,6 +111,19 @@ const fournisseur = [
     title: "Bons de Commande",
     url: "/fournisseur/commandes",
     icon: ClipboardList,
+  },
+];
+
+const produitsNav = [
+  {
+    title: "Liste des produits",
+    url: "/produits",
+    icon: Package,
+  },
+  {
+    title: "Statistiques",
+    url: "/produits/statistiques",
+    icon: BarChart,
   },
 ];
 
@@ -204,6 +218,7 @@ export function AppSidebar() {
   const [isClientOpen, setIsClientOpen] = useState(false);
   const [isCommercialOpen, setIsCommercialOpen] = useState(false);
   const [isFournisseurOpen, setIsFournisseurOpen] = useState(false);
+  const [isProduitsOpen, setIsProduitsOpen] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
 
@@ -325,6 +340,32 @@ export function AppSidebar() {
             <CollapsibleContent>
               <SidebarMenu className="space-y-1 pl-2">
                 {fournisseur.map((item) => (
+                  <NavLink key={item.title} item={item} />
+                ))}
+              </SidebarMenu>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+        {canSeePage("produits", true) && (
+          <Collapsible
+            open={isProduitsOpen}
+            onOpenChange={setIsProduitsOpen}
+          >
+            <CollapsibleTrigger asChild>
+              <SidebarMenuButton>
+                <Package className="w-5 h-5" />
+                <span className="font-bold">Produits</span>
+                <ChevronRight
+                  className={cn(
+                    "ml-auto w-4 h-4 transition-transform",
+                    isProduitsOpen && "rotate-90"
+                  )}
+                />
+              </SidebarMenuButton>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu className="space-y-1 pl-2">
+                {produitsNav.map((item) => (
                   <NavLink key={item.title} item={item} />
                 ))}
               </SidebarMenu>

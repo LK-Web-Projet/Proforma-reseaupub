@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
 import { ClientCombobox } from "./ClientCombobox";
+import { ProduitCombobox } from "./ProduitCombobox";
+import { ProduitModal } from "./ProduitModal";
 import { DEVISE, DEVISE_OPTIONS, UNITE_DUREE, UNITE_DUREE_OPTIONS, DISCOUNT_TYPE_OPTIONS } from "@/lib/constants";
 import { Textarea } from "./ui/textarea";
 import { 
@@ -56,6 +58,7 @@ interface Produit {
   id: string;
   nom: string;
   prixUnitaire: number;
+  actif: boolean;
 }
 
 // --- Schéma de validation ---
@@ -63,6 +66,7 @@ const uniteDureeKeys = Object.keys(UNITE_DUREE) as [string, ...string[]];
 const deviseKeys = Object.keys(DEVISE) as [string, ...string[]];
 
 const productSchema = z.object({
+  produitId: z.string().min(1, "Veuillez sélectionner un produit."),
   designation: z.string().min(1, "La désignation est requise.").default(""),
   quantite: z.coerce.number().min(1, "Qté. min. 1.").default(1),
   prixUnitaire: z.coerce
@@ -86,8 +90,8 @@ const schema = z.object({
     .min(1, "Au moins un produit est requis.")
     .refine(
       (items) => {
-        const designations = items.map((item) => item.designation);
-        return new Set(designations).size === designations.length;
+        const produitIds = items.map((item) => item.produitId);
+        return new Set(produitIds).size === produitIds.length;
       },
       {
         message: "Chaque produit ne peut être ajouté qu'une seule fois.",
@@ -102,6 +106,7 @@ type FactureFormInput = z.input<typeof schema>;
 type FactureFormOutput = z.output<typeof schema>;
 
 const defaultProduct = {
+  produitId: "",
   designation: "",
   quantite: 1,
   prixUnitaire: 0,
@@ -117,6 +122,8 @@ export default function FactureForm() {
     { id: string; nom: string; prenom: string }[]
   >([]);
   const [loading, setLoading] = useState(false);
+  const [isProduitModalOpen, setIsProduitModalOpen] = useState(false);
+  const [activeProductRowIndex, setActiveProductRowIndex] = useState<number | null>(null);
   const router = useRouter();
 
   // --- Chargement des données initiales ---
@@ -133,7 +140,7 @@ export default function FactureForm() {
 
     const fetchProduits = async () => {
       try {
-        const res = await fetch("/api/produits");
+        const res = await fetch("/api/produits?actif=true");
         const data = await res.json();
         setProduits(data);
       } catch {
@@ -244,16 +251,29 @@ export default function FactureForm() {
     }
   };
 
-  const handleProductChange = (index: number, value: string) => {
-    const selectedProduit = produits.find((p) => p.nom === value);
-    setValue(`produits.${index}.designation`, value);
-    if (selectedProduit) {
-      setValue(`produits.${index}.prixUnitaire`, selectedProduit.prixUnitaire);
+  const handleProduitSelected = (index: number, produitId: string) => {
+    setValue(`produits.${index}.produitId`, produitId);
+    const selected = produits.find((p) => p.id === produitId);
+    if (selected) {
+      setValue(`produits.${index}.designation`, selected.nom);
+      setValue(`produits.${index}.prixUnitaire`, selected.prixUnitaire);
+    }
+  };
+
+  const handleProduitCreated = (produit: Produit) => {
+    setProduits((prev) => [...prev, produit]);
+    if (activeProductRowIndex !== null) {
+      handleProduitSelected(activeProductRowIndex, produit.id);
     }
   };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="container mx-auto py-8 space-y-8 pb-32">
+      <ProduitModal
+        isOpen={isProduitModalOpen}
+        onClose={() => setIsProduitModalOpen(false)}
+        onSuccess={handleProduitCreated}
+      />
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl border shadow-sm">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Nouvelle Facture</h1>
@@ -346,17 +366,27 @@ export default function FactureForm() {
                 <TableBody>
                   {fields.map((field, index) => (
                     <TableRow key={field.id} className="group transition-colors hover:bg-slate-50/50">
-                      <TableCell className="pl-6 align-top">
-                        <Input
-                          list={`produits-list-${index}`}
-                          {...register(`produits.${index}.designation`)}
-                          placeholder="Désignation"
-                          autoComplete="off"
-                          onChange={(e) => handleProductChange(index, e.target.value)}
+                      <TableCell className="pl-6 align-top space-y-2">
+                        <Controller
+                          name={`produits.${index}.produitId`}
+                          control={control}
+                          render={({ field }) => (
+                            <ProduitCombobox
+                              produits={produits}
+                              value={field.value}
+                              onChange={(produitId) => handleProduitSelected(index, produitId)}
+                              onAddNew={() => {
+                                setActiveProductRowIndex(index);
+                                setIsProduitModalOpen(true);
+                              }}
+                            />
+                          )}
                         />
-                        <datalist id={`produits-list-${index}`}>
-                          {produits.map((p) => <option key={p.id} value={p.nom} />)}
-                        </datalist>
+                        <Input
+                          {...register(`produits.${index}.designation`)}
+                          placeholder="Désignation (modifiable)"
+                          autoComplete="off"
+                        />
                       </TableCell>
                       <TableCell className="align-top">
                         <Input type="number" {...register(`produits.${index}.quantite`)} className="px-2" />

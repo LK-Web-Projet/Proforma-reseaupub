@@ -37,6 +37,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { ProduitCombobox } from "@/components/ProduitCombobox";
+import { ProduitModal } from "@/components/ProduitModal";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, DISCOUNT_TYPE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
@@ -145,7 +147,9 @@ export default function FactureDetailPage() {
   const [formData, setFormData] = useState<Partial<Facture> & { gestionnaireId?: string | null }>({});
 
   const [allGestionnaires, setAllGestionnaires] = useState<{id: string, nom: string, prenom: string}[]>([]);
-  const [allProduits, setAllProduits] = useState<{id: string, nom: string, prixUnitaire: number}[]>([]);
+  const [allProduits, setAllProduits] = useState<{id: string, nom: string, prixUnitaire: number, actif: boolean}[]>([]);
+  const [isProduitModalOpen, setIsProduitModalOpen] = useState(false);
+  const [activeProductRowIndex, setActiveProductRowIndex] = useState<number | null>(null);
 
   const [bonCommandeFile, setBonCommandeFile] = useState<File | undefined>();
   const [factureNormaliseeFile, setFactureNormaliseeFile] = useState<File | undefined>();
@@ -329,17 +333,31 @@ export default function FactureDetailPage() {
   const handleProductChange = (index: number, e: { target: { name: string; value: string; type?: string } }) => {
     const { name, value } = e.target;
     const produits = [...(formData.produits || [])] as Facture["produits"];
-    if (name === 'designation') {
-      const selected = allProduits.find(p => p.nom === value);
-      produits[index] = { ...produits[index], designation: value, prixUnitaire: selected?.prixUnitaire || produits[index].prixUnitaire, produitId: selected?.id || '' };
-    } else {
-      const isNumeric = e.target.type === 'number';
-      const updatedProduct = { ...produits[index] };
-      // @ts-expect-error - Accès dynamique sécurisé par le type
-      updatedProduct[name] = isNumeric ? parseFloat(value) : value;
-      produits[index] = updatedProduct as Facture["produits"][number];
-    }
+    const isNumeric = e.target.type === 'number';
+    const updatedProduct = { ...produits[index] };
+    // @ts-expect-error - Accès dynamique sécurisé par le type
+    updatedProduct[name] = isNumeric ? parseFloat(value) : value;
+    produits[index] = updatedProduct as Facture["produits"][number];
     setFormData((prev) => ({ ...prev, produits }));
+  };
+
+  const handleProduitSelected = (index: number, produitId: string) => {
+    const selected = allProduits.find((p) => p.id === produitId);
+    const produits = [...(formData.produits || [])] as Facture["produits"];
+    produits[index] = {
+      ...produits[index],
+      produitId,
+      designation: selected?.nom ?? produits[index].designation,
+      prixUnitaire: selected?.prixUnitaire ?? produits[index].prixUnitaire,
+    };
+    setFormData((prev) => ({ ...prev, produits }));
+  };
+
+  const handleProduitCreated = (produit: { id: string; nom: string; prixUnitaire: number; actif: boolean }) => {
+    setAllProduits((prev) => [...prev, produit]);
+    if (activeProductRowIndex !== null) {
+      handleProduitSelected(activeProductRowIndex, produit.id);
+    }
   };
 
   const handleUploadProof = async () => {
@@ -427,6 +445,11 @@ export default function FactureDetailPage() {
 
   return (
     <div className="container mx-auto py-8 space-y-8 max-w-6xl">
+      <ProduitModal
+        isOpen={isProduitModalOpen}
+        onClose={() => setIsProduitModalOpen(false)}
+        onSuccess={handleProduitCreated}
+      />
       {/* Top Bar Actions */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border shadow-sm sticky top-0 z-10">
         <div className="flex items-center gap-4">
@@ -597,8 +620,16 @@ export default function FactureDetailPage() {
                                     <TableCell className="pl-6 align-top">
                                         {isEditing ? (
                                             <div className="space-y-1">
-                                                <Input name="designation" value={p.designation} onChange={(e) => handleProductChange(idx, e)} list={`prods-${idx}`} />
-                                                <datalist id={`prods-${idx}`}>{allProduits.map(ap => <option key={ap.id} value={ap.nom} />)}</datalist>
+                                                <ProduitCombobox
+                                                    produits={allProduits.filter(ap => ap.actif || ap.id === p.produitId)}
+                                                    value={p.produitId}
+                                                    onChange={(produitId) => handleProduitSelected(idx, produitId)}
+                                                    onAddNew={() => {
+                                                        setActiveProductRowIndex(idx);
+                                                        setIsProduitModalOpen(true);
+                                                    }}
+                                                />
+                                                <Input name="designation" value={p.designation} onChange={(e) => handleProductChange(idx, e)} placeholder="Désignation (modifiable)" />
                                             </div>
                                         ) : <span className="font-semibold text-slate-700">{p.designation}</span>}
                                     </TableCell>

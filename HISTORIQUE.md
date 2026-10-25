@@ -22,6 +22,99 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-25 — Masquer aussi les produits désactivés par défaut sur la page Statistiques
+
+**Demande / Contexte**
+Même demande que sur la liste des produits, appliquée à `/produits/statistiques` : masquer les produits désactivés par défaut du tableau, avec le même interrupteur pour les réafficher.
+
+**Modifications apportées**
+- [app/(main)/produits/statistiques/page.tsx](app/(main)/produits/statistiques/page.tsx) : même interrupteur "Afficher les produits désactivés" (+ badge du nombre) que sur `/produits`, filtrant les lignes du tableau. Les 4 cartes KPI en haut (CA total réalisé, quantité vendue, produits actifs/total, produit le plus vendu) restent volontairement basées sur l'ensemble des produits, actifs ou non — le CA historique réalisé par un produit depuis désactivé reste un fait réel qui ne doit pas disparaître des totaux.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Désactiver un produit ayant déjà du CA réalisé, confirmer qu'il disparaît du tableau par défaut mais que les cartes KPI (CA total, etc.) continuent de l'inclure ; réafficher via l'interrupteur pour le retrouver dans le tableau.
+
+## 2026-10-24 (suite 12) — Masquer les produits désactivés par défaut sur la liste
+
+**Demande / Contexte**
+L'utilisateur a demandé que les produits désactivés soient masqués par défaut sur `/produits`, avec un contrôle séparé pour décider de les afficher ou non — dissocier les deux plutôt que tout montrer en permanence.
+
+**Modifications apportées**
+- [app/(main)/produits/page.tsx](app/(main)/produits/page.tsx) : nouvel interrupteur "Afficher les produits désactivés" (avec badge indiquant leur nombre) à côté de la barre de recherche, par défaut désactivé — donc par défaut, seuls les produits actifs apparaissent dans la liste. Le fetch continue de ramener tous les produits (nécessaire pour pouvoir réactiver un produit désactivé), seul le filtrage d'affichage change.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Désactiver un produit, confirmer qu'il disparaît immédiatement de la liste ; activer l'interrupteur et confirmer qu'il réapparaît, toujours modifiable/réactivable.
+
+## 2026-10-24 (suite 11) — Refonte UI/UX de la page Statistiques Produits
+
+**Demande / Contexte**
+L'utilisateur a demandé de tronquer les colonnes trop larges sur `/produits/statistiques` et de revoir l'UI/UX pour un rendu plus soigné.
+
+**Modifications apportées**
+- [app/(main)/produits/statistiques/page.tsx](app/(main)/produits/statistiques/page.tsx) : refonte complète.
+  - 4 cartes KPI en haut (réutilisation de `components/StatCard.tsx`, déjà construit pour le tableau de bord) : CA total réalisé, quantité totale vendue, nombre de produits actifs/total, produit le plus vendu.
+  - Barre de recherche par nom (filtre côté client).
+  - Colonne "Produit" tronquée (`max-w-[220px]` + ellipsis + tooltip natif).
+  - Tri par colonne : la flèche change de sens (haut/bas) et se met en évidence sur la colonne triée, au lieu d'une icône neutre fixe.
+  - Badges Statut recolorés (vert pour Actif, gris pour Inactif, au lieu du `destructive` rouge générique).
+  - État vide avec icône, montants en `tabular-nums` pour un alignement propre des chiffres.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+Aucun point particulier — refonte visuelle, logique de données inchangée.
+
+## 2026-10-24 (suite 10) — Colonne "Nom" tronquée sur la liste des produits
+
+**Demande / Contexte**
+Sur `/produits`, certains noms de produits trop longs déformaient le tableau. L'utilisateur a confirmé que les fonctionnalités de modification/statut étaient bien là — le seul souci était la largeur de la colonne "Nom".
+
+**Modifications apportées**
+- [app/(main)/produits/page.tsx](app/(main)/produits/page.tsx) : colonne "Nom" plafonnée à `max-w-[280px]` avec troncature (ellipsis) et tooltip natif (`title`) affichant le nom complet au survol.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+Aucun point particulier — ajustement visuel uniquement.
+
+## 2026-10-24 (suite 9) — Gestion des Produits (catalogue, statistiques) + nouveau sélecteur de produit dans les proformas
+
+**Demande / Contexte**
+L'utilisateur a demandé une nouvelle section "Produits" (le catalogue utilisé comme lignes de facture — sans rapport avec `ProduitFournisseur`, le catalogue fournisseur déjà existant, non touché) avec deux pages : liste/ajout/modification, et statistiques. Il a aussi demandé un nouvel attribut pour masquer un produit de la sélection dans les proformas, et de remplacer la création de produit à la volée (texte libre + datalist) par un vrai sélecteur parmi les produits existants, avec recherche, et une option "Nouveau produit" explicite si besoin. Ajout également de "Produits" à la gestion des rôles.
+
+En creusant le code existant, deux découvertes importantes : (1) `app/api/produits/route.ts`/`[id]/route.ts` existaient déjà mais n'étaient utilisés que comme simple liste pour un `<datalist>` texte libre, sans validation ; (2) la vraie création à la volée se trouvait dans `app/api/factures/route.ts` (POST, `findUnique` par nom puis `create` si absent) et surtout `app/api/factures/[id]/route.ts` (PUT, un `upsert` par nom qui **écrasait silencieusement le prix d'un produit existant** comme effet de bord de la simple modification d'une ligne de facture sans rapport). Le nouvel attribut `actif` est un simple interrupteur (comme `User.active`), volontairement **sans** le système motif+historique construit pour `Fournisseur.actif` — disproportionné ici.
+
+**Modifications apportées**
+- [prisma/schema.prisma](prisma/schema.prisma) + migration `add_actif_to_produit` : `Produit.actif Boolean @default(true)`.
+- [app/api/produits/route.ts](app/api/produits/route.ts) : `GET` accepte `?actif=true|false` ; `POST` validé (zod) avec message clair en cas de nom dupliqué (`P2002`).
+- [app/api/produits/[id]/route.ts](app/api/produits/[id]/route.ts) : `PUT` validé (+ `actif`) ; `DELETE` renvoie un message clair ("désactivez-le à la place") si le produit est référencé par une facture (`P2003`/`P2014`) au lieu d'un 500 brut.
+- [app/api/factures/route.ts](app/api/factures/route.ts) (POST) et [app/api/factures/[id]/route.ts](app/api/factures/[id]/route.ts) (PUT) : suppression complète de la création/`upsert` à la volée — `produitId` est désormais obligatoire pour chaque ligne (400 sinon), corrigeant au passage le bug de prix écrasé par effet de bord.
+- [components/ProduitCombobox.tsx](components/ProduitCombobox.tsx) (nouveau) : même architecture que `FournisseurCombobox.tsx` (délégation au parent, pas de Dialog interne), recherche par nom, prix affiché, badge "Inactif" pour une ligne existante référençant un produit désactivé, option "Nouveau produit".
+- [components/ProduitModal.tsx](components/ProduitModal.tsx) (nouveau) : créer/modifier un produit (nom, prix, + interrupteur actif en édition — sans confirmation ni motif).
+- [components/FactureForm.tsx](components/FactureForm.tsx) et [app/(main)/facture/[id]/page.tsx](app/(main)/facture/[id]/page.tsx) : le champ désignation en texte libre + datalist est remplacé par `ProduitCombobox` (lié à `produitId`) ; la désignation reste un champ texte séparé, librement modifiable, pré-rempli au nom du produit choisi. La page d'édition continue de charger tous les produits (actifs et inactifs) pour que les lignes déjà créées sur un produit désormais désactivé continuent de s'afficher correctement.
+- [app/(main)/produits/page.tsx](app/(main)/produits/page.tsx) (nouveau) : liste, recherche, interrupteur actif/inactif direct, modifier/supprimer.
+- [app/api/produits/statistiques/route.ts](app/api/produits/statistiques/route.ts) (nouveau) + [app/(main)/produits/statistiques/page.tsx](app/(main)/produits/statistiques/page.tsx) (nouveau) : agrégat par produit (quantité vendue, CA réalisé converti en XOF, nb de factures), même convention de statuts "CA réalisé" (Valider/Payer/Solde) que `topProducts` dans `/api/statistiques`, triable par colonne.
+- [lib/permissions.ts](lib/permissions.ts) : nouvelle clé `"produits"` (4 endroits : `PAGE_KEYS`, `PAGE_LABELS`, règles de `resolvePageKeyFromPathname`, `PAGE_DEFAULT_URLS`) — aucun changement nécessaire dans `parametres/roles/page.tsx` (déjà dynamique).
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : nouveau groupe de navigation autonome "Produits" (Liste des produits, Statistiques), gated par `canSeePage("produits", true)`.
+
+**Erreurs rencontrées & solutions**
+- `prisma generate` a échoué (`EPERM`, fichier verrouillé) car le serveur de dev (`pnpm dev`) avait le moteur Prisma chargé en mémoire sur Windows — résolu en arrêtant le serveur de dev avant de régénérer le client.
+- `pnpm build` a de nouveau rencontré la corruption pnpm habituelle (`MODULE_NOT_FOUND`) — résolue par `pnpm install --force`, build ensuite confirmé réussi avec toutes les nouvelles routes/pages présentes.
+
+**À tester / points d'attention**
+- Désactiver un produit existant et confirmer qu'il n'apparaît plus dans le sélecteur d'une nouvelle proforma, mais reste visible/fonctionnel sur une ligne déjà existante qui le référence.
+- Créer un produit via "Nouveau produit" en pleine création de proforma, confirmer qu'il est immédiatement sélectionné (prix + désignation pré-remplis).
+- Modifier une ligne d'une proforma existante et vérifier dans `/produits` que le prix d'un AUTRE produit n'a pas changé par effet de bord (confirme la correction du bug d'upsert).
+- Attribuer/retirer l'accès "Produits" à un rôle dans Paramètres → Rôles, confirmer l'apparition/disparition du groupe dans la barre latérale.
+- Vérifier les chiffres de `/produits/statistiques` contre une facture connue.
+
 ## 2026-10-24 (suite 8) — Numéro de proforma copiable + client cliquable vers sa fiche
 
 **Demande / Contexte**
