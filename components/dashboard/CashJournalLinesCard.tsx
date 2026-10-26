@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +12,7 @@ export interface CashJournalLine {
   montant: number;
   caisse: string;
   isApportDeCaisse?: boolean;
+  client?: { id: string; nom: string } | null;
 }
 
 interface CashJournalLinesCardProps {
@@ -37,6 +39,7 @@ export function CashJournalLinesCard({ title, kind, lines, total, formatCurrency
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Libellé</TableHead>
+                <TableHead>Client</TableHead>
                 <TableHead>Caisse</TableHead>
                 <TableHead className="text-right">Montant</TableHead>
               </TableRow>
@@ -44,7 +47,7 @@ export function CashJournalLinesCard({ title, kind, lines, total, formatCurrency
             <TableBody>
               {lines.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center h-20 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center h-20 text-muted-foreground">
                     Aucune ligne ce mois-ci.
                   </TableCell>
                 </TableRow>
@@ -58,6 +61,15 @@ export function CashJournalLinesCard({ title, kind, lines, total, formatCurrency
                       <div className="truncate">{line.libelle}</div>
                       {line.isApportDeCaisse && (
                         <Badge variant="secondary" className="mt-1 text-[10px]">Apport de caisse</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm max-w-[150px]">
+                      {line.client ? (
+                        <Link href={`/client/${line.client.id}`} className="truncate block text-primary hover:underline">
+                          {line.client.nom}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{line.caisse}</TableCell>
