@@ -22,6 +22,22 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-10-26 — Colonne "Client" sur les tableaux "Lignes d'entrée/sortie" du dashboard (onglet "Ce mois")
+
+**Demande / Contexte**
+L'utilisateur a demandé d'ajouter, dans l'onglet "Ce mois" du tableau de bord admin, une colonne affichant le nom du client concerné pour les lignes d'entrée et de sortie liées à une proforma.
+
+**Modifications apportées**
+- [app/api/dashboard/route.ts](app/api/dashboard/route.ts) : dans `getMonthView`, le `select` du `prisma.cashJournal.findMany` inclut désormais la relation `paiement.invoice.client` (id + nom). Le mapping vers `entreesLines`/`sortiesLines` ajoute un champ `client` (`{ id, nom } | null`) en remontant la chaîne `CashJournal → paiement → invoice → client`.
+- [components/dashboard/CashJournalLinesCard.tsx](components/dashboard/CashJournalLinesCard.tsx) : interface `CashJournalLine` étendue avec `client?: { id: string; nom: string } | null`. Nouvelle colonne "Client" entre "Libellé" et "Caisse", avec le nom cliquable (lien vers `/client/{id}`, style cohérent avec la page liste des factures) quand une facture/client est associée, ou un tiret `—` sinon. `colSpan` de l'état vide passé de 4 à 5.
+
+**Erreurs rencontrées & solutions**
+Aucune à ce stade — vérification `tsc`/`lint` en cours.
+
+**À tester / points d'attention**
+- Toutes les lignes de caisse ne sont pas liées à une facture (apports de caisse, transferts internes, dépenses manuelles) : ces lignes afficheront normalement un tiret dans la colonne Client, ce qui est attendu.
+- Vérifier visuellement le rendu des deux tableaux (entrées/sorties) sur le dashboard, notamment la largeur de la nouvelle colonne et le comportement du lien cliquable vers la fiche client.
+
 ## 2026-10-25 (suite 7) — Égalisation de la hauteur des cartes Client & Mission / Configuration
 
 **Demande / Contexte**

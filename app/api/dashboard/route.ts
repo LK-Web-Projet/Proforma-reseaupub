@@ -265,6 +265,15 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
         isApportDeCaisse: true,
         cashRegisterId: true,
         cashRegister: { select: { name: true } },
+        paiement: {
+          select: {
+            invoice: {
+              select: {
+                client: { select: { id: true, nom: true } },
+              },
+            },
+          },
+        },
       },
     }),
     prisma.paiement.groupBy({
@@ -307,6 +316,9 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
       montant: e.montant,
       caisse: e.cashRegister.name,
       isApportDeCaisse: !!e.isApportDeCaisse,
+      client: e.paiement?.invoice?.client
+        ? { id: e.paiement.invoice.client.id, nom: e.paiement.invoice.client.nom }
+        : null,
     })),
     entreesTotal,
     sortiesLines: sortiesLines.map((e) => ({
@@ -315,6 +327,9 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
       libelle: e.libelle,
       montant: e.montant,
       caisse: e.cashRegister.name,
+      client: e.paiement?.invoice?.client
+        ? { id: e.paiement.invoice.client.id, nom: e.paiement.invoice.client.nom }
+        : null,
     })),
     sortiesTotal,
     fluctuation: Array.from(dailyMap.values()),
