@@ -6,6 +6,7 @@ import {
   useFieldArray,
   Controller,
   SubmitHandler,
+  SubmitErrorHandler,
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -86,17 +87,7 @@ const schema = z.object({
   isDiscountEnabled: z.boolean().optional(),
   discountType: z.enum(["POURCENTAGE", "MONTANT"]).optional(),
   discountValue: z.coerce.number().min(0).optional(),
-  produits: z.array(productSchema)
-    .min(1, "Au moins un produit est requis.")
-    .refine(
-      (items) => {
-        const produitIds = items.map((item) => item.produitId);
-        return new Set(produitIds).size === produitIds.length;
-      },
-      {
-        message: "Chaque produit ne peut être ajouté qu'une seule fois.",
-      }
-    ),
+  produits: z.array(productSchema).min(1, "Au moins un produit est requis."),
   gestionnaireId: z.string().optional(),
   devise: z.enum(deviseKeys).default("XOF"),
   paymentConditionPercentage: z.number().optional(),
@@ -253,6 +244,11 @@ export default function FactureForm() {
     }
   };
 
+  const onError: SubmitErrorHandler<FactureFormInput> = (formErrors) => {
+    const produitsMessage = (formErrors.produits as { message?: string } | undefined)?.message;
+    toast.error(produitsMessage || "Veuillez corriger les erreurs indiquées dans le formulaire avant de continuer.");
+  };
+
   const handleProduitSelected = (index: number, produitId: string) => {
     setValue(`produits.${index}.produitId`, produitId);
     const selected = produits.find((p) => p.id === produitId);
@@ -270,7 +266,7 @@ export default function FactureForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="container mx-auto py-8 space-y-8 pb-32 max-w-10xl">
+    <form onSubmit={handleSubmit(onSubmit, onError)} className="container mx-auto py-8 space-y-8 pb-32 max-w-10xl">
       <ProduitModal
         isOpen={isProduitModalOpen}
         onClose={() => setIsProduitModalOpen(false)}

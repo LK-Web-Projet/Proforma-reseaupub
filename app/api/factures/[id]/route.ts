@@ -103,7 +103,7 @@ async function updateFacture(id: string, body: unknown) {
   if (!validation.success) {
     console.error("Erreur de validation:", validation.error.format());
     return NextResponse.json(
-      { error: validation.error.format() },
+      { error: validation.error.issues.map((i) => i.message).join(" ") },
       { status: 400 }
     );
   }
