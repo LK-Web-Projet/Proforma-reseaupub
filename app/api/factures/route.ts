@@ -77,8 +77,7 @@ export async function POST(request: Request) {
       );
     }
     
-    // Vérification : un produit existant (produitId) est requis pour chaque ligne,
-    // et impossible d'ajouter le même produit plusieurs fois.
+    // Vérification : un produit existant (produitId) est requis pour chaque ligne.
     const produitIds = produits.map((p: { produitId?: string }) => p.produitId);
     if (produitIds.some((id: string | undefined) => !id)) {
       return NextResponse.json(
@@ -86,14 +85,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    const uniqueProduitIds = new Set(produitIds);
-    if (uniqueProduitIds.size !== produitIds.length) {
-      return NextResponse.json(
-        { error: "Impossible d'ajouter le même produit plusieurs fois." },
-        { status: 400 }
-      );
-    }
-
 
     // Utilisation d'une transaction pour garantir l'intégrité des données
     const newInvoice = await prisma.$transaction(async (tx) => {

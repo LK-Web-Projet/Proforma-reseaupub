@@ -22,6 +22,30 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-02 — Produits en double autorisés sur une proforma + fiabilisation des toasts d'erreur
+
+**Demande / Contexte**
+L'utilisateur a signalé qu'il est actuellement impossible de sélectionner le même produit plusieurs fois lors de la création d'une proforma, et a demandé que ce soit désormais possible. Il a aussi demandé de revoir l'affichage des toasts d'erreur/succès, qui "ne s'affichent pas bien".
+
+Analyse : aucune contrainte d'unicité en base (`InvoiceProduit` n'a pas de `@@unique([invoiceId, productId])`), et l'édition de facture n'imposait déjà aucune restriction — seule la création bloquait. Par ailleurs, le formulaire de création n'avait pas de callback d'erreur sur `handleSubmit` : toute validation zod échouée au niveau du tableau `produits` (dont l'ancien refine de doublon) restait **totalement silencieuse** pour l'utilisateur (aucun toast, aucun message visible) — c'est très probablement la cause du problème d'affichage des toasts signalé.
+
+**Modifications apportées**
+- [components/FactureForm.tsx](components/FactureForm.tsx) :
+  - Suppression du `.refine()` qui empêchait les `produitId` dupliqués dans le schéma zod `produits` (garde uniquement `.min(1, "Au moins un produit est requis.")`).
+  - Ajout d'un callback `onError` branché sur `handleSubmit(onSubmit, onError)` : affiche désormais un `toast.error(...)` dès qu'une validation du formulaire échoue (message spécifique du tableau `produits` si disponible, sinon message générique), pour que les erreurs ne soient plus jamais silencieuses.
+- [app/api/factures/route.ts](app/api/factures/route.ts) (POST) : suppression du contrôle manuel `uniqueProduitIds` qui rejetait les produits dupliqués avec une erreur 400. Le contrôle "produitId requis pour chaque ligne" est conservé.
+- [app/api/factures/[id]/route.ts](app/api/factures/[id]/route.ts) (PATCH) : en cas d'échec de validation zod, l'API renvoyait `{ error: validation.error.format() }` (objet imbriqué, pas une chaîne) — remplacé par `{ error: validation.error.issues.map(i => i.message).join(" ") }`, toujours une chaîne lisible exploitable par un toast.
+- [app/(main)/facture/[id]/page.tsx](app/(main)/facture/[id]/page.tsx) : `handleUpdateFacture` affichait toujours un message générique figé ("Erreur lors de la mise à jour.") sans jamais lire le vrai message de l'API. Il lit désormais le corps JSON de la réponse d'erreur et affiche `data?.error` en priorité.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` propre ; vérification `next lint` en cours.
+
+**À tester / points d'attention**
+- Création de proforma : ajouter deux fois le même produit → la soumission doit désormais réussir.
+- Création de proforma : soumettre sans aucune ligne de produit → un toast d'erreur clair doit apparaître (auparavant silencieux).
+- Édition de facture : provoquer un échec de sauvegarde et vérifier que le toast affiche le vrai message d'erreur de l'API plutôt que le texte générique.
+- Hors périmètre, signalé mais non traité : `components/AddEntryModal.tsx` (page journal-caisse) monte un second `<Toaster richColors />` en plus du Toaster global — doublon potentiel sur cette page précise, à corriger séparément si besoin.
+
 ## 2026-10-26 — Colonne "Client" sur les tableaux "Lignes d'entrée/sortie" du dashboard (onglet "Ce mois")
 
 **Demande / Contexte**

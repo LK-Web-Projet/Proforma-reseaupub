@@ -260,7 +260,8 @@ export default function FactureDetailPage() {
         setIsEditing(false);
         toast.success("Facture mise à jour avec succès !");
       } else {
-        toast.error("Erreur lors de la mise à jour.");
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "Erreur lors de la mise à jour.");
       }
     } catch (error) {
       toast.error("Erreur réseau.");
