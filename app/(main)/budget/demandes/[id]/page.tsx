@@ -34,6 +34,9 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus } from 'lucide-react';
 
+// 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts).
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 interface DemandeBudgetDetail {
   id: string;
   numero: string;
@@ -169,8 +172,14 @@ export default function DemandeBudgetDetailPage() {
 
       const res = await fetch(`/api/demandes-budget/${id}/payer`, { method: 'POST', body: data });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(typeof err.error === 'string' ? err.error : 'Erreur lors du traitement du paiement.');
+        const err = res.headers.get('content-type')?.includes('application/json')
+          ? await res.json()
+          : null;
+        throw new Error(
+          typeof err?.error === 'string'
+            ? err.error
+            : 'Erreur lors du traitement du paiement (le fichier est peut-être trop volumineux).'
+        );
       }
       toast.success('Demande marquée comme payée !');
       await fetchDemande();
@@ -295,7 +304,21 @@ export default function DemandeBudgetDetailPage() {
               </div>
               <div className="space-y-2 md:col-span-2">
                 <label htmlFor="preuves">Preuves de paiement</label>
-                <Input id="preuves" type="file" multiple onChange={(e) => setPreuves(e.target.files ? Array.from(e.target.files) : [])} />
+                <Input
+                  id="preuves"
+                  type="file"
+                  multiple
+                  onChange={(e) => {
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    const tooBig = files.find((f) => f.size > MAX_FILE_SIZE_BYTES);
+                    if (tooBig) {
+                      toast.error(`Le fichier "${tooBig.name}" dépasse la taille maximale autorisée (10 Mo).`);
+                      e.target.value = "";
+                      return;
+                    }
+                    setPreuves(files);
+                  }}
+                />
               </div>
               <div className="md:col-span-2">
                 <Button type="submit" disabled={isSubmitting}>

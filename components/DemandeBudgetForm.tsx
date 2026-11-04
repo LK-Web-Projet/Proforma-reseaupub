@@ -28,6 +28,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+// 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts), pour éviter d'envoyer
+// une requête qui échouerait sur un fichier trop volumineux (photos mobile notamment).
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 interface Ligne {
   designation: string;
   montant: string;
@@ -285,8 +289,14 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       const url = mode === 'edit' ? `/api/demandes-budget/${demandeId}/resoumettre` : '/api/demandes-budget';
       const res = await fetch(url, { method: 'POST', body: data });
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(typeof errorData.error === 'string' ? errorData.error : "Erreur lors de l'enregistrement de la demande.");
+        const errorData = res.headers.get('content-type')?.includes('application/json')
+          ? await res.json()
+          : null;
+        throw new Error(
+          typeof errorData?.error === 'string'
+            ? errorData.error
+            : "Erreur lors de l'enregistrement de la demande (le fichier est peut-être trop volumineux)."
+        );
       }
 
       toast.success(mode === 'edit' ? 'Demande soumise à nouveau avec succès !' : 'Demande de budget soumise avec succès !');
@@ -534,7 +544,15 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
               </Select>
               <Input
                 type="file"
-                onChange={(e) => updateDocumentFile(index, e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  if (file && file.size > MAX_FILE_SIZE_BYTES) {
+                    toast.error(`Le fichier "${file.name}" dépasse la taille maximale autorisée (10 Mo).`);
+                    e.target.value = "";
+                    return;
+                  }
+                  updateDocumentFile(index, file);
+                }}
               />
               {documents.length > 1 && (
                 <Button

@@ -21,6 +21,9 @@ import { DOCUMENT_UPLOAD_TYPES, DocumentUploadType, ATTACHMENT_TYPE_LABELS } fro
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts).
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 interface DocumentRow {
   type: DocumentUploadType;
   file: File | null;
@@ -79,8 +82,14 @@ export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, de
 
       const res = await fetch(`/api/demandes-budget/${demandeId}/documents`, { method: 'POST', body: data });
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(typeof errorData.error === 'string' ? errorData.error : "Erreur lors de l'ajout des documents.");
+        const errorData = res.headers.get('content-type')?.includes('application/json')
+          ? await res.json()
+          : null;
+        throw new Error(
+          typeof errorData?.error === 'string'
+            ? errorData.error
+            : "Erreur lors de l'ajout des documents (le fichier est peut-être trop volumineux)."
+        );
       }
 
       toast.success('Document(s) ajouté(s) avec succès !');
@@ -113,7 +122,18 @@ export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, de
                     ))}
                   </SelectContent>
                 </Select>
-                <Input type="file" onChange={(e) => updateDocumentFile(index, e.target.files?.[0] ?? null)} />
+                <Input
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    if (file && file.size > MAX_FILE_SIZE_BYTES) {
+                      toast.error(`Le fichier "${file.name}" dépasse la taille maximale autorisée (10 Mo).`);
+                      e.target.value = "";
+                      return;
+                    }
+                    updateDocumentFile(index, file);
+                  }}
+                />
                 {documents.length > 1 && (
                   <Button
                     type="button"

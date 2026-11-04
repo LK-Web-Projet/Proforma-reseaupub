@@ -22,6 +22,27 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-04 (suite 3) — Upload de documents budget : échec sur mobile (fichiers volumineux)
+
+**Demande / Contexte**
+L'utilisateur a signalé que l'upload de documents dans le module "demandes de budget" fonctionne sans problème sur desktop, mais échoue sur mobile avec une erreur ressemblant à une erreur HTML.
+
+**Diagnostic**
+Aucune limite de taille de fichier n'était vérifiée ni côté client ni côté serveur pour les uploads du module budget, contrairement au module Fournisseurs (`components/fournisseurs/FournisseurDocuments.tsx` / `lib/uploadFournisseurDocument.ts`) qui applique déjà une limite de 10 Mo des deux côtés. Les photos prises à la caméra mobile (plusieurs Mo, parfois HEIC) dépassent probablement une limite du reverse-proxy du VPS (nginx `client_max_body_size`, non versionnée dans ce repo — déjà signalée comme hors de portée du code dans une entrée précédente de ce journal), qui renvoie alors une page d'erreur HTML (ex. 413) au lieu d'une réponse JSON. Le code frontend des 3 formulaires d'upload du module budget faisait `await res.json()` sur la réponse d'erreur sans vérifier le `content-type`, ce qui provoque une `SyntaxError` ("Unexpected token '<'...") en tentant de parser du HTML comme du JSON — correspondant exactement au symptôme "erreur HTML" décrit.
+
+**Modifications apportées**
+- [lib/uploadDemandeBudget.ts](lib/uploadDemandeBudget.ts) : ajout d'une limite de 10 Mo par fichier dans `saveDemandeBudgetFiles` (même convention que le module Fournisseurs), avec message d'erreur clair.
+- [app/api/demandes-budget/route.ts](app/api/demandes-budget/route.ts), [app/api/demandes-budget/[id]/documents/route.ts](app/api/demandes-budget/[id]/documents/route.ts), [app/api/demandes-budget/[id]/payer/route.ts](app/api/demandes-budget/[id]/payer/route.ts), [app/api/demandes-budget/[id]/resoumettre/route.ts](app/api/demandes-budget/[id]/resoumettre/route.ts) : les blocs `catch` renvoyaient toujours "Erreur interne du serveur" pour toute erreur non-fs (donc auraient aussi masqué le nouveau message "fichier trop volumineux") — corrigés pour remonter `error.message` en plus de `describeFsError`, comme dans les routes Fournisseurs.
+- [components/DemandeBudgetForm.tsx](components/DemandeBudgetForm.tsx), [components/DemandeBudgetAddDocumentsDialog.tsx](components/DemandeBudgetAddDocumentsDialog.tsx), [app/(main)/budget/demandes/[id]/page.tsx](app/(main)/budget/demandes/[id]/page.tsx) : ajout d'un contrôle de taille (10 Mo) au moment de la sélection du fichier (`toast.error` + réinitialisation de l'input si trop volumineux, avant même l'envoi réseau) sur les 3 inputs file concernés. Les 3 appels `await res.json()` sur une réponse en erreur vérifient désormais le `content-type` avant de parser, avec un message de repli explicite ("le fichier est peut-être trop volumineux") si la réponse n'est pas du JSON.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Tester sur mobile un upload avec une photo de plusieurs Mo : doit maintenant être bloqué immédiatement côté client avec un message clair ("dépasse la taille maximale autorisée (10 Mo)"), sans jamais atteindre le serveur.
+- Si la limite réelle du reverse-proxy (nginx) est inférieure à 10 Mo, l'erreur HTML pourrait encore survenir pour des fichiers entre la limite nginx et 10 Mo — dans ce cas, le nouveau garde-fou content-type affichera au moins un message de repli compréhensible au lieu de planter silencieusement. À vérifier/ajuster la config nginx du VPS si le problème persiste sous 10 Mo.
+- Le format HEIC (photos iPhone) n'est ni bloqué ni converti ; il est accepté tel quel (comme avant) — à surveiller si la prévisualisation de ces fichiers pose un problème distinct.
+
 ## 2026-11-04 (suite 2) — PDF du bon de commande : option d'inclure client/objet des proformas associées
 
 **Demande / Contexte**
