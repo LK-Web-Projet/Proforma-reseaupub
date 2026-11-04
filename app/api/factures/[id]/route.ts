@@ -84,7 +84,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(facture);
+    return NextResponse.json({
+      ...facture,
+      produits: facture.produits.map((p) => ({ ...p, produitId: p.productId })),
+    });
   } catch (error) {
     console.error("Erreur lors de la récupération de la facture :", error);
     return NextResponse.json(

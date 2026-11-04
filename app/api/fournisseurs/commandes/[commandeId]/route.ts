@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { getCurrentUserIdentity, isBudgetAdminEmail } from "@/lib/budgetAuth";
+import { getCurrentUserIdentity } from "@/lib/budgetAuth";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import type { StatutCommandeFournisseur } from "@prisma/client";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
-    quantite: z.number().int().min(1),
+    quantite: z.number().positive(),
     largeur: z.number().min(0).optional(),
     hauteur: z.number().min(0).optional(),
     prixUnitaire: z.number().min(0),
@@ -68,9 +68,9 @@ export async function GET(
 }
 
 // PATCH /api/fournisseurs/commandes/[commandeId] - Changer le statut d'un bon de commande.
-// - Un admin (BUDGET_ADMIN_EMAILS) peut changer le statut librement, dans n'importe quel sens.
-// - Un utilisateur non-admin ne peut faire qu'une seule transition : confirmer l'envoi
-//   d'un bon VALIDEE, ce qui le passe à LIVREE.
+// Tout utilisateur authentifié peut changer librement le statut, dans n'importe quel sens.
+// Le verrouillage des états finaux (LIVREE/ANNULEE) est géré côté interface
+// (CommandeStatutControl), pas ici.
 export async function PATCH(
     request: Request,
     { params }: { params: Promise<{ commandeId: string }> }
@@ -92,17 +92,6 @@ export async function PATCH(
         });
         if (!commandeActuelle) {
             return NextResponse.json({ error: "Bon de commande introuvable" }, { status: 404 });
-        }
-
-        const admin = isBudgetAdminEmail(email);
-        const estConfirmationEnvoi =
-            commandeActuelle.statut === "VALIDEE" && nouveauStatut === "LIVREE";
-
-        if (!admin && !estConfirmationEnvoi) {
-            return NextResponse.json(
-                { error: "Seul un administrateur peut effectuer ce changement de statut." },
-                { status: 403 }
-            );
         }
 
         const updatedCommande = await prisma.commandeFournisseur.update({

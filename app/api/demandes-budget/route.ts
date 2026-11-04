@@ -145,9 +145,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Erreur lors de la création de la demande de budget:", error);
     const fsMessage = describeFsError(error);
-    if (fsMessage) {
-      return NextResponse.json({ error: fsMessage }, { status: 500 });
-    }
-    return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 });
+    const message = fsMessage || (error instanceof Error ? error.message : "Erreur interne du serveur");
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

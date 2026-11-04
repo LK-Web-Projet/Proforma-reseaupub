@@ -8,6 +8,11 @@ export interface SavedFile {
   fileType: string;
 }
 
+// 10 Mo — garde-fou côté serveur (une vérification indépendante existe aussi côté client
+// dans les formulaires de demande de budget, qui ne peuvent pas importer ce module Node-only).
+// Même limite que lib/uploadFournisseurDocument.ts, pour rester sous la limite du reverse-proxy.
+const MAX_DEMANDE_BUDGET_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 /**
  * Sauvegarde les documents typés soumis dans un FormData (champs `documents_DEVIS`,
  * `documents_FACTURE`, etc. — voir components/DemandeBudgetForm.tsx) et retourne les lignes
@@ -28,6 +33,12 @@ export async function saveTypedDemandeBudgetAttachments(demandeBudgetId: string,
 
 export async function saveDemandeBudgetFiles(demandeBudgetId: string, files: File[]): Promise<SavedFile[]> {
   if (files.length === 0) return [];
+
+  for (const file of files) {
+    if (file.size > MAX_DEMANDE_BUDGET_FILE_SIZE_BYTES) {
+      throw new Error(`Le fichier "${file.name}" dépasse la taille maximale autorisée (10 Mo).`);
+    }
+  }
 
   const uploadDir = path.join(process.cwd(), "public", "Upload", "DemandeBudget", demandeBudgetId);
   await mkdir(uploadDir, { recursive: true });

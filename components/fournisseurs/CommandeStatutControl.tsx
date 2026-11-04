@@ -2,7 +2,6 @@
 
 import React from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
     Select,
     SelectContent,
@@ -10,7 +9,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Send } from "lucide-react";
 import type { StatutCommandeFournisseur } from "@prisma/client";
 
 export const STATUT_LABELS: Record<StatutCommandeFournisseur, string> = {
@@ -38,21 +36,21 @@ interface CommandeStatutControlProps {
 
 /**
  * Contrôle de statut d'un bon de commande fournisseur, réutilisé partout où un statut
- * est affiché (liste globale, onglet d'un fournisseur, page de détail) pour garder la
- * même règle : un admin a le contrôle total, un utilisateur normal ne peut que confirmer
- * l'envoi d'un bon déjà validé (VALIDEE -> LIVREE).
+ * est affiché (liste globale, onglet d'un fournisseur, page de détail). Tout utilisateur
+ * peut changer librement le statut tant que le bon n'est pas dans un état final
+ * (LIVREE/ANNULEE), qui reste verrouillé. `isAdmin` n'est plus utilisé ici (conservé dans
+ * les props pour ne pas casser les appelants) depuis que cette liberté a été étendue à
+ * tout utilisateur, plus seulement aux admins.
  */
 export function CommandeStatutControl({
     statut,
-    isAdmin,
     onChange,
     triggerClassName,
     badgeClassName,
-    buttonClassName,
 }: CommandeStatutControlProps) {
     const isLocked = statut === "LIVREE" || statut === "ANNULEE";
 
-    if (isAdmin && !isLocked) {
+    if (!isLocked) {
         return (
             <Select value={statut} onValueChange={(value: StatutCommandeFournisseur) => onChange(value)}>
                 <SelectTrigger className={triggerClassName}>
@@ -69,15 +67,6 @@ export function CommandeStatutControl({
                     <SelectItem value="ANNULEE">Annulée</SelectItem>
                 </SelectContent>
             </Select>
-        );
-    }
-
-    if (!isAdmin && statut === "VALIDEE") {
-        return (
-            <Button size="sm" onClick={() => onChange("LIVREE")} className={buttonClassName}>
-                <Send className="mr-2 h-3.5 w-3.5" />
-                Confirmer l&apos;envoi
-            </Button>
         );
     }
 

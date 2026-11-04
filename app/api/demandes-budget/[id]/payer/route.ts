@@ -50,9 +50,7 @@ export async function POST(
   } catch (error) {
     console.error(`Erreur lors du traitement du paiement de la demande ${id}:`, error);
     const fsMessage = describeFsError(error);
-    if (fsMessage) {
-      return NextResponse.json({ error: fsMessage }, { status: 500 });
-    }
-    return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 });
+    const message = fsMessage || (error instanceof Error ? error.message : "Erreur interne du serveur");
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
