@@ -15,9 +15,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Download, Building2, Mail, Phone, MapPin, FileText, Receipt, Pencil } from "lucide-react";
+import { ArrowLeft, Download, Building2, Mail, Phone, MapPin, FileText, Receipt, Pencil, SlidersHorizontal } from "lucide-react";
 import type { StatutCommandeFournisseur } from "@prisma/client";
 import { FactureStatusBadge } from "@/components/FactureStatusBadge";
 import { CommandeStatutControl } from "@/components/fournisseurs/CommandeStatutControl";
@@ -108,7 +111,11 @@ const formatCurrency = (amount: number) => {
     }).format(amount));
 };
 
-async function generatePDF(commande: CommandeDetail, entreprise: EntrepriseConfig) {
+async function generatePDF(
+    commande: CommandeDetail,
+    entreprise: EntrepriseConfig,
+    pdfOptions: { includeClient: boolean; includeObjet: boolean }
+) {
     const { PDFDocument, rgb, StandardFonts } = await import("pdf-lib");
 
     const doc = await PDFDocument.create();
@@ -342,16 +349,31 @@ async function generatePDF(commande: CommandeDetail, entreprise: EntrepriseConfi
 
     // Proforma(s) associée(s)
     if (commande.proformas.length > 0) {
-        const numerosProformas = commande.proformas.map((p) => p.invoice.numero).join(", ");
-        page.drawText(`Proforma(s) associée(s) : ${numerosProformas}`, {
+        page.drawText("Proforma(s) associée(s) :", {
             x: 40,
             y,
             size: 9,
-            font: fontRegular,
+            font: fontBold,
             color: colorGray,
-            maxWidth: width - 80,
         });
-        y -= 20;
+        y -= 14;
+        for (const p of commande.proformas) {
+            const details: string[] = [];
+            if (pdfOptions.includeClient && p.invoice.client?.nom) details.push(p.invoice.client.nom);
+            if (pdfOptions.includeObjet && p.invoice.objet) details.push(p.invoice.objet);
+            const ligneProforma = details.length > 0
+                ? `${p.invoice.numero} — ${details.join(" · ")}`
+                : p.invoice.numero;
+            page.drawText(ligneProforma, {
+                x: 48,
+                y,
+                size: 9,
+                font: fontRegular,
+                color: colorGray,
+                maxWidth: width - 88,
+            });
+            y -= 14;
+        }
     }
 
     y -= 30;
@@ -382,6 +404,8 @@ export default function CommandeDetailPage() {
     const [entreprise, setEntreprise] = useState<EntrepriseConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [generatingPdf, setGeneratingPdf] = useState(false);
+    const [includeClientPdf, setIncludeClientPdf] = useState(true);
+    const [includeObjetPdf, setIncludeObjetPdf] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const params = useParams();
@@ -459,7 +483,10 @@ export default function CommandeDetailPage() {
                 nomDirecteur: "Directeur Général",
                 logoPath: "rplogo.png",
             };
-            const pdfBytes = await generatePDF(commande, ent);
+            const pdfBytes = await generatePDF(commande, ent, {
+                includeClient: includeClientPdf,
+                includeObjet: includeObjetPdf,
+            });
 
             // Correction TypeScript : Forcer le type avec `as unknown as BlobPart`
             const blob = new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
@@ -523,6 +550,40 @@ export default function CommandeDetailPage() {
                             <Pencil className="h-4 w-4" />
                             Modifier
                         </Button>
+                    )}
+                    {commande.proformas.length > 0 && (
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" size="icon" title="Options du PDF">
+                                    <SlidersHorizontal className="h-4 w-4" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-72" align="end">
+                                <p className="text-sm font-medium mb-3">Dans le PDF, inclure :</p>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <Label htmlFor="pdf-include-client" className="text-sm font-normal">
+                                            Le client de la proforma associée
+                                        </Label>
+                                        <Switch
+                                            id="pdf-include-client"
+                                            checked={includeClientPdf}
+                                            onCheckedChange={setIncludeClientPdf}
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <Label htmlFor="pdf-include-objet" className="text-sm font-normal">
+                                            L&apos;objet de la proforma associée
+                                        </Label>
+                                        <Switch
+                                            id="pdf-include-objet"
+                                            checked={includeObjetPdf}
+                                            onCheckedChange={setIncludeObjetPdf}
+                                        />
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
                     )}
                     <Button
                         onClick={handleDownloadPDF}

@@ -22,6 +22,25 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-04 (suite 2) — PDF du bon de commande : option d'inclure client/objet des proformas associées
+
+**Demande / Contexte**
+L'utilisateur a demandé à pouvoir afficher, pour chaque proforma associée à un bon de commande, le nom du client concerné et l'objet de la proforma — avec la possibilité de les masquer lors du téléchargement du PDF. L'affichage à l'écran (page de détail du bon de commande) montrait déjà ces deux informations ; seul le PDF (généré côté client avec `pdf-lib`) ne listait que les numéros de proforma, sans client ni objet, et sans aucune option de configuration.
+
+**Modifications apportées**
+- [app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx](app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx) :
+  - `generatePDF` accepte désormais un 3ᵉ paramètre `{ includeClient, includeObjet }`. Le bloc "Proforma(s) associée(s)" liste maintenant une ligne par proforma (`NUMERO — Client · Objet`, les deux parties étant ajoutées seulement si leur option respective est activée et que la donnée existe), au lieu d'une seule ligne compacte listant juste les numéros.
+  - Nouveaux states `includeClientPdf`/`includeObjetPdf` (par défaut tous les deux activés), passés à `generatePDF` depuis `handleDownloadPDF`.
+  - Nouveau bouton d'options (icône `SlidersHorizontal`) à côté de "Télécharger PDF", visible uniquement s'il y a au moins une proforma associée : ouvre un `Popover` avec deux `Switch` ("Le client de la proforma associée" / "L'objet de la proforma associée") pour choisir ce qui doit apparaître dans le prochain PDF généré.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Télécharger le PDF d'un bon de commande ayant plusieurs proformas associées à des clients différents : vérifier que chaque ligne affiche le bon client/objet, et que désactiver un des deux interrupteurs le retire bien du PDF suivant.
+- Vérifier le rendu quand une proforma associée n'a pas de client renseigné (ne doit pas planter, juste omettre cette partie de la ligne).
+- Vérifier visuellement l'espacement du bloc "Proforma(s) associée(s)" dans le PDF avec un grand nombre de proformas associées (pas de gestion de saut de page dans ce générateur, comme avant).
+
 ## 2026-11-04 (suite) — Bon de commande : statut librement modifiable + champs Quantité/Mesure utilisables
 
 **Demande / Contexte**
