@@ -22,6 +22,25 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-04 — Correction : produit non pré-rempli lors de l'édition d'une proforma
+
+**Demande / Contexte**
+L'utilisateur a signalé que, lors de l'édition d'une proforma existante, la "désignation" d'une ligne de produit est bien pré-remplie, mais le sélecteur de produit (combobox) reste vide ("Sélectionner un produit") au lieu d'afficher le produit réellement associé.
+
+**Cause identifiée**
+Incohérence de nom de champ entre l'écriture et la lecture. Le champ Prisma de la clé étrangère produit sur `InvoiceProduit` s'appelle `productId` (`prisma/schema.prisma`). Les routes d'écriture (POST/PATCH) mappent correctement `produitId` (venant du client) vers `productId` (colonne Prisma). Mais `GET /api/factures/[id]` renvoyait l'objet Prisma brut, donc chaque ligne de `produits[]` n'exposait que `productId`, jamais `produitId` — alors que tout le frontend (type `Facture`, `ProduitCombobox value={p.produitId}`, filtre des produits inactifs) lit `produitId`. Résultat : le champ était `undefined` à la lecture, donc le combobox ne trouvait jamais de correspondance, bien que `designation` (même nom des deux côtés) s'affichait correctement.
+
+**Modifications apportées**
+- [app/api/factures/[id]/route.ts](app/api/factures/[id]/route.ts) : le handler `GET` mappe désormais chaque ligne de `produits` pour exposer `produitId` (alias de `productId`) avant de renvoyer la réponse JSON (`produits: facture.produits.map(p => ({ ...p, produitId: p.productId }))`).
+
+**Erreurs rencontrées & solutions**
+- `npx tsc --noEmit` a échoué avec `Cannot find module '.../typescript/bin/tsc'` (corruption connue de `node_modules` sur cette machine, déjà documentée plus haut dans cet historique) → résolu par `pnpm install --force`. Après réinstallation, `tsc --noEmit` et `next lint` sont propres.
+
+**À tester / points d'attention**
+- Ouvrir une proforma existante → "Modifier" → vérifier que chaque ligne de produit affiche bien le produit déjà sélectionné (et son prix), pas seulement la désignation.
+- Vérifier aussi une ligne dont le produit a été désactivé depuis : il doit apparaître dans le combobox avec le badge "Inactif" au lieu d'être absent.
+- Ce bug n'affectait que le mode édition (affichage du combobox) ; l'affichage en lecture seule (désignation, quantité, prix, montant) n'était pas impacté.
+
 ## 2026-11-02 — Produits en double autorisés sur une proforma + fiabilisation des toasts d'erreur
 
 **Demande / Contexte**
