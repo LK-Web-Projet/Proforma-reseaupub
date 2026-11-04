@@ -270,7 +270,7 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                                                 step="0.01"
                                                 value={ligne.largeur || ''}
                                                 onChange={(e) => updateLigne(index, 'largeur', e.target.value)}
-                                                className="h-8 text-xs"
+                                                className="h-8 min-w-[60px] text-xs"
                                             />
                                             <span className="self-center">x</span>
                                             <Input
@@ -279,7 +279,7 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                                                 step="0.01"
                                                 value={ligne.hauteur || ''}
                                                 onChange={(e) => updateLigne(index, 'hauteur', e.target.value)}
-                                                className="h-8 text-xs"
+                                                className="h-8 min-w-[60px] text-xs"
                                             />
                                         </div>
                                     ) : (
@@ -294,10 +294,11 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                                 <TableCell>
                                     <Input
                                         type="number"
-                                        min="1"
+                                        min="0.01"
+                                        step="0.01"
                                         value={ligne.quantite}
                                         onChange={(e) => updateLigne(index, "quantite", e.target.value)}
-                                        className="h-9"
+                                        className="h-9 min-w-[70px]"
                                     />
                                 </TableCell>
                                 <TableCell>

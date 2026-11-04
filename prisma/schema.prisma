@@ -336,7 +336,7 @@ model LigneCommandeFournisseur {
   commandeId           String
   produitFournisseurId String
   designation          String
-  quantite             Int
+  quantite             Decimal             @db.Decimal(10, 2)
   largeur              Decimal?            @db.Decimal(10, 2)
   hauteur              Decimal?            @db.Decimal(10, 2)
   surface              Decimal?            @db.Decimal(10, 2)

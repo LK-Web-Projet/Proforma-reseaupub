@@ -22,6 +22,30 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-04 (suite) — Bon de commande : statut librement modifiable + champs Quantité/Mesure utilisables
+
+**Demande / Contexte**
+L'utilisateur a demandé que, sur les bons de commande fournisseur, le statut puisse être modifié librement (pas seulement par un admin), et a signalé un problème de saisie sur les champs Quantité/Mesure du formulaire de création (taper "50" ne gardait que "5", pas de décimales possibles, plafond apparent à 9).
+
+**Modifications apportées**
+- [components/fournisseurs/CommandeStatutControl.tsx](components/fournisseurs/CommandeStatutControl.tsx) : la règle `isAdmin && !isLocked` devient `!isLocked` — tout utilisateur (admin ou non) voit désormais le menu déroulant complet de statuts tant que le bon n'est pas `LIVREE`/`ANNULEE` (états finaux toujours verrouillés, comme avant). Suppression de la branche "Confirmer l'envoi" devenue inutile, et des imports (`Button`, `Send`) associés. La prop `isAdmin` reste dans l'interface (pour ne pas casser les 3 appelants) mais n'est plus utilisée pour cette logique.
+- [app/api/fournisseurs/commandes/[commandeId]/route.ts](app/api/fournisseurs/commandes/[commandeId]/route.ts) : `PATCH` — suppression du blocage 403 "Seul un administrateur peut effectuer ce changement de statut" ; tout utilisateur authentifié peut désormais changer le statut. Import `isBudgetAdminEmail` retiré (plus utilisé dans ce fichier).
+- Support des décimales pour "Quantité" (jusqu'ici entier, contrairement à Largeur/Hauteur déjà en `Decimal`) :
+  - [prisma/schema.prisma](prisma/schema.prisma) : `LigneCommandeFournisseur.quantite` passe de `Int` à `Decimal @db.Decimal(10, 2)` (même convention que largeur/hauteur).
+  - [app/api/fournisseurs/commandes/route.ts](app/api/fournisseurs/commandes/route.ts) et [app/api/fournisseurs/commandes/[commandeId]/route.ts](app/api/fournisseurs/commandes/[commandeId]/route.ts) : `quantite: z.number().int().min(1)` → `z.number().positive()` dans les deux schémas zod.
+  - [lib/commandeFournisseurCalc.ts](lib/commandeFournisseurCalc.ts) : `computeLigne` enveloppe désormais `quantite` avec `Number(...)` avant les multiplications, par cohérence avec largeur/hauteur.
+- Largeur d'affichage des champs numériques (trop étroits dans les modales, cause probable du symptôme "seul le premier chiffre reste visible/pris en compte") — dans les 3 formulaires [components/fournisseurs/NewCommandeForm.tsx](components/fournisseurs/NewCommandeForm.tsx), [components/CommandeFournisseurModal.tsx](components/CommandeFournisseurModal.tsx), [components/fournisseurs/EditCommandeFournisseurModal.tsx](components/fournisseurs/EditCommandeFournisseurModal.tsx) : ajout de `min-w-[70px]` sur l'input Qté et `min-w-[60px]` sur chacun des inputs L/H ; ajout de `step="0.01"` et `min="0.01"` (au lieu de `min="1"`) sur l'input Qté pour autoriser réellement la saisie de décimales.
+
+**Erreurs rencontrées & solutions**
+- `npx prisma migrate dev --name quantite_decimal_commande_fournisseur` a échoué de façon persistante (4 tentatives) : d'abord `FATAL: (ENOTFOUND) tenant/user ... not found`, puis `P1001: Can't reach database server at aws-0-eu-west-3.pooler.supabase.com:5432`. Contrairement à l'incident similaire déjà documenté plus haut (transitoire, résolu par une simple nouvelle tentative), celui-ci n'a pas pu être débloqué par retry — la base Supabase semble injoignable depuis cet environnement au moment de l'intervention. **La migration n'a donc pas pu être appliquée.**
+- Contournement partiel : `npx prisma generate` (qui ne nécessite pas d'accès à la base, seulement au fichier `schema.prisma`) a été exécuté avec succès pour régénérer le client Prisma avec le nouveau type `Decimal`, ce qui a permis de vérifier que `npx tsc --noEmit` et `npx next lint` restent propres avec le code adapté.
+
+**À tester / points d'attention**
+- **IMPORTANT — action requise avant toute utilisation** : exécuter `npx prisma migrate dev` (ou `npx prisma migrate deploy` en production) dès que la base Supabase est de nouveau joignable, pour appliquer réellement le changement de colonne `quantite` (`Int` → `Decimal(10,2)`) en base. Sans cette migration, la base réelle a toujours une colonne `Int`, donc l'enregistrement d'une quantité décimale échouera encore côté serveur (erreur Prisma), même si le code applicatif est prêt.
+- Une fois la migration appliquée : vérifier qu'une quantité décimale (ex. "2.5") se crée, s'affiche et se recharge correctement sur un bon de commande.
+- Vérifier, en tant qu'utilisateur non-admin, qu'on peut désormais changer librement le statut d'un bon `BROUILLON`/`VALIDEE`, et que `LIVREE`/`ANNULEE` restent non modifiables.
+- Vérifier que la saisie de "50" dans Qté (et dans L/H) fonctionne maintenant correctement visuellement, avec la largeur minimale ajoutée.
+
 ## 2026-11-04 — Correction : produit non pré-rempli lors de l'édition d'une proforma
 
 **Demande / Contexte**

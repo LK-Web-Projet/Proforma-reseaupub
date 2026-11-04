@@ -6,7 +6,7 @@ import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
-    quantite: z.number().int().min(1),
+    quantite: z.number().positive(),
     largeur: z.number().min(0).optional(),
     hauteur: z.number().min(0).optional(),
     prixUnitaire: z.number().min(0),

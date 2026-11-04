@@ -20,11 +20,13 @@ export function computeLigne(ligne: LigneInput) {
 
   // Si largeur et hauteur sont fournies, on suppose que c'est un produit en m².
   // Dimensions saisies en cm, conversion géométrique standard : (L×H)/10000.
+  const quantite = Number(ligne.quantite);
+
   if (ligne.largeur && ligne.hauteur) {
     surface = (Number(ligne.largeur) * Number(ligne.hauteur)) / 10000;
-    prixTotal = surface * ligne.quantite * ligne.prixUnitaire;
+    prixTotal = surface * quantite * ligne.prixUnitaire;
   } else {
-    prixTotal = ligne.quantite * ligne.prixUnitaire;
+    prixTotal = quantite * ligne.prixUnitaire;
   }
 
   return { surface, prixTotal };

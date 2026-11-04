@@ -314,7 +314,7 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
                                 step="0.01"
                                 value={ligne.largeur ?? ''}
                                 onChange={(e) => updateLigne(index, 'largeur', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-8 min-w-[60px] text-xs"
                               />
                               <span>x</span>
                               <Input
@@ -323,7 +323,7 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
                                 step="0.01"
                                 value={ligne.hauteur ?? ''}
                                 onChange={(e) => updateLigne(index, 'hauteur', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-8 min-w-[60px] text-xs"
                               />
                             </div>
                           ) : (
@@ -338,10 +338,11 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
                         <TableCell>
                           <Input
                             type="number"
-                            min="1"
+                            min="0.01"
+                            step="0.01"
                             value={ligne.quantite}
                             onChange={(e) => updateLigne(index, 'quantite', e.target.value)}
-                            className="h-9"
+                            className="h-9 min-w-[70px]"
                           />
                         </TableCell>
                         <TableCell>
