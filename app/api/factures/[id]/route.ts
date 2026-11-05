@@ -131,6 +131,13 @@ async function updateFacture(id: string, body: unknown) {
       if (statut) {
         updatedFactureData.statut = statut;
         console.log(`Mise à jour du statut: ${statut}`);
+
+        // Horodatage de la validation — uniquement au moment où le statut passe
+        // à "Valider" depuis un autre statut (pas à chaque ré-sauvegarde alors
+        // qu'il est déjà "Valider").
+        if (statut === "Valider" && currentInvoice.statut !== "Valider") {
+          updatedFactureData.dateValidation = new Date();
+        }
       }
 
       if (devise) {

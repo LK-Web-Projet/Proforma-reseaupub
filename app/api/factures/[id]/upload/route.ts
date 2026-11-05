@@ -30,7 +30,12 @@ async function updateInvoiceStatus(invoiceId: string) {
   if (newStatus !== invoice.statut) {
     await prisma.invoice.update({
       where: { id: invoiceId },
-      data: { statut: newStatus },
+      data: {
+        statut: newStatus,
+        ...(newStatus === 'Valider' && invoice.statut !== 'Valider'
+          ? { dateValidation: new Date() }
+          : {}),
+      },
     });
   }
 }

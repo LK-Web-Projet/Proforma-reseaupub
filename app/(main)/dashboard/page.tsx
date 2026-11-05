@@ -13,7 +13,7 @@ import {
   type ImpayesAnciens,
 } from '@/components/dashboard/ExtraIndicatorsSection';
 import { CashJournalLinesCard, type CashJournalLine } from '@/components/dashboard/CashJournalLinesCard';
-import { MonthlyFluctuationChart } from '@/components/dashboard/MonthlyFluctuationChart';
+import { MonthlyFluctuationChart, type DailyFluctuation } from '@/components/dashboard/MonthlyFluctuationChart';
 import { AlertCircle, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 
 const formatCurrency = (value: number) =>
@@ -39,7 +39,7 @@ interface MonthData {
   entreesTotal: number;
   sortiesLines: CashJournalLine[];
   sortiesTotal: number;
-  fluctuation: { day: string; recettes: number; depenses: number }[];
+  fluctuation: DailyFluctuation[];
   margeProformaDuMois: number;
 }
 
