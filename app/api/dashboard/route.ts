@@ -17,6 +17,13 @@ import { fr } from 'date-fns/locale';
 // dans toute l'app quand on agrège des montants multi-devises.
 const EXCHANGE_RATES: Record<string, number> = { EUR: 655.957, USD: 615, XOF: 1 };
 
+// Lignes de détail (recettes/dépenses/proformas validées) utilisées par les vues "Ce mois"
+// (par jour) et "Général" (par mois) pour alimenter le dialog de détail au clic sur une barre.
+interface DetailClient { id: string; nom: string }
+interface RecetteDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null; resteAPayer: number }
+interface DepenseDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null }
+interface ProformaValideeDetailLine { id: string; numero: string; totalTTC: number; client: DetailClient | null }
+
 // "Émise, validée ou payée" au sens de l'utilisateur = tous les statuts sauf Brouillon,
 // Annuler et Archiver (qui ne représentent pas une activité commerciale réelle à marger).
 const MARGE_STATUSES: StatusFacture[] = [
@@ -66,7 +73,24 @@ async function getTresorerieSnapshot(now: Date) {
       type: { in: [OperationType.RECETTE, OperationType.DEPENSE] },
       date_operation: { gte: windowStart, lte: now },
     },
-    select: { date_operation: true, type: true, montant: true, libelle: true },
+    select: {
+      id: true,
+      date_operation: true,
+      type: true,
+      montant: true,
+      libelle: true,
+      cashRegister: { select: { name: true } },
+      paiement: {
+        select: {
+          invoice: {
+            select: {
+              resteAPayer: true,
+              client: { select: { id: true, nom: true } },
+            },
+          },
+        },
+      },
+    },
   });
 
   const thirtyDaysAgo = subDays(now, 30);
@@ -116,13 +140,33 @@ function buildCashFlowEvolution(
 // caisse (mêmes exclusions de transferts internes que la vue "Ce mois") + montant des proformas
 // validées/payées/soldées sur chaque mois, classées sur dateValidation si connue, sinon
 // dateCreation (proformas validées avant l'ajout de ce champ — voir HISTORIQUE.md).
+interface MonthlyFluctuationBucket {
+  recettes: number;
+  depenses: number;
+  proformasValidees: number;
+  recettesDetail: RecetteDetailLine[];
+  depensesDetail: DepenseDetailLine[];
+  proformasValideesDetail: ProformaValideeDetailLine[];
+}
+
 async function getMonthlyEvolution(
   now: Date,
-  entries13Mois: { date_operation: Date; type: OperationType; montant: number; libelle: string }[],
+  entries13Mois: {
+    id: number;
+    date_operation: Date;
+    type: OperationType;
+    montant: number;
+    libelle: string;
+    cashRegister: { name: string };
+    paiement: { invoice: { resteAPayer: unknown; client: DetailClient | null } | null } | null;
+  }[],
   visibleIdsSet: Set<number>
 ) {
   const windowStart = startOfMonth(subMonths(now, 11));
 
+  // Proformas ayant atteint "Valider" (même si elles ont depuis progressé vers Payer/Solde),
+  // classées sur dateValidation si connue, sinon dateCreation (proformas validées avant
+  // l'ajout de ce champ — voir HISTORIQUE.md).
   const validatedInvoices = await prisma.invoice.findMany({
     where: {
       statut: { in: [StatusFacture.Valider, StatusFacture.Payer, StatusFacture.Solde] },
@@ -131,32 +175,77 @@ async function getMonthlyEvolution(
         { dateValidation: null, dateCreation: { gte: windowStart, lte: now } },
       ],
     },
-    select: { totalTTC: true, dateValidation: true, dateCreation: true },
+    select: {
+      id: true,
+      numero: true,
+      totalTTC: true,
+      dateValidation: true,
+      dateCreation: true,
+      client: { select: { id: true, nom: true } },
+    },
   });
 
   const months = eachMonthOfInterval({ start: windowStart, end: now });
-  const monthlyMap = new Map<string, { recettes: number; depenses: number; proformasValidees: number }>();
+  const monthlyMap = new Map<string, MonthlyFluctuationBucket>();
   for (const m of months) {
-    monthlyMap.set(format(m, 'yyyy-MM'), { recettes: 0, depenses: 0, proformasValidees: 0 });
+    monthlyMap.set(format(m, 'yyyy-MM'), {
+      recettes: 0,
+      depenses: 0,
+      proformasValidees: 0,
+      recettesDetail: [],
+      depensesDetail: [],
+      proformasValideesDetail: [],
+    });
   }
 
   for (const e of entries13Mois) {
     const bucket = monthlyMap.get(format(e.date_operation, 'yyyy-MM'));
     if (!bucket) continue;
-    if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) bucket.recettes += e.montant;
-    else if (e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)) bucket.depenses += e.montant;
+    const client = e.paiement?.invoice?.client ?? null;
+
+    if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) {
+      bucket.recettes += e.montant;
+      bucket.recettesDetail.push({
+        id: e.id,
+        libelle: e.libelle,
+        montant: e.montant,
+        caisse: e.cashRegister.name,
+        client,
+        resteAPayer: e.paiement?.invoice ? Number(e.paiement.invoice.resteAPayer) : 0,
+      });
+    } else if (e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)) {
+      bucket.depenses += e.montant;
+      bucket.depensesDetail.push({
+        id: e.id,
+        libelle: e.libelle,
+        montant: e.montant,
+        caisse: e.cashRegister.name,
+        client,
+      });
+    }
   }
   for (const inv of validatedInvoices) {
     const refDate = inv.dateValidation ?? inv.dateCreation;
     const bucket = monthlyMap.get(format(refDate, 'yyyy-MM'));
     if (!bucket) continue;
-    bucket.proformasValidees += Number(inv.totalTTC);
+    const totalTTC = Number(inv.totalTTC);
+    bucket.proformasValidees += totalTTC;
+    bucket.proformasValideesDetail.push({
+      id: inv.id,
+      numero: inv.numero,
+      totalTTC,
+      client: inv.client ? { id: inv.client.id, nom: inv.client.nom } : null,
+    });
   }
 
-  return months.map((m) => ({
-    month: format(m, 'MMM yy', { locale: fr }),
-    ...monthlyMap.get(format(m, 'yyyy-MM'))!,
-  }));
+  return months.map((m) => {
+    const key = format(m, 'yyyy-MM');
+    return {
+      month: format(m, 'MMM yy', { locale: fr }),
+      monthLabel: format(m, 'MMMM yyyy', { locale: fr }),
+      ...monthlyMap.get(key)!,
+    };
+  });
 }
 
 // --- Vue "Général" -------------------------------------------------------------------
@@ -362,10 +451,6 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
 
   // Fluctuation quotidienne (recettes/dépenses/proformas validées par jour du mois),
   // avec le détail des lignes concernées pour le dialog de détail au clic.
-  interface DetailClient { id: string; nom: string }
-  interface RecetteDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null; resteAPayer: number }
-  interface DepenseDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null }
-  interface ProformaValideeDetailLine { id: string; numero: string; totalTTC: number; client: DetailClient | null }
   interface DailyFluctuationBucket {
     day: string;
     date: string;

@@ -1,8 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type {
   DetailClient,
@@ -14,7 +12,7 @@ import type {
 export interface SelectedDetail {
   series: 'recettes' | 'depenses' | 'proformasValidees';
   label: string;
-  date: string; // yyyy-MM-dd
+  periodLabel: string; // ex: "14 novembre 2026" (jour) ou "novembre 2026" (mois) — déjà formaté
   total: number;
   items: RecetteDetailLine[] | DepenseDetailLine[] | ProformaValideeDetailLine[];
 }
@@ -43,13 +41,13 @@ export function DashboardDetailDialog({ selected, onClose, formatCurrency }: Das
           <>
             <DialogHeader>
               <DialogTitle>
-                {selected.label} — {format(parseISO(selected.date), 'd MMMM yyyy', { locale: fr })}
+                {selected.label} — {selected.periodLabel}
               </DialogTitle>
             </DialogHeader>
             <p className="text-lg font-bold">{formatCurrency(selected.total)}</p>
             <div className="max-h-[400px] overflow-y-auto divide-y">
               {selected.items.length === 0 && (
-                <p className="text-sm text-muted-foreground py-4">Aucune ligne ce jour-là.</p>
+                <p className="text-sm text-muted-foreground py-4">Aucune ligne sur cette période.</p>
               )}
               {selected.series === 'proformasValidees'
                 ? (selected.items as ProformaValideeDetailLine[]).map((item) => (
