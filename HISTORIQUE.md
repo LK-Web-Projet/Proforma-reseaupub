@@ -22,6 +22,28 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-05 (suite) — Dashboard "Général" : graphique "Évolution CA vs Dépenses" (12 mois)
+
+**Demande / Contexte**
+L'utilisateur a demandé, en plus de la 3e barre ajoutée à l'onglet "Ce mois" (entrée précédente), un graphique équivalent sur l'onglet "Général" du dashboard : un "Évolution CA vs Dépenses" agrégé par mois (pas par jour) sur les 12 derniers mois, avec les recettes réelles de caisse, les dépenses réelles de caisse, et le montant des proformas validées/payées/soldées par mois.
+
+**Modifications apportées**
+- [app/api/dashboard/route.ts](app/api/dashboard/route.ts) :
+  - `getTresorerieSnapshot` : ajout de `libelle` au `select` de la requête `entries13Mois` (nécessaire pour exclure les transferts internes entre caisses, comme déjà fait pour la vue "Ce mois").
+  - Nouvelle fonction `getMonthlyEvolution(now, entries13Mois, visibleIdsSet)` : requête les proformas `Valider`/`Payer`/`Solde` sur la fenêtre de 12 mois (classées sur `dateValidation` si connue, sinon `dateCreation` — même règle que la vue "Ce mois"), puis répartit par mois les recettes/dépenses réelles (`entries13Mois`, mêmes exclusions de transferts internes) et le montant des proformas validées. Appelée dans `GET` et exposée comme `monthlyEvolution` dans la réponse JSON de la vue "global".
+- [components/dashboard/GlobalEvolutionChart.tsx](components/dashboard/GlobalEvolutionChart.tsx) (nouveau) : graphique en barres groupées (recharts), 3 séries — Recettes (vert), Dépenses (rouge), Proformas validées (bleu) — avec tooltip au survol uniquement (pas de clic-détail ici, non demandé pour ce graphique).
+- [app/(main)/dashboard/page.tsx](app/(main)/dashboard/page.tsx) : ajout de `monthlyEvolution` au type `GlobalData`, et rendu de `<GlobalEvolutionChart>` juste après le graphique "Évolution de la trésorerie" existant, dans l'onglet "Général".
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que les totaux mensuels de recettes/dépenses correspondent à ceux visibles ailleurs (ex. journal de caisse) pour quelques mois passés.
+- Vérifier qu'une proforma validée ce mois apparaît dans la barre bleue du mois en cours sur ce nouveau graphique.
+- Pas de liste détaillée au clic ici (contrairement à la barre "Ce mois") — à ajouter si l'utilisateur le souhaite, en réutilisant `DashboardDetailDialog`.
+
+---
+
 ## 2026-11-05 — Incident prod (migration manquante) + Dashboard : 3e barre "Proformas validées" avec détail cliquable
 
 **Demande / Contexte**

@@ -6,6 +6,7 @@ import { DashboardPageSkeleton } from '@/components/DashboardPageSkeleton';
 import { StatCard } from '@/components/StatCard';
 import { TresorerieSection, type TresorerieData } from '@/components/dashboard/TresorerieSection';
 import { CashFlowEvolutionChart } from '@/components/dashboard/CashFlowEvolutionChart';
+import { GlobalEvolutionChart, type MonthlyEvolutionPoint } from '@/components/dashboard/GlobalEvolutionChart';
 import { MargeProformaSection, type MargeProforma } from '@/components/dashboard/MargeProformaSection';
 import {
   ExtraIndicatorsSection,
@@ -26,6 +27,7 @@ const formatCurrency = (value: number) =>
 interface GlobalData {
   tresorerie: TresorerieData;
   cashFlowEvolution: { month: string; solde: number }[];
+  monthlyEvolution: MonthlyEvolutionPoint[];
   margeParProforma: MargeProforma[];
   tauxConversion: number;
   topDebiteurs: TopDebiteur[];
@@ -130,6 +132,7 @@ export default function DashboardPage() {
             <>
               <TresorerieSection tresorerie={globalData.tresorerie} formatCurrency={formatCurrency} />
               <CashFlowEvolutionChart data={globalData.cashFlowEvolution} formatCurrency={formatCurrency} />
+              <GlobalEvolutionChart data={globalData.monthlyEvolution} formatCurrency={formatCurrency} />
               <MargeProformaSection data={globalData.margeParProforma} formatCurrency={formatCurrency} />
               <ExtraIndicatorsSection
                 tauxConversion={globalData.tauxConversion}
