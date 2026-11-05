@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -69,7 +71,7 @@ export function MonthlyFluctuationChart({ data, formatCurrency }: MonthlyFluctua
     setSelected({
       series,
       label: SERIES_LABEL[series],
-      date: day.date,
+      periodLabel: format(parseISO(day.date), 'd MMMM yyyy', { locale: fr }),
       total: day[series],
       items:
         series === 'recettes' ? day.recettesDetail :
