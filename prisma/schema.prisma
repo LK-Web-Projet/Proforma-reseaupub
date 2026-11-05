@@ -81,6 +81,7 @@ model Invoice {
   id                         String                        @id @default(uuid())
   numero                     String                        @unique
   dateCreation               DateTime                      @default(now())
+  dateValidation             DateTime?
   objet                      String
   clientId                   String
   totalHT                    Decimal

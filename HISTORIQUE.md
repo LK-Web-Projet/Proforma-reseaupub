@@ -22,6 +22,35 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-05 — Incident prod (migration manquante) + Dashboard : 3e barre "Proformas validées" avec détail cliquable
+
+**Demande / Contexte**
+Deux sujets traités dans la même session :
+1. L'utilisateur a signalé une erreur en production (logs collés) lors de la création d'un bon de commande : `PrismaClientUnknownRequestError` / `22P03: incorrect binary data format in bind parameter 5`. Diagnostic : le commit de la veille (`quantite` `Int` → `Decimal`, voir entrée ci-dessous) était déjà déployé, mais la migration correspondante n'avait jamais pu être appliquée à la base Supabase (incident de connectivité documenté dans l'entrée précédente) — la colonne réelle était donc toujours `Int`, incompatible avec les valeurs `Decimal` envoyées par le code déployé. **Toute création de bon de commande était cassée en production.**
+2. L'utilisateur a demandé d'ajouter, sur le tableau de bord admin (onglet "Ce mois"), une 3e barre au graphique Recettes/Dépenses représentant le montant des proformas validées dans le mois, avec un moyen de voir le détail (client, reste à payer) en interagissant avec chaque barre.
+
+**Diagnostic & résolution de l'incident**
+La base Supabase a été relancée par l'utilisateur en cours de session ; `npx prisma migrate deploy` échouait encore juste après (le pooler Supavisor met plus de temps à se resynchroniser que la base elle-même — erreurs `ENOTFOUND tenant/user ... not found` puis `P1001`), mais a fini par passer. La migration `20261104163341_quantite_decimal_commande_fournisseur`, en attente depuis la veille, a enfin été appliquée (en même temps que la nouvelle migration ci-dessous). Vérifié avec `npx prisma migrate status` → "Database schema is up to date!". Incident résolu.
+
+**Modifications apportées (fonctionnalité dashboard)**
+- [prisma/schema.prisma](prisma/schema.prisma) : nouveau champ `Invoice.dateValidation DateTime?` (nullable, pas de backfill possible — `historiqueModifications` n'a jamais été utilisé dans ce projet). Migration `20261105102511_add_date_validation_invoice` appliquée.
+- [app/api/factures/[id]/route.ts](app/api/factures/[id]/route.ts) et [app/api/factures/[id]/upload/route.ts](app/api/factures/[id]/upload/route.ts) : `dateValidation` est désormais posée à `new Date()` au moment précis où le statut d'une proforma passe à `"Valider"` depuis un autre statut (dans les deux points d'entrée possibles de cette transition). Une proforma déjà validée, re-sauvegardée sans changer de statut, ne voit pas sa date réécrite.
+- [app/api/dashboard/route.ts](app/api/dashboard/route.ts) (`getMonthView`) : nouvelle requête `prisma.invoice.findMany` ciblant les proformas aux statuts `Valider`/`Payer`/`Solde`, classées dans le mois via `dateValidation` si connue, sinon via `dateCreation` (cas des proformas validées avant l'ajout du champ). Le `dailyMap` par jour porte désormais, en plus des sommes `recettes`/`depenses`/`proformasValidees`, le détail ligne par ligne de chaque catégorie (`recettesDetail`/`depensesDetail`/`proformasValideesDetail`, avec client et — pour les recettes — le reste à payer de la proforma concernée) pour alimenter le nouveau dialog de détail.
+- [components/dashboard/MonthlyFluctuationChart.tsx](components/dashboard/MonthlyFluctuationChart.tsx) : ajout d'une 3e barre "Proformas validées" (bleu `#3b82f6`), groupée à côté des 2 barres existantes (pas empilées). Chaque barre est désormais cliquable (`onClick` par série) et ouvre le nouveau dialog de détail plutôt qu'un simple survol (choix fait avec l'utilisateur : le survol seul ne permet pas des liens cliquables et ne fonctionne pas sur mobile).
+- [components/dashboard/DashboardDetailDialog.tsx](components/dashboard/DashboardDetailDialog.tsx) (nouveau) : dialog affichant le montant total du jour pour la série cliquée et la liste des lignes concernées — client cliquable vers `/client/{id}` (même convention que `CashJournalLinesCard`), proforma cliquable vers `/facture/{id}`, reste à payer affiché uniquement pour les recettes.
+- [app/(main)/dashboard/page.tsx](app/(main)/dashboard/page.tsx) : type `MonthData.fluctuation` mis à jour pour utiliser `DailyFluctuation` (importé du composant chart) au lieu du type inline précédent.
+
+**Erreurs rencontrées & solutions**
+Aucune côté code — `tsc --noEmit` et `next lint` propres. Côté infra : voir "Diagnostic & résolution de l'incident" ci-dessus.
+
+**À tester / points d'attention**
+- Valider une proforma aujourd'hui → vérifier qu'elle apparaît dans la barre bleue du jour avec son montant TTC, et que `dateValidation` est bien posée en base.
+- Repérer une proforma déjà validée avant ce changement (donc `dateValidation` NULL) : doit apparaître dans le mois de sa `dateCreation`, pas disparaître.
+- Cliquer chacune des 3 barres d'un jour avec des données → vérifier le contenu du dialog (montant, liste, liens client/proforma, reste à payer pour les recettes uniquement). Cliquer une barre à 0 ne fait rien (limite normale de Recharts, pas un bug).
+- Sur une proforma qui repasse de "En Paiement"/"Soldée" à "Validée" (cas rare, via le script de recalcul), vérifier que `dateValidation` est bien ré-horodatée.
+
+---
+
 ## 2026-11-04 (suite 3) — Upload de documents budget : échec sur mobile (fichiers volumineux)
 
 **Demande / Contexte**
@@ -79,6 +108,7 @@ L'utilisateur a demandé que, sur les bons de commande fournisseur, le statut pu
 **Erreurs rencontrées & solutions**
 - `npx prisma migrate dev --name quantite_decimal_commande_fournisseur` a échoué de façon persistante (4 tentatives) : d'abord `FATAL: (ENOTFOUND) tenant/user ... not found`, puis `P1001: Can't reach database server at aws-0-eu-west-3.pooler.supabase.com:5432`. Contrairement à l'incident similaire déjà documenté plus haut (transitoire, résolu par une simple nouvelle tentative), celui-ci n'a pas pu être débloqué par retry — la base Supabase semble injoignable depuis cet environnement au moment de l'intervention. **La migration n'a donc pas pu être appliquée.**
 - Contournement partiel : `npx prisma generate` (qui ne nécessite pas d'accès à la base, seulement au fichier `schema.prisma`) a été exécuté avec succès pour régénérer le client Prisma avec le nouveau type `Decimal`, ce qui a permis de vérifier que `npx tsc --noEmit` et `npx next lint` restent propres avec le code adapté.
+- **Mise à jour 2026-11-05** : le code de ce changement étant déjà déployé en production sans la migration, toute création de bon de commande échouait réellement en prod (`22P03: incorrect binary data format in bind parameter 5`, confirmé par les logs serveur). Après redémarrage du projet Supabase par l'utilisateur, `npx prisma migrate dev --name quantite_decimal_commande_fournisseur` a enfin pu s'appliquer avec succès — voir l'entrée du jour pour les détails. Incident résolu.
 
 **À tester / points d'attention**
 - **IMPORTANT — action requise avant toute utilisation** : exécuter `npx prisma migrate dev` (ou `npx prisma migrate deploy` en production) dès que la base Supabase est de nouveau joignable, pour appliquer réellement le changement de colonne `quantite` (`Int` → `Decimal(10,2)`) en base. Sans cette migration, la base réelle a toujours une colonne `Int`, donc l'enregistrement d'une quantité décimale échouera encore côté serveur (erreur Prisma), même si le code applicatif est prêt.

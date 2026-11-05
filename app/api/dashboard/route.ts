@@ -252,7 +252,7 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
 
-  const [monthEntries, monthPaiements] = await Promise.all([
+  const [monthEntries, monthPaiements, validatedInvoices] = await Promise.all([
     prisma.cashJournal.findMany({
       where: { cashRegisterId: { in: visibleIds }, date_operation: { gte: monthStart, lte: monthEnd } },
       orderBy: { date_operation: 'desc' },
@@ -269,6 +269,7 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
           select: {
             invoice: {
               select: {
+                resteAPayer: true,
                 client: { select: { id: true, nom: true } },
               },
             },
@@ -281,6 +282,26 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
       where: { datePaiement: { gte: monthStart, lte: monthEnd } },
       _sum: { montant: true },
     }),
+    // Proformas ayant atteint "Valider" (même si elles ont depuis progressé vers
+    // Payer/Solde), classées sur dateValidation si connue, sinon dateCreation
+    // (proformas validées avant l'ajout de ce champ — voir HISTORIQUE.md).
+    prisma.invoice.findMany({
+      where: {
+        statut: { in: [StatusFacture.Valider, StatusFacture.Payer, StatusFacture.Solde] },
+        OR: [
+          { dateValidation: { gte: monthStart, lte: monthEnd } },
+          { dateValidation: null, dateCreation: { gte: monthStart, lte: monthEnd } },
+        ],
+      },
+      select: {
+        id: true,
+        numero: true,
+        totalTTC: true,
+        dateValidation: true,
+        dateCreation: true,
+        client: { select: { id: true, nom: true } },
+      },
+    }),
   ]);
 
   const entreesLines = monthEntries.filter(
@@ -292,17 +313,77 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
   const entreesTotal = entreesLines.reduce((s, e) => s + e.montant, 0);
   const sortiesTotal = sortiesLines.reduce((s, e) => s + e.montant, 0);
 
-  // Fluctuation quotidienne (recettes/dépenses par jour du mois), mêmes exclusions de
-  // transferts internes.
-  const dailyMap = new Map<string, { day: string; recettes: number; depenses: number }>();
+  // Fluctuation quotidienne (recettes/dépenses/proformas validées par jour du mois),
+  // avec le détail des lignes concernées pour le dialog de détail au clic.
+  interface DetailClient { id: string; nom: string }
+  interface RecetteDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null; resteAPayer: number }
+  interface DepenseDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null }
+  interface ProformaValideeDetailLine { id: string; numero: string; totalTTC: number; client: DetailClient | null }
+  interface DailyFluctuationBucket {
+    day: string;
+    date: string;
+    recettes: number;
+    depenses: number;
+    proformasValidees: number;
+    recettesDetail: RecetteDetailLine[];
+    depensesDetail: DepenseDetailLine[];
+    proformasValideesDetail: ProformaValideeDetailLine[];
+  }
+
+  const dailyMap = new Map<string, DailyFluctuationBucket>();
   for (const d of eachDayOfInterval({ start: monthStart, end: monthEnd })) {
-    dailyMap.set(format(d, 'yyyy-MM-dd'), { day: format(d, 'd'), recettes: 0, depenses: 0 });
+    const key = format(d, 'yyyy-MM-dd');
+    dailyMap.set(key, {
+      day: format(d, 'd'),
+      date: key,
+      recettes: 0,
+      depenses: 0,
+      proformasValidees: 0,
+      recettesDetail: [],
+      depensesDetail: [],
+      proformasValideesDetail: [],
+    });
   }
   for (const e of monthEntries) {
     const bucket = dailyMap.get(format(e.date_operation, 'yyyy-MM-dd'));
     if (!bucket) continue;
-    if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) bucket.recettes += e.montant;
-    else if (e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)) bucket.depenses += e.montant;
+    const client = e.paiement?.invoice?.client
+      ? { id: e.paiement.invoice.client.id, nom: e.paiement.invoice.client.nom }
+      : null;
+
+    if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) {
+      bucket.recettes += e.montant;
+      bucket.recettesDetail.push({
+        id: e.id,
+        libelle: e.libelle,
+        montant: e.montant,
+        caisse: e.cashRegister.name,
+        client,
+        resteAPayer: e.paiement?.invoice ? Number(e.paiement.invoice.resteAPayer) : 0,
+      });
+    } else if (e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)) {
+      bucket.depenses += e.montant;
+      bucket.depensesDetail.push({
+        id: e.id,
+        libelle: e.libelle,
+        montant: e.montant,
+        caisse: e.cashRegister.name,
+        client,
+      });
+    }
+  }
+  for (const inv of validatedInvoices) {
+    const refDate = inv.dateValidation ?? inv.dateCreation;
+    const bucket = dailyMap.get(format(refDate, 'yyyy-MM-dd'));
+    if (!bucket) continue;
+    const totalTTC = Number(inv.totalTTC);
+    bucket.proformasValidees += totalTTC;
+    bucket.proformasValideesDetail.push({
+      id: inv.id,
+      numero: inv.numero,
+      totalTTC,
+      client: inv.client ? { id: inv.client.id, nom: inv.client.nom } : null,
+    });
   }
 
   const paiementSum = monthPaiements.find((p) => p.type === PaiementType.PAIEMENT)?._sum.montant ?? 0;
