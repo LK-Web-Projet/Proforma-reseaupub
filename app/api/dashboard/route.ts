@@ -66,7 +66,7 @@ async function getTresorerieSnapshot(now: Date) {
       type: { in: [OperationType.RECETTE, OperationType.DEPENSE] },
       date_operation: { gte: windowStart, lte: now },
     },
-    select: { date_operation: true, type: true, montant: true },
+    select: { date_operation: true, type: true, montant: true, libelle: true },
   });
 
   const thirtyDaysAgo = subDays(now, 30);
@@ -110,6 +110,53 @@ function buildCashFlowEvolution(
     running -= monthlyNet.get(format(m, 'yyyy-MM')) ?? 0;
   }
   return points;
+}
+
+// Évolution mensuelle (12 derniers mois) pour la vue "Général" : recettes/dépenses réelles de
+// caisse (mêmes exclusions de transferts internes que la vue "Ce mois") + montant des proformas
+// validées/payées/soldées sur chaque mois, classées sur dateValidation si connue, sinon
+// dateCreation (proformas validées avant l'ajout de ce champ — voir HISTORIQUE.md).
+async function getMonthlyEvolution(
+  now: Date,
+  entries13Mois: { date_operation: Date; type: OperationType; montant: number; libelle: string }[],
+  visibleIdsSet: Set<number>
+) {
+  const windowStart = startOfMonth(subMonths(now, 11));
+
+  const validatedInvoices = await prisma.invoice.findMany({
+    where: {
+      statut: { in: [StatusFacture.Valider, StatusFacture.Payer, StatusFacture.Solde] },
+      OR: [
+        { dateValidation: { gte: windowStart, lte: now } },
+        { dateValidation: null, dateCreation: { gte: windowStart, lte: now } },
+      ],
+    },
+    select: { totalTTC: true, dateValidation: true, dateCreation: true },
+  });
+
+  const months = eachMonthOfInterval({ start: windowStart, end: now });
+  const monthlyMap = new Map<string, { recettes: number; depenses: number; proformasValidees: number }>();
+  for (const m of months) {
+    monthlyMap.set(format(m, 'yyyy-MM'), { recettes: 0, depenses: 0, proformasValidees: 0 });
+  }
+
+  for (const e of entries13Mois) {
+    const bucket = monthlyMap.get(format(e.date_operation, 'yyyy-MM'));
+    if (!bucket) continue;
+    if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) bucket.recettes += e.montant;
+    else if (e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)) bucket.depenses += e.montant;
+  }
+  for (const inv of validatedInvoices) {
+    const refDate = inv.dateValidation ?? inv.dateCreation;
+    const bucket = monthlyMap.get(format(refDate, 'yyyy-MM'));
+    if (!bucket) continue;
+    bucket.proformasValidees += Number(inv.totalTTC);
+  }
+
+  return months.map((m) => ({
+    month: format(m, 'MMM yy', { locale: fr }),
+    ...monthlyMap.get(format(m, 'yyyy-MM'))!,
+  }));
 }
 
 // --- Vue "Général" -------------------------------------------------------------------
@@ -437,8 +484,9 @@ export async function GET(request: Request) {
     }
 
     const cashFlowEvolution = buildCashFlowEvolution(snapshot.entries13Mois, snapshot.soldeTotal, now);
+    const monthlyEvolution = await getMonthlyEvolution(now, snapshot.entries13Mois, snapshot.visibleIdsSet);
     const global = await getGlobalView(now);
-    return NextResponse.json({ view, tresorerie, cashFlowEvolution, ...global });
+    return NextResponse.json({ view, tresorerie, cashFlowEvolution, monthlyEvolution, ...global });
   } catch (error) {
     console.error('Erreur lors de la récupération du dashboard :', error);
     return NextResponse.json({ error: 'Erreur Interne du Serveur' }, { status: 500 });
