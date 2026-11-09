@@ -23,7 +23,7 @@ export const PAGE_KEYS = [
 export type PageKey = (typeof PAGE_KEYS)[number];
 
 export const PAGE_LABELS: Record<PageKey, string> = {
-  dashboard: "Tableau de bord",
+  dashboard: "Tableau de bord & Rapports",
   proforma: "Proforma (factures, statistiques)",
   client: "Clients",
   fournisseurs: "Prestataires",

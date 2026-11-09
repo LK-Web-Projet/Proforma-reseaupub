@@ -12,6 +12,9 @@ import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 
 interface CashJournalEntry {
   id: number;
@@ -138,6 +141,18 @@ export default function ExportCashJournalPage() {
       return filteredEntries[filteredEntries.length - 1].solde;
     }
     return 0;
+  }, [filteredEntries]);
+
+  const fluxParJour = useMemo(() => {
+    const map = new Map<string, { date: string; recettes: number; depenses: number }>();
+    for (const e of filteredEntries) {
+      const key = new Date(e.date_operation).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+      const bucket = map.get(key) ?? { date: key, recettes: 0, depenses: 0 };
+      if (e.type === 'RECETTE') bucket.recettes += e.montant;
+      else if (e.type === 'DEPENSE') bucket.depenses += e.montant;
+      map.set(key, bucket);
+    }
+    return Array.from(map.values());
   }, [filteredEntries]);
 
   return (
@@ -291,6 +306,28 @@ export default function ExportCashJournalPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Graphique des flux recettes/dépenses sur la période filtrée */}
+      {!loading && fluxParJour.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Flux recettes / dépenses sur la période</CardTitle>
+          </CardHeader>
+          <CardContent className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={fluxParJour}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000}k`} />
+                <RechartsTooltip formatter={(value) => `${Number(value).toLocaleString('fr-FR')} FCFA`} />
+                <Legend />
+                <Bar dataKey="recettes" name="Recettes" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="depenses" name="Dépenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Vue mobile : cartes */}
       {loading ? (

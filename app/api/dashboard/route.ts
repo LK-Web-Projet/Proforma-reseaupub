@@ -12,17 +12,18 @@ import {
   differenceInDays,
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import {
+  type DetailClient,
+  type RecetteDetailLine,
+  type DepenseDetailLine,
+  type ProformaValideeDetailLine,
+  isInternalTransferIn,
+  isInternalTransferOut,
+} from '@/lib/dashboardReporting';
 
 // Même table de conversion que app/api/statistiques/route.ts, pour rester cohérent
 // dans toute l'app quand on agrège des montants multi-devises.
 const EXCHANGE_RATES: Record<string, number> = { EUR: 655.957, USD: 615, XOF: 1 };
-
-// Lignes de détail (recettes/dépenses/proformas validées) utilisées par les vues "Ce mois"
-// (par jour) et "Général" (par mois) pour alimenter le dialog de détail au clic sur une barre.
-interface DetailClient { id: string; nom: string }
-interface RecetteDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null; resteAPayer: number }
-interface DepenseDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null }
-interface ProformaValideeDetailLine { id: string; numero: string; totalTTC: number; client: DetailClient | null }
 
 // "Émise, validée ou payée" au sens de l'utilisateur = tous les statuts sauf Brouillon,
 // Annuler et Archiver (qui ne représentent pas une activité commerciale réelle à marger).
@@ -39,20 +40,6 @@ const IMPAYE_STATUSES: StatusFacture[] = [
   StatusFacture.Valider,
   StatusFacture.Payer,
 ];
-
-// --- Détection des transferts internes entre caisses visibles -----------------------
-// Reprend exactement la logique de app/(main)/journal-caisse/page.tsx (totalRecettesGlobal/
-// totalDepensesGlobal) : un virement entre deux caisses crée deux lignes réelles
-// ("Transfert depuis/vers caisse ID X"), à exclure des totaux bruts uniquement si les DEUX
-// extrémités sont des caisses visibles (sinon c'est un vrai flux externe).
-function isInternalTransferIn(libelle: string, visibleIds: Set<number>): boolean {
-  const m = libelle.match(/Transfert depuis caisse ID (\d+)/i);
-  return m ? visibleIds.has(parseInt(m[1], 10)) : false;
-}
-function isInternalTransferOut(libelle: string, visibleIds: Set<number>): boolean {
-  const m = libelle.match(/Transfert vers caisse ID (\d+)/i);
-  return m ? visibleIds.has(parseInt(m[1], 10)) : false;
-}
 
 // --- Trésorerie : soldes + tendance 30 jours, partagés par les deux vues ------------
 async function getTresorerieSnapshot(now: Date) {

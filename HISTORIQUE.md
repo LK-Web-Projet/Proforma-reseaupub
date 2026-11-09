@@ -22,6 +22,70 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-09 (suite 2) — Sidebar : section "Dashboard" dépliable (Tableau de bord + Rapports)
+
+**Demande / Contexte**
+L'utilisateur a demandé que "Tableau de bord" et "Rapports" soient regroupés dans une vraie section dépliable de la sidebar, sur le modèle de la section "Proforma" (qui regroupe "Facture proforma"/"Nouvelle Facture" sous un en-tête cliquable avec chevron), plutôt que deux liens affichés à plat sans regroupement visuel. Il a aussi demandé que ce regroupement soit pris en compte dans la gestion des pages/rôles.
+
+**Modifications apportées**
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : le bloc `dashboard` (jusque-là un `<SidebarMenu>` à plat avec un style de lien ad hoc, différent du reste de la sidebar) est remplacé par un `Collapsible` "Dashboard" (icône `BarChart`, chevron rotatif), contenant "Tableau de bord" et "Rapports" rendus via le composant `NavLink` déjà utilisé par toutes les autres sections (Proforma, Client, Fournisseurs, etc.) — cohérence visuelle et suppression d'un style en doublon. Variable `pathname` locale à `AppSidebar` supprimée (devenue inutilisée, `NavLink` gère son propre `usePathname()`).
+- [lib/permissions.ts](lib/permissions.ts) : libellé de la clé de permission `dashboard` (utilisé dans l'écran `/parametres/roles`) précisé de "Tableau de bord" à "Tableau de bord & Rapports", pour que les administrateurs comprennent que cette unique case à cocher couvre aussi `/dashboard/rapports`. Aucun nouveau `PageKey` nécessaire : `resolvePageKeyFromPathname` fait déjà correspondre tout chemin commençant par `/dashboard` (donc `/dashboard/rapports` inclus) à la clé `dashboard` existante — le contrôle d'accès fonctionnait déjà correctement pour la nouvelle page, seul le libellé manquait de clarté.
+
+**Erreurs rencontrées & solutions**
+- `next lint` a signalé `pathname` inutilisée dans `AppSidebar` après le remplacement du bloc dashboard par `NavLink` — supprimée.
+
+**À tester / points d'attention**
+- Vérifier visuellement que la section "Dashboard" se déplie/replie comme "Proforma", et que "Tableau de bord"/"Rapports" sont bien surlignés comme actifs sur leurs pages respectives.
+- Dans `/parametres/roles`, vérifier que le nouveau libellé "Tableau de bord & Rapports" s'affiche correctement pour la case existante (pas de nouvelle case créée).
+- Point de nuance à garder en tête (pas un bug) : la carte "Statistique proforma" dans Rapports pointe vers `/statistiques`, qui reste gérée par la permission "proforma" (pas "dashboard") — un rôle avec "dashboard" mais sans "proforma" verrait la carte mais pas la page derrière.
+
+---
+
+## 2026-11-09 (suite) — Page Statistiques déplacée vers le dashboard, renommée "Statistique proforma"
+
+**Demande / Contexte**
+L'utilisateur a demandé de déplacer la page `/statistiques` (jusque-là accessible depuis le menu "Facture proforma" de la sidebar) vers le dashboard, et de la renommer "Statistique proforma". Décisions confirmées : ajout d'une nouvelle carte active dans la page "Rapports" créée juste avant (plutôt qu'un nouvel onglet du dashboard), en conservant l'URL `/statistiques` inchangée (pas de redirection nécessaire).
+
+**Modifications apportées**
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : suppression de l'entrée "Statistiques" du menu "Facture proforma" (elle n'apparaît plus qu'via Dashboard → Rapports).
+- [app/(main)/dashboard/rapports/page.tsx](app/(main)/dashboard/rapports/page.tsx) : nouvelle carte active "Statistique proforma" → `/statistiques`.
+- [app/(main)/statistiques/page.tsx](app/(main)/statistiques/page.tsx) : titre `&lt;h1&gt;` corrigé de "Tableau de Bord" (copier-coller oublié, prêtait à confusion avec la vraie page `/dashboard`) à "Statistique proforma".
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que `/statistiques` reste accessible (URL inchangée) et s'affiche correctement, uniquement via la nouvelle carte dans Dashboard → Rapports.
+- Vérifier qu'aucun autre lien interne ne pointait spécifiquement vers l'ancienne entrée de sidebar supprimée.
+
+---
+
+## 2026-11-09 — Nouvelle sous-page "Rapports" (dashboard) : premiers rapports filtrables/exportables
+
+**Demande / Contexte**
+L'administratrice a demandé, à partir de captures d'écran d'une autre app (POS retail) listant de nombreux types de rapports, une sous-page du dashboard avec des cartes cliquables : chacune doit ouvrir un rapport filtrable (période) et exportable, avec graphique si pertinent. Elle a aussi explicitement demandé un "tableau de trésorerie semaine par semaine". Une analyse de faisabilité complète a d'abord été faite (mapping carte par carte entre l'app de référence — retail, avec stock/étiquettes/démarque — et le modèle métier réel de Proforma qui n'a pas ces concepts), puis l'utilisateur a demandé de démarrer sans attendre d'autres précisions.
+
+**Modifications apportées**
+- [lib/dashboardReporting.ts](lib/dashboardReporting.ts) (nouveau) : extraction des types partagés (`DetailClient`, `RecetteDetailLine`, `DepenseDetailLine`, `ProformaValideeDetailLine`) et des helpers de détection de virements internes (`isInternalTransferIn`/`isInternalTransferOut`), auparavant déclarés localement dans `app/api/dashboard/route.ts` — permet de les réutiliser dans le nouveau rapport hebdomadaire sans dupliquer la logique.
+- [app/api/dashboard/route.ts](app/api/dashboard/route.ts) : importe désormais ces types/helpers depuis `lib/dashboardReporting.ts` au lieu de les redéclarer (pur refactor, aucun changement de comportement).
+- [app/api/rapports/tresorerie-hebdomadaire/route.ts](app/api/rapports/tresorerie-hebdomadaire/route.ts) (nouveau) : même logique que la vue "Ce mois" (par jour)/"Général" (par mois) du dashboard, mais agrégée par semaine (lundi-dimanche, `date-fns` `eachWeekOfInterval`/`startOfWeek`), sur une période personnalisable (`?from=&to=`, 12 dernières semaines par défaut) — recettes/dépenses réelles de caisse + proformas validées/payées/soldées (règle `dateValidation ?? dateCreation` déjà établie), avec le détail ligne par ligne par semaine pour le dialog au clic.
+- [components/dashboard/WeeklyTreasuryChart.tsx](components/dashboard/WeeklyTreasuryChart.tsx) (nouveau) : graphique en barres groupées (3 séries, clic → `DashboardDetailDialog`), réutilise exactement le pattern de `MonthlyFluctuationChart`/`GlobalEvolutionChart`.
+- [app/(main)/dashboard/rapports/tresorerie-hebdomadaire/page.tsx](app/(main)/dashboard/rapports/tresorerie-hebdomadaire/page.tsx) (nouveau) : page du rapport — filtre de période (Calendar/Popover, pattern repris de `journal-caisse/export`), graphique, tableau avec totaux, export Excel (`xlsx`).
+- [app/(main)/journal-caisse/export/page.tsx](app/(main)/journal-caisse/export/page.tsx) : ajout d'un graphique "Flux recettes/dépenses sur la période" (bucketing par jour des lignes déjà filtrées côté client, recharts) — cette page couvrait déjà filtre + tableau + export, il ne manquait que le graphique pour devenir la carte "Transactions journalières".
+- [app/(main)/dashboard/rapports/page.tsx](app/(main)/dashboard/rapports/page.tsx) (nouveau) : grille de 8 cartes cliquables. 2 actives (Transactions journalières → `/journal-caisse/export`, Trésorerie hebdomadaire → nouvelle page) et 6 marquées "Bientôt disponible" (Ventes à percevoir, Achats fournisseurs, Frais supplémentaires, Rapport employés, Top produits & clients, Campagnes en cours) représentant la suite du périmètre analysé mais pas encore construite.
+- [components/app-sidebar.tsx](components/app-sidebar.tsx) : nouvelle entrée "Rapports" dans la section Dashboard, sous "Tableau de bors", même permission (`canSeePage("dashboard", true)`).
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Vérifier que la page `/journal-caisse/export` s'affiche toujours correctement (non-régression) avec le nouveau graphique.
+- Tester `/dashboard/rapports/tresorerie-hebdomadaire` : changer la période, vérifier le tableau/graphique/export, et le clic sur chaque barre (dialog avec client/proforma cliquables).
+- Les 6 cartes "Bientôt disponible" sont volontairement non cliquables — à construire une par une sur demande, selon la priorité de l'utilisateur (analyse détaillée de faisabilité déjà faite pour chacune, voir échange précédent dans la conversation).
+- "Campagnes en cours" dépend d'un appel réseau par proforma vers l'API Camptrack (`getCampagnesForProforma`) — prévoir de limiter le nombre de proformas interrogées en attendant un futur endpoint de liste groupée côté Camptrack.
+
+---
+
 ## 2026-11-05 (suite) — Dashboard "Général" : graphique "Évolution CA vs Dépenses" (12 mois) + détail cliquable
 
 **Demande / Contexte**
