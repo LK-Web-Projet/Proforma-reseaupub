@@ -201,7 +201,7 @@ export default function StatistiquesPage() {
   return (
     <div className="container mx-auto py-10 space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-4xl font-extrabold tracking-tight">Tableau de Bord</h1>
+        <h1 className="text-4xl font-extrabold tracking-tight">Statistique proforma</h1>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <TrendingUp className="w-4 h-4 text-green-500" />
           <span>Données actualisées en temps réel</span>

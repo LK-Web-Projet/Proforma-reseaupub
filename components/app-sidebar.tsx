@@ -54,7 +54,11 @@ const dashboard = [
     url: "/dashboard",
     icon: BarChart,
   },
- 
+  {
+    title: "Rapports",
+    url: "/dashboard/rapports",
+    icon: ClipboardList,
+  },
 ];
 
 const facture = [
@@ -67,11 +71,6 @@ const facture = [
     title: "Nouvelle Facture",
     url: "/facture/new",
     icon: Plus,
-  },
-  {
-    title: "Statistiques",
-    url: "/statistiques",
-    icon: BarChart,
   },
 ];
 
@@ -213,7 +212,7 @@ export function AppSidebar() {
     hasSyncedPermissions ? allowedPages.includes(key) : legacyAdminOnly ? role === "org:admin" : true;
 
   const router = useRouter();
-  const pathname = usePathname();
+  const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isFactureOpen, setIsFactureOpen] = useState(true);
   const [isClientOpen, setIsClientOpen] = useState(false);
   const [isCommercialOpen, setIsCommercialOpen] = useState(false);
@@ -249,26 +248,27 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent className="gap-2">
         {canSeePage("dashboard", true) && (
-          <SidebarMenu>
-            {dashboard.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild>
-                  <Link
-                    href={item.url}
-                    className={cn(
-                      "block rounded px-3 py-2 hover:bg-pink-600 hover:text-pink-600",
-                      pathname === item.url
-                        ? "bg-gray-900 text-white"
-                        : "text-gray-600"
-                    )}
-                  >
-                    <item.icon />
-                    <span className="font-bold">{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+        <Collapsible open={isDashboardOpen} onOpenChange={setIsDashboardOpen}>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <BarChart className="w-5 h-5" />
+              <span className="font-bold">Dashboard</span>
+              <ChevronRight
+                className={cn(
+                  "ml-auto w-4 h-4 transition-transform",
+                  isDashboardOpen && "rotate-90"
+                )}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenu className="space-y-1 pl-2">
+              {dashboard.map((item) => (
+                <NavLink key={item.title} item={item} />
+              ))}
+            </SidebarMenu>
+          </CollapsibleContent>
+        </Collapsible>
         )}
         {canSeePage("proforma", false) && (
         <Collapsible
