@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { ArrowLeft, Calendar as CalendarIcon, Download } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Calendar as CalendarIcon, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WeeklyTreasuryChart, type WeeklyTreasuryPoint } from '@/components/dashboard/WeeklyTreasuryChart';
 
@@ -18,6 +18,7 @@ const formatCurrency = (value: number) =>
 
 export default function TresorerieHebdomadairePage() {
   const [weeks, setWeeks] = useState<WeeklyTreasuryPoint[] | null>(null);
+  const [autresMouvementsTotal, setAutresMouvementsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
 
@@ -31,6 +32,7 @@ export default function TresorerieHebdomadairePage() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setWeeks(data.weeks);
+      setAutresMouvementsTotal(data.autresMouvementsTotal ?? 0);
     } catch {
       toast.error('Échec du chargement du rapport.');
       setWeeks(null);
@@ -130,6 +132,12 @@ export default function TresorerieHebdomadairePage() {
       ) : (
         <>
           <WeeklyTreasuryChart data={weeks} formatCurrency={formatCurrency} />
+
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <ArrowLeftRight className="h-3.5 w-3.5 shrink-0" />
+            Autres mouvements de caisse (apports, transferts entre caisses — hors chiffre d&apos;affaires) sur la période :{' '}
+            <span className="font-medium text-foreground">{formatCurrency(autresMouvementsTotal)}</span>
+          </p>
 
           <Card>
             <div className="overflow-x-auto">

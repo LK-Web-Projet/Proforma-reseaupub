@@ -17,7 +17,6 @@ import {
   type RecetteDetailLine,
   type DepenseDetailLine,
   type ProformaValideeDetailLine,
-  isInternalTransferIn,
   isInternalTransferOut,
 } from '@/lib/dashboardReporting';
 
@@ -185,12 +184,13 @@ async function getMonthlyEvolution(
     });
   }
 
+  let autresMouvementsTotal = 0;
   for (const e of entries13Mois) {
     const bucket = monthlyMap.get(format(e.date_operation, 'yyyy-MM'));
     if (!bucket) continue;
     const client = e.paiement?.invoice?.client ?? null;
 
-    if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) {
+    if (e.type === OperationType.RECETTE && !!e.paiement?.invoice) {
       bucket.recettes += e.montant;
       bucket.recettesDetail.push({
         id: e.id,
@@ -200,6 +200,8 @@ async function getMonthlyEvolution(
         client,
         resteAPayer: e.paiement?.invoice ? Number(e.paiement.invoice.resteAPayer) : 0,
       });
+    } else if (e.type === OperationType.RECETTE) {
+      autresMouvementsTotal += e.montant;
     } else if (e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)) {
       bucket.depenses += e.montant;
       bucket.depensesDetail.push({
@@ -225,14 +227,17 @@ async function getMonthlyEvolution(
     });
   }
 
-  return months.map((m) => {
-    const key = format(m, 'yyyy-MM');
-    return {
-      month: format(m, 'MMM yy', { locale: fr }),
-      monthLabel: format(m, 'MMMM yyyy', { locale: fr }),
-      ...monthlyMap.get(key)!,
-    };
-  });
+  return {
+    monthlyEvolution: months.map((m) => {
+      const key = format(m, 'yyyy-MM');
+      return {
+        month: format(m, 'MMM yy', { locale: fr }),
+        monthLabel: format(m, 'MMMM yyyy', { locale: fr }),
+        ...monthlyMap.get(key)!,
+      };
+    }),
+    autresMouvementsTotal,
+  };
 }
 
 // --- Vue "Général" -------------------------------------------------------------------
@@ -427,13 +432,21 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
     }),
   ]);
 
+  // "Entrées" = uniquement les recettes liées à un paiement de proforma (CA réel) — les
+  // apports de caisse et transferts entre caisses n'ont jamais de `paiement.invoice` lié,
+  // donc ce seul critère les exclut naturellement (plus fiable que la détection par regex
+  // sur le libellé, encore utilisée côté dépenses où la notion ne s'applique pas).
   const entreesLines = monthEntries.filter(
-    (e) => e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)
+    (e) => e.type === OperationType.RECETTE && !!e.paiement?.invoice
+  );
+  const autresMouvementsLines = monthEntries.filter(
+    (e) => e.type === OperationType.RECETTE && !e.paiement?.invoice
   );
   const sortiesLines = monthEntries.filter(
     (e) => e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)
   );
   const entreesTotal = entreesLines.reduce((s, e) => s + e.montant, 0);
+  const autresMouvementsTotal = autresMouvementsLines.reduce((s, e) => s + e.montant, 0);
   const sortiesTotal = sortiesLines.reduce((s, e) => s + e.montant, 0);
 
   // Fluctuation quotidienne (recettes/dépenses/proformas validées par jour du mois),
@@ -470,7 +483,7 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
       ? { id: e.paiement.invoice.client.id, nom: e.paiement.invoice.client.nom }
       : null;
 
-    if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) {
+    if (e.type === OperationType.RECETTE && !!e.paiement?.invoice) {
       bucket.recettes += e.montant;
       bucket.recettesDetail.push({
         id: e.id,
@@ -521,6 +534,15 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
         : null,
     })),
     entreesTotal,
+    autresMouvementsTotal,
+    autresMouvementsLines: autresMouvementsLines.map((e) => ({
+      id: e.id,
+      date: e.date_operation,
+      libelle: e.libelle,
+      montant: e.montant,
+      caisse: e.cashRegister.name,
+      isApportDeCaisse: !!e.isApportDeCaisse,
+    })),
     sortiesLines: sortiesLines.map((e) => ({
       id: e.id,
       date: e.date_operation,
@@ -556,9 +578,9 @@ export async function GET(request: Request) {
     }
 
     const cashFlowEvolution = buildCashFlowEvolution(snapshot.entries13Mois, snapshot.soldeTotal, now);
-    const monthlyEvolution = await getMonthlyEvolution(now, snapshot.entries13Mois, snapshot.visibleIdsSet);
+    const { monthlyEvolution, autresMouvementsTotal } = await getMonthlyEvolution(now, snapshot.entries13Mois, snapshot.visibleIdsSet);
     const global = await getGlobalView(now);
-    return NextResponse.json({ view, tresorerie, cashFlowEvolution, monthlyEvolution, ...global });
+    return NextResponse.json({ view, tresorerie, cashFlowEvolution, monthlyEvolution, autresMouvementsTotal, ...global });
   } catch (error) {
     console.error('Erreur lors de la récupération du dashboard :', error);
     return NextResponse.json({ error: 'Erreur Interne du Serveur' }, { status: 500 });
