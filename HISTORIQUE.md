@@ -22,6 +22,37 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-10 — Budgets : types, suivi par ligne lié au journal de caisse, droits par rôle (Lot 1)
+
+**Demande / Contexte**
+Refonte du module budget : distinguer des types de budget (mensuel par service, ponctuel, campagne, tiers), suivre la consommation ligne par ligne (ex. essence prévu 10 000, utilisé 5 000 → reste 5 000), lier chaque dépense au journal de caisse avec choix de la caisse, permettre à l'admin et au comptable de commenter les lignes, et ajouter un niveau de validation « Assistant-Direction » (tout sauf les budgets mensuels, sous un plafond). Plan validé en 3 lots ; ce lot = socle. Lots 2 (dépassements, journal d'audit, annulation par contre-écriture, alertes 80/100 %) et 3 (reconduction mensuelle, rapport de suivi budgétaire) restent à faire.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261110103515_budget_types_depenses_commentaires` (appliquée) :
+  - enum `TypeBudget` (MENSUEL, PONCTUEL, CAMPAGNE, TIERS) ; statut `EN_COURS` ; `DemandeBudget.type` (défaut PONCTUEL pour l'existant), `periodeMois`, `clotureeAt`, `clotureeParEmail` ;
+  - nouveaux modèles `BudgetDepense` (dépense réelle sur une ligne, `cashJournalEntryId` unique → toujours une écriture de caisse, `invoiceId` si budget lié à une proforma, `sansJustificatif` + motif) et `BudgetCommentaire` (par ligne) ; `DemandeBudgetAttachment.depenseId` ;
+  - `Role.canValidateBudgetMensuel` / `canValidateBudget` / `canPayBudget` ; `EntrepriseConfig.plafondValidationDeleguee` (défaut 500 000) ;
+  - reprise : les rôles `canManageUsers` reçoivent les deux droits de validation.
+- `lib/budgetAuth.ts` réécrit : droits lus sur le rôle en base (`getBudgetCapabilities`), matrice `refusValidation` (mensuel ou > plafond → admin ; sinon validation déléguée ; jamais sa propre demande), `getBudgetRecipients` pour les emails. **Les variables `BUDGET_ADMIN_EMAILS` / `BUDGET_COMPTABLE_EMAILS` ne sont plus lues** (y compris `lib/email/commandeFournisseur.ts`).
+- `lib/paiements.ts` : nouvelle `recordCashDepense` (contrôle de solde + `recordCashMovement` existant) ; `recordDepensePaiement` s'appuie dessus (comportement inchangé).
+- `lib/budgetSchema.ts` (validation partagée création / re-soumission, règles par type) ; `lib/budgetTypes.ts` (libellés client).
+- API : `demandes-budget` (GET filtres type/mois/sans justificatif + consommé ; POST type), `[id]` (dépenses, commentaires), `valider` / `rejeter` (matrice), `resoumettre`, `me-role` (capacités ; `isAdmin`/`isComptable` gardés pour les écrans fournisseurs), `documents` (justificatif ajouté après coup via `depenseId`) ; nouvelles routes `[id]/depenses` (transaction : verrou de ligne, contrôle du reste, écriture de caisse, paiement DEPENSE sur la proforma si liée, statut EN_COURS/PAYEE), `[id]/cloturer`, `[id]/commentaires` (ouverture réservée admin/comptable, réponses ensuite), `budget-config` (plafond, admins uniquement), `GET /api/cash-registers`. Route `[id]/payer` supprimée.
+- UI : `DemandeBudgetForm` (choix du type, mois, règles), liste `budget/demandes` (type, filtres, barre consommé, compteur sans justificatif), fiche `budget/demandes/[id]` (prévu/consommé/reste par ligne, bouton Dépense, historique des dépenses avec pastille Justifiée / Sans justificatif, commentaires par ligne, clôture, validation selon la matrice), page Rôles (3 cases « Circuit budget » + plafond), nouveaux composants `components/budget/*`, badge `EN_COURS`.
+
+**Erreurs rencontrées & solutions**
+- `prisma migrate dev` : Supabase injoignable (P1001) juste après la création du fichier de migration → migration appliquée ensuite avec `prisma migrate deploy`.
+- `prisma generate` : EPERM sur le moteur (DLL verrouillée par le serveur `next dev`) ; les types TypeScript ont bien été régénérés. **Redémarrer `next dev`** (puis `npx prisma generate`) pour charger le nouveau client.
+- `tsc` : `getCurrentUserIdentity` encore utilisé par `app/api/fournisseurs/commandes/[commandeId]/route.ts` → conservé dans `lib/budgetAuth.ts`.
+- Écart au plan : le plafond est réglé dans la page Rôles (route protégée `requireCanManageUsers`) plutôt que dans Paramètres entreprise, dont la route `PUT /api/entreprise` n'a aucun contrôle d'accès.
+
+**À tester / points d'attention**
+- **Configuration à faire dans Paramètres > Rôles avant usage** : il n'existe que 2 rôles (« Admin », 5 utilisateurs, et « ASSISTANT », 1 utilisateur). Cocher « Valider les budgets (hors mensuels) » sur ASSISTANT ; le comptable est dans le rôle Admin → créer un rôle « Comptable » avec « Enregistrer les dépenses » (sinon personne ne peut enregistrer de dépense, ou les 5 admins le pourraient). Un email de l'ancien `BUDGET_ADMIN_EMAILS` n'a pas de compte `User` : il n'a plus de droit budget.
+- Scénarios : Assistant valide un ponctuel sous le plafond, refusé sur un mensuel / au-dessus du plafond / sa propre demande ; dépense 5 000 sur une ligne de 10 000 → reste 5 000, écriture DEPENSE dans la caisse choisie ; 6 000 ensuite refusé ; budget CAMPAGNE → dépense visible dans la proforma ; dépense sans fichier ni case cochée refusée ; commentaire impossible à ouvrir pour un demandeur.
+- Non-régression : dépense sur proforma depuis `/facture/[id]` (refactor `recordCashDepense`).
+- Les anciennes demandes PAYEE (ancien circuit) n'ont pas de dépenses : la fiche affiche leurs date/receveur comme avant.
+
+---
+
 ## 2026-11-10 — Dashboard : "Recettes" basées uniquement sur les paiements de proforma
 
 **Demande / Contexte**

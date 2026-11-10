@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { requireBudgetAdmin } from "@/lib/budgetAuth";
+import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
 import { sendDemandeRejeteeNotification } from "@/lib/email/demandeBudget";
 
 const rejeterSchema = z.object({
@@ -12,8 +12,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const admin = await requireBudgetAdmin();
-  if (admin instanceof NextResponse) return admin;
+  const caps = await requireBudgetUser();
+  if (caps instanceof NextResponse) return caps;
 
   const { id } = await params;
 
@@ -21,7 +21,7 @@ export async function POST(
     const body = await request.json();
     const validation = rejeterSchema.safeParse(body);
     if (!validation.success) {
-      return NextResponse.json({ error: validation.error.format() }, { status: 400 });
+      return NextResponse.json({ error: "Le motif du rejet est requis." }, { status: 400 });
     }
 
     const existing = await prisma.demandeBudget.findUnique({ where: { id } });
@@ -32,11 +32,17 @@ export async function POST(
       return NextResponse.json({ error: "Seule une demande soumise peut être rejetée." }, { status: 400 });
     }
 
+    // Même matrice que la validation : qui peut valider peut rejeter.
+    const refus = refusValidation(caps, existing);
+    if (refus) {
+      return NextResponse.json({ error: refus }, { status: 403 });
+    }
+
     const demande = await prisma.demandeBudget.update({
       where: { id },
       data: {
         statut: "REJETEE",
-        validatedByEmail: admin.email,
+        validatedByEmail: caps.email,
         validatedAt: new Date(),
         rejectionReason: validation.data.motif,
       },

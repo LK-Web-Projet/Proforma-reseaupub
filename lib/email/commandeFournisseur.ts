@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { sendEmail, escapeHtml } from "./sendEmail";
 import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
+import { getBudgetRecipients } from "@/lib/budgetAuth";
 
 export type CommandeFournisseurForEmail = Prisma.CommandeFournisseurGetPayload<{
   include: { lignes: true; fournisseur: true };
@@ -90,12 +91,10 @@ function buildBaseHtml(opts: { title: string; intro: string; commande: CommandeF
   `;
 }
 
-function adminRecipients(): string[] {
-  return (process.env.BUDGET_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim()).filter(Boolean);
-}
-
 export async function sendCommandeFournisseurCreeeNotification(commande: CommandeFournisseurForEmail) {
-  const recipients = adminRecipients();
+  // Même destinataires que la validation des budgets "admin" : rôles cochés
+  // "canValidateBudgetMensuel" (Paramètres > Rôles) — remplace l'ancienne liste BUDGET_ADMIN_EMAILS.
+  const recipients = await getBudgetRecipients("canValidateBudgetMensuel");
   if (recipients.length === 0) return;
   await sendEmail({
     to: recipients,

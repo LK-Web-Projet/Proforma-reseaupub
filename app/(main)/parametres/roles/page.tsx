@@ -24,14 +24,44 @@ interface Role {
   id: string;
   nom: string;
   canManageUsers: boolean;
+  canValidateBudgetMensuel: boolean;
+  canValidateBudget: boolean;
+  canPayBudget: boolean;
   pages: PageKey[];
   nombreUtilisateurs: number;
 }
+
+type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget";
+
+// Droits du circuit budget : cochables sur n'importe quel rôle (aucun nom de rôle codé en dur).
+const BUDGET_FLAGS: { key: BudgetFlag; label: string; short: string; description: string }[] = [
+  {
+    key: "canValidateBudgetMensuel",
+    label: "Valider les budgets mensuels et au-dessus du plafond",
+    short: "Valid. admin",
+    description: "Niveau administrateur : budgets mensuels, budgets dépassant le plafond délégué. Peut ouvrir un commentaire sur une ligne.",
+  },
+  {
+    key: "canValidateBudget",
+    label: "Valider les budgets (hors mensuels)",
+    short: "Valid. déléguée",
+    description: "Budgets ponctuels, de campagne et pour tiers, jusqu'au plafond délégué (ex. Assistant-Direction).",
+  },
+  {
+    key: "canPayBudget",
+    label: "Enregistrer les dépenses de budget",
+    short: "Dépenses",
+    description: "Comptable : enregistre les dépenses dans le journal de caisse, clôture les budgets, ouvre des commentaires.",
+  },
+];
 
 const emptyForm = {
   nom: "",
   pages: [] as PageKey[],
   canManageUsers: false,
+  canValidateBudgetMensuel: false,
+  canValidateBudget: false,
+  canPayBudget: false,
 };
 
 export default function RolesPage() {
@@ -42,6 +72,40 @@ export default function RolesPage() {
   const [form, setForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const [forbidden, setForbidden] = useState(false);
+  const [plafond, setPlafond] = useState("");
+  const [isSavingPlafond, setIsSavingPlafond] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/budget-config")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setPlafond(String(data.plafondValidationDeleguee)))
+      .catch(() => undefined);
+  }, []);
+
+  const handleSavePlafond = async () => {
+    const value = Number(plafond);
+    if (!Number.isFinite(value) || value < 0) {
+      toast.error("Montant de plafond invalide.");
+      return;
+    }
+    setIsSavingPlafond(true);
+    try {
+      const res = await fetch("/api/budget-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plafondValidationDeleguee: value }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === "string" ? err.error : "Erreur lors de l'enregistrement.");
+      }
+      toast.success("Plafond enregistré !");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erreur.");
+    } finally {
+      setIsSavingPlafond(false);
+    }
+  };
 
   const fetchRoles = useCallback(async () => {
     setLoading(true);
@@ -72,7 +136,14 @@ export default function RolesPage() {
 
   const openEdit = (role: Role) => {
     setEditingRole(role);
-    setForm({ nom: role.nom, pages: role.pages, canManageUsers: role.canManageUsers });
+    setForm({
+      nom: role.nom,
+      pages: role.pages,
+      canManageUsers: role.canManageUsers,
+      canValidateBudgetMensuel: role.canValidateBudgetMensuel,
+      canValidateBudget: role.canValidateBudget,
+      canPayBudget: role.canPayBudget,
+    });
     setIsModalOpen(true);
   };
 
@@ -144,15 +215,16 @@ export default function RolesPage() {
                 <TableHead>Rôle</TableHead>
                 <TableHead>Pages autorisées</TableHead>
                 <TableHead className="text-center">Gère les comptes</TableHead>
+                <TableHead>Circuit budget</TableHead>
                 <TableHead className="text-center">Utilisateurs</TableHead>
                 <TableHead className="text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="text-center h-24">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center h-24">Chargement...</TableCell></TableRow>
               ) : roles.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">Aucun rôle créé.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center h-24 text-muted-foreground">Aucun rôle créé.</TableCell></TableRow>
               ) : (
                 roles.map((role) => (
                   <TableRow key={role.id}>
@@ -171,6 +243,17 @@ export default function RolesPage() {
                     <TableCell className="text-center">
                       {role.canManageUsers ? <Badge>Oui</Badge> : <span className="text-muted-foreground text-xs">Non</span>}
                     </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {BUDGET_FLAGS.filter((f) => role[f.key]).length === 0 ? (
+                          <span className="text-xs text-muted-foreground italic">Aucun</span>
+                        ) : (
+                          BUDGET_FLAGS.filter((f) => role[f.key]).map((f) => (
+                            <Badge key={f.key} variant="outline" className="font-normal">{f.short}</Badge>
+                          ))
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-center text-sm text-muted-foreground">{role.nombreUtilisateurs}</TableCell>
                     <TableCell className="text-center">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(role)}>
@@ -185,8 +268,26 @@ export default function RolesPage() {
         </CardContent>
       </Card>
 
+      <Card className="mt-6">
+        <CardContent className="pt-6 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Plafond de validation déléguée (FCFA)</p>
+            <p className="text-xs text-muted-foreground">
+              Un budget non mensuel jusqu&apos;à ce montant peut être validé par un rôle « Valider les budgets (hors mensuels) ».
+              Au-dessus, il doit être validé par un rôle « Valider les budgets mensuels et au-dessus du plafond ».
+            </p>
+          </div>
+          <div className="flex items-center gap-2 max-w-sm">
+            <Input type="number" min={0} step="1000" value={plafond} onChange={(e) => setPlafond(e.target.value)} />
+            <Button onClick={handleSavePlafond} disabled={isSavingPlafond}>
+              {isSavingPlafond ? "..." : "Enregistrer"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingRole ? "Modifier le rôle" : "Nouveau rôle"}</DialogTitle>
           </DialogHeader>
@@ -223,6 +324,24 @@ export default function RolesPage() {
                 checked={form.canManageUsers}
                 onCheckedChange={(v) => setForm((prev) => ({ ...prev, canManageUsers: v }))}
               />
+            </div>
+
+            <div className="space-y-3">
+              <Label>Circuit budget</Label>
+              <div className="space-y-3 rounded-lg border p-3">
+                {BUDGET_FLAGS.map((f) => (
+                  <div key={f.key} className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">{f.label}</p>
+                      <p className="text-xs text-muted-foreground">{f.description}</p>
+                    </div>
+                    <Switch
+                      checked={form[f.key]}
+                      onCheckedChange={(v) => setForm((prev) => ({ ...prev, [f.key]: v }))}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             <DialogFooter>

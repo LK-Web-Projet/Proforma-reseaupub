@@ -7,6 +7,9 @@ const roleUpdateSchema = z.object({
   nom: z.string().min(1).optional(),
   pages: z.array(z.enum(PAGE_KEYS)).optional(),
   canManageUsers: z.boolean().optional(),
+  canValidateBudgetMensuel: z.boolean().optional(),
+  canValidateBudget: z.boolean().optional(),
+  canPayBudget: z.boolean().optional(),
 });
 
 // PATCH /api/roles/[id] - Modifier un rôle (nom, pages autorisées, droit de gestion des comptes)
@@ -26,7 +29,7 @@ export async function PATCH(
       return NextResponse.json({ error: validation.error.format() }, { status: 400 });
     }
 
-    const { nom, pages, canManageUsers } = validation.data;
+    const { nom, pages, canManageUsers, canValidateBudgetMensuel, canValidateBudget, canPayBudget } = validation.data;
 
     const existing = await prisma.role.findUnique({ where: { id } });
     if (!existing) {
@@ -39,6 +42,9 @@ export async function PATCH(
         data: {
           nom,
           canManageUsers,
+          canValidateBudgetMensuel,
+          canValidateBudget,
+          canPayBudget,
         },
       });
 

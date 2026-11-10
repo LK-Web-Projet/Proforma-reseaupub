@@ -11,6 +11,8 @@ import { ArrowLeft, Pencil } from 'lucide-react';
 interface DemandeBudgetRaw {
   id: string;
   statut: string;
+  type: string;
+  periodeMois: string | null;
   requesterEmail: string;
   departement: string | null;
   contexteMotivation: string;
@@ -26,7 +28,7 @@ interface DemandeBudgetRaw {
 
 export default function ModifierDemandeBudgetPage() {
   const [demande, setDemande] = useState<DemandeBudgetRaw | null>(null);
-  const [role, setRole] = useState<{ email: string | null; isComptable: boolean }>({ email: null, isComptable: false });
+  const [role, setRole] = useState<{ email: string | null; canPay: boolean }>({ email: null, canPay: false });
   const [loading, setLoading] = useState(true);
 
   const params = useParams();
@@ -64,7 +66,8 @@ export default function ModifierDemandeBudgetPage() {
     );
   }
 
-  const isAutorise = !!demande && (role.isComptable || role.email === demande.requesterEmail);
+  const isAutorise =
+    !!demande && (role.canPay || role.email?.toLowerCase() === demande.requesterEmail.toLowerCase());
 
   if (!demande || demande.statut !== 'REJETEE' || !isAutorise) {
     return (
@@ -85,6 +88,8 @@ export default function ModifierDemandeBudgetPage() {
   }
 
   const initialData: DemandeBudgetInitialData = {
+    type: demande.type,
+    periodeMois: demande.periodeMois,
     departement: demande.departement,
     contexteMotivation: demande.contexteMotivation,
     modePaiement: demande.modePaiement,

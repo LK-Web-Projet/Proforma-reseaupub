@@ -3,6 +3,21 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// GET /api/cash-registers — liste des caisses (id, nom, solde), pour choisir la caisse
+// d'une dépense (ex. enregistrement d'une dépense de budget).
+export async function GET() {
+  try {
+    const registers = await prisma.cashRegister.findMany({
+      select: { id: true, name: true, balance: true },
+      orderBy: { name: 'asc' },
+    });
+    return NextResponse.json(registers);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Impossible de récupérer les caisses.' }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { name } = await request.json();

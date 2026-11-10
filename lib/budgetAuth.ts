@@ -1,13 +1,61 @@
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import type { TypeBudget } from "@prisma/client";
+import prisma from "@/lib/prisma";
+import { getEntrepriseConfig } from "@/lib/entreprise";
 
-function parseEmailList(value: string | undefined): string[] {
-  return (value ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+/**
+ * Droits du circuit budget de l'utilisateur connecté. Ils viennent UNIQUEMENT des cases
+ * cochées sur son rôle (Paramètres > Rôles) — aucun nom de rôle ni aucune liste d'emails
+ * n'est codé en dur, pour que ces droits puissent changer de main sans toucher au code :
+ * - canValidateMensuel : valide les budgets mensuels et tout budget au-dessus du plafond délégué
+ *   (rôle "Admin" en pratique) ; seul à pouvoir ouvrir un commentaire de ligne avec le comptable ;
+ * - canValidate : valide les budgets non mensuels jusqu'au plafond (rôle "Assistant-Direction") ;
+ * - canPay : enregistre les dépenses dans le journal de caisse (rôle "Comptable").
+ * Relu en base à chaque appel : décocher une case prend effet immédiatement.
+ */
+export interface BudgetCapabilities {
+  userId: string;
+  email: string;
+  name: string | null;
+  canValidateMensuel: boolean;
+  canValidate: boolean;
+  canPay: boolean;
+  plafond: number;
 }
 
+export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null> {
+  const { userId } = await auth();
+  if (!userId) return null;
+
+  const clerkUser = await currentUser();
+  const [dbUser, config] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, include: { role: true } }),
+    getEntrepriseConfig(),
+  ]);
+
+  const email = (dbUser?.email ?? clerkUser?.emailAddresses[0]?.emailAddress ?? "").toLowerCase();
+  if (!email) return null;
+
+  const name =
+    dbUser?.nom ||
+    [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ") ||
+    null;
+
+  const role = dbUser && dbUser.active ? dbUser.role : null;
+
+  return {
+    userId,
+    email,
+    name,
+    canValidateMensuel: !!role?.canValidateBudgetMensuel,
+    canValidate: !!role?.canValidateBudget,
+    canPay: !!role?.canPayBudget,
+    plafond: Number(config.plafondValidationDeleguee),
+  };
+}
+
+/** Identité Clerk de l'utilisateur connecté (utilisée aussi par les bons de commande fournisseur). */
 export async function getCurrentUserIdentity(): Promise<{ email: string | null; name: string | null }> {
   const user = await currentUser();
   if (!user) return { email: null, name: null };
@@ -16,36 +64,64 @@ export async function getCurrentUserIdentity(): Promise<{ email: string | null; 
   return { email, name };
 }
 
-export function isBudgetAdminEmail(email: string | null): boolean {
-  if (!email) return false;
-  return parseEmailList(process.env.BUDGET_ADMIN_EMAILS).includes(email.toLowerCase());
+/** Vrai si l'utilisateur intervient dans le circuit (voit toutes les demandes, pas seulement les siennes). */
+export function isImpliqueBudget(caps: BudgetCapabilities): boolean {
+  return caps.canValidateMensuel || caps.canValidate || caps.canPay;
 }
 
-export function isBudgetComptableEmail(email: string | null): boolean {
-  if (!email) return false;
-  return parseEmailList(process.env.BUDGET_COMPTABLE_EMAILS).includes(email.toLowerCase());
+export function isSameEmail(a: string | null | undefined, b: string | null | undefined): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
 }
 
-/** Vérifie que l'utilisateur connecté a le droit de valider/rejeter une demande de budget. */
-export async function requireBudgetAdmin(): Promise<{ email: string; name: string | null } | NextResponse> {
-  const { email, name } = await getCurrentUserIdentity();
-  if (!email) {
+/**
+ * Un budget doit-il remonter au niveau "admin" (canValidateMensuel) ? Oui pour tout budget
+ * mensuel, et pour tout autre budget dont le montant dépasse le plafond délégué.
+ */
+export function requiresValidationAdmin(demande: { type: TypeBudget; montantTotal: unknown }, plafond: number): boolean {
+  return demande.type === "MENSUEL" || Number(demande.montantTotal) > plafond;
+}
+
+/**
+ * Matrice d'approbation : renvoie null si l'utilisateur peut valider/rejeter cette demande,
+ * sinon le motif du refus. Personne ne valide sa propre demande (séparation des tâches).
+ */
+export function refusValidation(
+  caps: BudgetCapabilities,
+  demande: { type: TypeBudget; montantTotal: unknown; requesterEmail: string }
+): string | null {
+  if (isSameEmail(caps.email, demande.requesterEmail)) {
+    return "Vous ne pouvez pas valider ou rejeter votre propre demande.";
+  }
+  if (requiresValidationAdmin(demande, caps.plafond)) {
+    if (!caps.canValidateMensuel) {
+      return demande.type === "MENSUEL"
+        ? "Les budgets mensuels sont validés par l'administrateur."
+        : `Ce budget dépasse le plafond de validation déléguée (${caps.plafond.toLocaleString("fr-FR")} FCFA) : il doit être validé par l'administrateur.`;
+    }
+    return null;
+  }
+  if (!caps.canValidate && !caps.canValidateMensuel) {
+    return "Vous n'avez pas le droit de valider les demandes de budget.";
+  }
+  return null;
+}
+
+/** Garde de route : utilisateur authentifié, renvoie ses droits budget ou une réponse 401. */
+export async function requireBudgetUser(): Promise<BudgetCapabilities | NextResponse> {
+  const caps = await getBudgetCapabilities();
+  if (!caps) {
     return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
   }
-  if (!isBudgetAdminEmail(email)) {
-    return NextResponse.json({ error: "Réservé aux administrateurs habilités à valider les demandes." }, { status: 403 });
-  }
-  return { email, name };
+  return caps;
 }
 
-/** Vérifie que l'utilisateur connecté a le droit de traiter/payer une demande de budget validée. */
-export async function requireBudgetComptable(): Promise<{ email: string; name: string | null } | NextResponse> {
-  const { email, name } = await getCurrentUserIdentity();
-  if (!email) {
-    return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
-  }
-  if (!isBudgetComptableEmail(email)) {
-    return NextResponse.json({ error: "Réservé au comptable habilité à traiter les paiements." }, { status: 403 });
-  }
-  return { email, name };
+type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget";
+
+/** Emails des utilisateurs actifs dont le rôle porte le droit demandé (destinataires des notifications). */
+export async function getBudgetRecipients(flag: BudgetFlag): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { active: true, role: { [flag]: true } },
+    select: { email: true },
+  });
+  return Array.from(new Set(users.map((u) => u.email)));
 }

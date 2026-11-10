@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-export type DemandeBudgetStatus = 'SOUMISE' | 'VALIDEE' | 'REJETEE' | 'PAYEE';
+export type DemandeBudgetStatus = 'SOUMISE' | 'VALIDEE' | 'EN_COURS' | 'REJETEE' | 'PAYEE';
 
 export const DEMANDE_BUDGET_STATUS_META: Record<
   DemandeBudgetStatus,
@@ -20,6 +20,13 @@ export const DEMANDE_BUDGET_STATUS_META: Record<
     text: 'text-blue-700',
     ring: 'ring-blue-600/20',
   },
+  EN_COURS: {
+    label: 'En cours',
+    dot: 'bg-indigo-500',
+    bg: 'bg-indigo-50',
+    text: 'text-indigo-700',
+    ring: 'ring-indigo-600/20',
+  },
   REJETEE: {
     label: 'Rejetée',
     dot: 'bg-red-500',
@@ -28,7 +35,7 @@ export const DEMANDE_BUDGET_STATUS_META: Record<
     ring: 'ring-red-600/20',
   },
   PAYEE: {
-    label: 'Payée',
+    label: 'Soldée / clôturée',
     dot: 'bg-green-500',
     bg: 'bg-green-50',
     text: 'text-green-700',

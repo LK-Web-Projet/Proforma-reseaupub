@@ -1,62 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { Prisma, ModePaiementDemande, StatutDemandeBudget } from "@prisma/client";
+import { Prisma, StatutDemandeBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { getCurrentUserIdentity, isBudgetAdminEmail, isBudgetComptableEmail } from "@/lib/budgetAuth";
+import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
+import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
 
-const ligneSchema = z.object({
-  designation: z.string().min(1),
-  montant: z.number().min(0),
-});
-
-const createSchema = z.object({
-  departement: z.string().optional(),
-  contexteMotivation: z.string().min(1, "Le contexte et la motivation sont requis."),
-  modePaiement: z.nativeEnum(ModePaiementDemande),
-  typeDepense: z.string().min(1, "Le type de dépense est requis."),
-  pourLeCompteDe: z.string().optional(),
-  dateLimiteSouhaitee: z.string().optional(),
-  bonCommandeId: z.string().optional(),
-  proformaIds: z.array(z.string()).default([]),
-  lignes: z.array(ligneSchema).min(1, "Ajoutez au moins une ligne de dépense."),
-});
-
 // GET /api/demandes-budget - Liste des demandes de budget
 export async function GET(request: NextRequest) {
-  try {
-    const { email } = await getCurrentUserIdentity();
-    if (!email) {
-      return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
-    }
+  const caps = await requireBudgetUser();
+  if (caps instanceof NextResponse) return caps;
 
+  try {
     const { searchParams } = new URL(request.url);
     const statut = searchParams.get("statut");
+    const type = searchParams.get("type");
+    const mois = searchParams.get("mois"); // "yyyy-MM"
     const departement = searchParams.get("departement");
     const year = searchParams.get("year");
+    const sansJustificatif = searchParams.get("sansJustificatif") === "1";
 
     const where: Prisma.DemandeBudgetWhereInput = {};
 
-    // Un utilisateur qui n'est ni admin ni comptable du processus budget ne voit que ses
-    // propres demandes — jamais celles des autres. Filtre imposé côté serveur (pas de
-    // paramètre client possible pour le contourner).
-    if (!isBudgetAdminEmail(email) && !isBudgetComptableEmail(email)) {
-      where.requesterEmail = email;
+    // Un utilisateur sans aucun droit budget ne voit que ses propres demandes — filtre
+    // imposé côté serveur (pas de paramètre client possible pour le contourner).
+    if (!isImpliqueBudget(caps)) {
+      where.requesterEmail = { equals: caps.email, mode: "insensitive" };
     }
 
     if (statut && Object.values(StatutDemandeBudget).includes(statut as StatutDemandeBudget)) {
       where.statut = statut as StatutDemandeBudget;
     }
+    if (type && Object.values(TypeBudget).includes(type as TypeBudget)) {
+      where.type = type as TypeBudget;
+    }
+    if (mois) {
+      const debut = toPeriodeMois(mois);
+      if (debut) {
+        where.periodeMois = {
+          gte: new Date(Date.UTC(debut.getUTCFullYear(), debut.getUTCMonth(), 1)),
+          lt: new Date(Date.UTC(debut.getUTCFullYear(), debut.getUTCMonth() + 1, 1)),
+        };
+      }
+    }
     if (departement) where.departement = departement;
     if (year) {
       const parsedYear = parseInt(year, 10);
       if (!Number.isNaN(parsedYear)) {
-        where.createdAt = {
-          gte: new Date(parsedYear, 0, 1),
-          lt: new Date(parsedYear + 1, 0, 1),
-        };
+        where.createdAt = { gte: new Date(parsedYear, 0, 1), lt: new Date(parsedYear + 1, 0, 1) };
       }
+    }
+    if (sansJustificatif) {
+      where.depenses = { some: { attachments: { none: {} } } };
     }
 
     const demandes = await prisma.demandeBudget.findMany({
@@ -66,10 +61,17 @@ export async function GET(request: NextRequest) {
         lignes: true,
         bonCommande: { select: { id: true, numero: true } },
         proformas: { include: { invoice: { include: { client: true } } } },
+        depenses: { select: { montant: true, _count: { select: { attachments: true } } } },
       },
     });
 
-    return NextResponse.json(demandes);
+    return NextResponse.json(
+      demandes.map(({ depenses, ...d }) => ({
+        ...d,
+        montantConsomme: depenses.reduce((s, dep) => s + Number(dep.montant), 0),
+        nbDepensesSansJustificatif: depenses.filter((dep) => dep._count.attachments === 0).length,
+      }))
+    );
   } catch (error) {
     console.error("Erreur lors de la récupération des demandes de budget:", error);
     return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 });
@@ -78,32 +80,14 @@ export async function GET(request: NextRequest) {
 
 // POST /api/demandes-budget - Soumettre une nouvelle demande de budget
 export async function POST(request: NextRequest) {
+  const caps = await requireBudgetUser();
+  if (caps instanceof NextResponse) return caps;
+
   try {
-    const { email, name } = await getCurrentUserIdentity();
-    if (!email) {
-      return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
-    }
-
     const formData = await request.formData();
-
-    const rawLignes = formData.get("lignes");
-    const rawProformaIds = formData.get("proformaIds");
-
-    const parsedBody = {
-      departement: (formData.get("departement") as string) || undefined,
-      contexteMotivation: (formData.get("contexteMotivation") as string) || "",
-      modePaiement: formData.get("modePaiement") as string,
-      typeDepense: (formData.get("typeDepense") as string) || "",
-      pourLeCompteDe: (formData.get("pourLeCompteDe") as string) || undefined,
-      dateLimiteSouhaitee: (formData.get("dateLimiteSouhaitee") as string) || undefined,
-      bonCommandeId: (formData.get("bonCommandeId") as string) || undefined,
-      proformaIds: rawProformaIds ? JSON.parse(rawProformaIds as string) : [],
-      lignes: rawLignes ? JSON.parse(rawLignes as string) : [],
-    };
-
-    const validation = createSchema.safeParse(parsedBody);
+    const validation = parseDemandeBudgetFormData(formData);
     if (!validation.success) {
-      return NextResponse.json({ error: validation.error.format() }, { status: 400 });
+      return NextResponse.json({ error: firstZodMessage(validation.error) }, { status: 400 });
     }
     const data = validation.data;
 
@@ -116,8 +100,10 @@ export async function POST(request: NextRequest) {
     const demande = await prisma.demandeBudget.create({
       data: {
         numero,
-        requesterEmail: email,
-        requesterName: name,
+        type: data.type,
+        periodeMois: data.type === TypeBudget.MENSUEL ? toPeriodeMois(data.periodeMois) : null,
+        requesterEmail: caps.email,
+        requesterName: caps.name,
         departement: data.departement,
         contexteMotivation: data.contexteMotivation,
         montantTotal,
@@ -137,7 +123,7 @@ export async function POST(request: NextRequest) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }
 
-    sendDemandeSoumiseNotification(demande).catch((err) =>
+    sendDemandeSoumiseNotification(demande, caps.plafond).catch((err) =>
       console.error("Erreur lors de l'envoi de la notification de demande soumise:", err)
     );
 

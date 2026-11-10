@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireBudgetAdmin } from "@/lib/budgetAuth";
+import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
 import { sendDemandeValideeNotification } from "@/lib/email/demandeBudget";
 
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const admin = await requireBudgetAdmin();
-  if (admin instanceof NextResponse) return admin;
+  const caps = await requireBudgetUser();
+  if (caps instanceof NextResponse) return caps;
 
   const { id } = await params;
 
@@ -21,9 +21,14 @@ export async function POST(
       return NextResponse.json({ error: "Seule une demande soumise peut être validée." }, { status: 400 });
     }
 
+    const refus = refusValidation(caps, existing);
+    if (refus) {
+      return NextResponse.json({ error: refus }, { status: 403 });
+    }
+
     const demande = await prisma.demandeBudget.update({
       where: { id },
-      data: { statut: "VALIDEE", validatedByEmail: admin.email, validatedAt: new Date() },
+      data: { statut: "VALIDEE", validatedByEmail: caps.email, validatedAt: new Date() },
       include: { lignes: true },
     });
 

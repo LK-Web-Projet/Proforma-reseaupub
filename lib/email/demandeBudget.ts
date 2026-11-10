@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { sendEmail, escapeHtml } from "./sendEmail";
+import { getBudgetRecipients, requiresValidationAdmin } from "@/lib/budgetAuth";
 
 export type DemandeBudgetForEmail = Prisma.DemandeBudgetGetPayload<{
   include: { lignes: true };
@@ -91,37 +92,59 @@ function buildBaseHtml(opts: { title: string; intro: string; demande: DemandeBud
   `;
 }
 
-function adminRecipients(): string[] {
-  return (process.env.BUDGET_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim()).filter(Boolean);
-}
+const TYPE_LABELS: Record<string, string> = {
+  MENSUEL: "budget mensuel",
+  PONCTUEL: "budget ponctuel",
+  CAMPAGNE: "budget de campagne",
+  TIERS: "budget pour un tiers",
+};
 
-function comptableRecipients(): string[] {
-  return (process.env.BUDGET_COMPTABLE_EMAILS ?? "").split(",").map((e) => e.trim()).filter(Boolean);
-}
-
-export async function sendDemandeSoumiseNotification(demande: DemandeBudgetForEmail) {
-  const recipients = adminRecipients();
+/**
+ * Notifie les valideurs compétents selon la matrice d'approbation (lib/budgetAuth.ts) :
+ * l'admin (canValidateBudgetMensuel) pour un budget mensuel ou au-dessus du plafond délégué,
+ * sinon les rôles "canValidateBudget" (Assistant-Direction).
+ */
+export async function sendDemandeSoumiseNotification(demande: DemandeBudgetForEmail, plafond: number) {
+  const recipients = await getBudgetRecipients(
+    requiresValidationAdmin(demande, plafond) ? "canValidateBudgetMensuel" : "canValidateBudget"
+  );
   if (recipients.length === 0) return;
   await sendEmail({
     to: recipients,
     subject: `Nouvelle demande de budget ${demande.numero} à valider`,
     html: buildBaseHtml({
       title: "📝 Nouvelle demande de budget",
-      intro: `Une nouvelle demande de budget vient d'être soumise et attend votre validation.`,
+      intro: `Une nouvelle demande (${TYPE_LABELS[demande.type] ?? "budget"}) vient d'être soumise et attend votre validation.`,
       demande,
     }),
   });
 }
 
 export async function sendDemandeValideeNotification(demande: DemandeBudgetForEmail) {
-  const recipients = comptableRecipients();
+  const recipients = await getBudgetRecipients("canPayBudget");
   if (recipients.length === 0) return;
   await sendEmail({
     to: recipients,
     subject: `Demande de budget ${demande.numero} validée — à traiter`,
     html: buildBaseHtml({
       title: "✅ Demande de budget validée",
-      intro: `La demande de budget <strong>${escapeHtml(demande.numero)}</strong> a été validée par l'administrateur. Merci de la traiter et d'effectuer le paiement.`,
+      intro: `La demande de budget <strong>${escapeHtml(demande.numero)}</strong> a été validée${demande.validatedByEmail ? ` par ${escapeHtml(demande.validatedByEmail)}` : ""}. Vous pouvez désormais enregistrer les dépenses ligne par ligne.`,
+      demande,
+    }),
+  });
+}
+
+/** Prévient le demandeur qu'un commentaire a été ouvert sur une ligne de son budget. */
+export async function sendCommentaireLigneNotification(
+  demande: DemandeBudgetForEmail,
+  opts: { designation: string; auteur: string; contenu: string }
+) {
+  await sendEmail({
+    to: demande.requesterEmail,
+    subject: `Commentaire sur votre demande de budget ${demande.numero}`,
+    html: buildBaseHtml({
+      title: "💬 Nouveau commentaire",
+      intro: `<strong>${escapeHtml(opts.auteur)}</strong> a commenté la ligne « ${escapeHtml(opts.designation)} » :<br/><em>${escapeHtml(opts.contenu)}</em><br/>Vous pouvez répondre depuis la fiche de la demande.`,
       demande,
     }),
   });

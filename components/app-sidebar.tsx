@@ -141,8 +141,8 @@ const finance = [
 
 // Section à part — accessible à tout utilisateur authentifié (pas soumise aux cases à
 // cocher par page) : n'importe quel employé doit pouvoir soumettre une demande de budget,
-// la visibilité des données (ses demandes vs toutes) est filtrée côté API selon que son
-// email figure dans BUDGET_ADMIN_EMAILS/BUDGET_COMPTABLE_EMAILS (voir lib/budgetAuth.ts).
+// la visibilité des données (ses demandes vs toutes) est filtrée côté API selon les droits
+// budget cochés sur son rôle (Paramètres > Rôles — voir lib/budgetAuth.ts).
 const budget = [
   {
     title: "Faire une demande",

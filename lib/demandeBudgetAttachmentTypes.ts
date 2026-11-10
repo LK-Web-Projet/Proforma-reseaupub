@@ -1,6 +1,6 @@
 // Types de pièces jointes pour une demande de budget. Les 4 premiers sont choisis par
 // l'auteur de la demande à la création/re-soumission ; PREUVE_PAIEMENT est ajouté par le
-// comptable au moment du paiement (voir app/api/demandes-budget/[id]/payer/route.ts).
+// comptable sur chaque dépense (voir app/api/demandes-budget/[id]/depenses/route.ts).
 export const DOCUMENT_UPLOAD_TYPES = ["DEVIS", "FACTURE", "BON_COMMANDE", "AUTRE"] as const;
 export type DocumentUploadType = (typeof DOCUMENT_UPLOAD_TYPES)[number];
 
