@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma, StatutDemandeBudget, TypeBudget } from "@prisma/client";
+import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { logBudget } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
     const departement = searchParams.get("departement");
     const year = searchParams.get("year");
     const sansJustificatif = searchParams.get("sansJustificatif") === "1";
+    const depassementEnAttente = searchParams.get("depassementEnAttente") === "1";
 
     const where: Prisma.DemandeBudgetWhereInput = {};
 
@@ -51,7 +53,10 @@ export async function GET(request: NextRequest) {
       }
     }
     if (sansJustificatif) {
-      where.depenses = { some: { attachments: { none: {} } } };
+      where.depenses = { some: { annuleeAt: null, attachments: { none: {} } } };
+    }
+    if (depassementEnAttente) {
+      where.depassements = { some: { statut: StatutDepassement.EN_ATTENTE } };
     }
 
     const demandes = await prisma.demandeBudget.findMany({
@@ -61,15 +66,21 @@ export async function GET(request: NextRequest) {
         lignes: true,
         bonCommande: { select: { id: true, numero: true } },
         proformas: { include: { invoice: { include: { client: true } } } },
-        depenses: { select: { montant: true, _count: { select: { attachments: true } } } },
+        depenses: { where: { annuleeAt: null }, select: { montant: true, _count: { select: { attachments: true } } } },
+        depassements: { where: { statut: { in: [StatutDepassement.APPROUVE, StatutDepassement.EN_ATTENTE] } }, select: { montant: true, statut: true } },
       },
     });
 
     return NextResponse.json(
-      demandes.map(({ depenses, ...d }) => ({
+      demandes.map(({ depenses, depassements, ...d }) => ({
         ...d,
+        // Plafond effectif = prévu + dépassements approuvés ; consommé = dépenses non annulées.
+        montantPlafond:
+          Number(d.montantTotal) +
+          depassements.filter((x) => x.statut === StatutDepassement.APPROUVE).reduce((s, x) => s + Number(x.montant), 0),
         montantConsomme: depenses.reduce((s, dep) => s + Number(dep.montant), 0),
         nbDepensesSansJustificatif: depenses.filter((dep) => dep._count.attachments === 0).length,
+        nbDepassementsEnAttente: depassements.filter((x) => x.statut === StatutDepassement.EN_ATTENTE).length,
       }))
     );
   } catch (error) {
@@ -122,6 +133,15 @@ export async function POST(request: NextRequest) {
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }
+
+    await logBudget(prisma, {
+      demandeBudgetId: demande.id,
+      action: ActionBudget.CREATION,
+      auteurEmail: caps.email,
+      auteurNom: caps.name,
+      montant: montantTotal,
+      details: `${demande.lignes.length} ligne(s)${attachmentRows.length > 0 ? `, ${attachmentRows.length} document(s)` : ""}`,
+    });
 
     sendDemandeSoumiseNotification(demande, caps.plafond).catch((err) =>
       console.error("Erreur lors de l'envoi de la notification de demande soumise:", err)

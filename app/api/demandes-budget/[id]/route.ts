@@ -27,6 +27,8 @@ export async function GET(
           },
         },
         commentaires: { orderBy: { createdAt: "asc" } },
+        depassements: { orderBy: { createdAt: "desc" } },
+        historique: { orderBy: { createdAt: "desc" } },
       },
     });
 

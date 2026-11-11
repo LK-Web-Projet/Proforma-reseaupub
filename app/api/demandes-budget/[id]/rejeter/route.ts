@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { ActionBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { logBudget } from "@/lib/budgetSuivi";
 import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
 import { sendDemandeRejeteeNotification } from "@/lib/email/demandeBudget";
 
@@ -38,15 +40,25 @@ export async function POST(
       return NextResponse.json({ error: refus }, { status: 403 });
     }
 
-    const demande = await prisma.demandeBudget.update({
-      where: { id },
-      data: {
-        statut: "REJETEE",
-        validatedByEmail: caps.email,
-        validatedAt: new Date(),
-        rejectionReason: validation.data.motif,
-      },
-      include: { lignes: true },
+    const demande = await prisma.$transaction(async (tx) => {
+      const updated = await tx.demandeBudget.update({
+        where: { id },
+        data: {
+          statut: "REJETEE",
+          validatedByEmail: caps.email,
+          validatedAt: new Date(),
+          rejectionReason: validation.data.motif,
+        },
+        include: { lignes: true },
+      });
+      await logBudget(tx, {
+        demandeBudgetId: id,
+        action: ActionBudget.REJET,
+        auteurEmail: caps.email,
+        auteurNom: caps.name,
+        details: validation.data.motif,
+      });
+      return updated;
     });
 
     sendDemandeRejeteeNotification(demande).catch((err) =>

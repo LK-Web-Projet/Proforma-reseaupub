@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ActionBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { logBudget } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAuth";
 import { saveTypedDemandeBudgetAttachments, saveDemandeBudgetFiles, describeFsError } from "@/lib/uploadDemandeBudget";
 
@@ -44,6 +46,14 @@ export async function POST(
         }),
         // Le motif initial est conservé pour l'historique ; seul le drapeau change.
         prisma.budgetDepense.update({ where: { id: depenseId }, data: { sansJustificatif: false } }),
+        logBudget(prisma, {
+          demandeBudgetId: id,
+          action: ActionBudget.JUSTIFICATIF,
+          auteurEmail: caps.email,
+          auteurNom: caps.name,
+          montant: Number(depense.montant),
+          details: `Justificatif ajouté après coup : ${saved.map((f) => f.fileName).join(", ")}`,
+        }),
       ]);
       return NextResponse.json({ success: true, count: saved.length });
     }
@@ -61,7 +71,16 @@ export async function POST(
       return NextResponse.json({ error: "Aucun document fourni." }, { status: 400 });
     }
 
-    await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
+    await prisma.$transaction([
+      prisma.demandeBudgetAttachment.createMany({ data: attachmentRows }),
+      logBudget(prisma, {
+        demandeBudgetId: id,
+        action: ActionBudget.DOCUMENTS,
+        auteurEmail: caps.email,
+        auteurNom: caps.name,
+        details: attachmentRows.map((f) => f.fileName).join(", "),
+      }),
+    ]);
 
     return NextResponse.json({ success: true, count: attachmentRows.length });
   } catch (error) {

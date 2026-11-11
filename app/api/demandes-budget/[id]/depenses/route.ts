@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ModePaiementDemande, Prisma, StatutDemandeBudget } from "@prisma/client";
+import { ActionBudget, ModePaiementDemande, Prisma, StatutDemandeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { requireBudgetUser } from "@/lib/budgetAuth";
+import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
 import { saveDemandeBudgetFiles, describeFsError } from "@/lib/uploadDemandeBudget";
+import { BUDGET_EPSILON, getLigneDisponible, logBudget, recalculerStatutBudget, seuilsFranchis } from "@/lib/budgetSuivi";
+import { sendAlerteConsommationNotification } from "@/lib/email/demandeBudget";
 
 /** Erreur métier → réponse 400 avec le message tel quel. */
 class BudgetDepenseError extends Error {}
@@ -23,13 +25,11 @@ const depenseSchema = z
     motifSansJustificatif: z.string().optional(),
   });
 
-// Tolérance d'arrondi sur les comparaisons de montants (Decimal 2 décimales).
-const EPSILON = 0.005;
-
 /**
  * POST /api/demandes-budget/[id]/depenses — le comptable enregistre une dépense réelle sur une
- * ligne de budget. Dans une seule transaction :
- *   1. vérifie le reste disponible de la ligne (prévu − dépenses déjà enregistrées) ;
+ * ligne de budget. Celui qui a validé le budget ne peut pas en enregistrer les dépenses
+ * (séparation des tâches). Dans une seule transaction :
+ *   1. vérifie le reste disponible de la ligne (prévu + dépassements approuvés − dépenses actives) ;
  *   2. crée l'écriture DEPENSE dans le journal de la caisse choisie (solde vérifié) — et, si le
  *      budget est lié à une proforma, le Paiement DEPENSE de cette proforma (marge juste) ;
  *   3. crée la BudgetDepense rattachée à cette écriture, avec ses justificatifs ;
@@ -85,7 +85,7 @@ export async function POST(
     const savedFiles = await saveDemandeBudgetFiles(id, preuves);
     const dateDepense = new Date(data.dateDepense);
 
-    const depense = await prisma.$transaction(
+    const { depense, demande, ligne, avant } = await prisma.$transaction(
       async (tx) => {
         const demande = await tx.demandeBudget.findUnique({
           where: { id },
@@ -95,17 +95,21 @@ export async function POST(
         if (demande.statut !== StatutDemandeBudget.VALIDEE && demande.statut !== StatutDemandeBudget.EN_COURS) {
           throw new BudgetDepenseError("Les dépenses ne peuvent être enregistrées que sur un budget validé et non clôturé.");
         }
+        if (isSameEmail(demande.validatedByEmail, caps.email)) {
+          throw new BudgetDepenseError(
+            "Vous avez validé ce budget : ses dépenses doivent être enregistrées par une autre personne (séparation des tâches)."
+          );
+        }
 
         const ligne = demande.lignes.find((l) => l.id === data.ligneId);
         if (!ligne) throw new BudgetDepenseError("Cette ligne n'appartient pas à ce budget.");
 
-        // Verrou sur la ligne : deux dépenses simultanées ne peuvent pas dépasser le prévu ensemble.
+        // Verrou sur la ligne : deux dépenses simultanées ne peuvent pas dépasser le plafond ensemble.
         await tx.$queryRaw`SELECT id FROM "DemandeBudgetLigne" WHERE id = ${ligne.id} FOR UPDATE`;
-        const dejaConsomme = await tx.budgetDepense.aggregate({ where: { ligneId: ligne.id }, _sum: { montant: true } });
-        const reste = Number(ligne.montant) - Number(dejaConsomme._sum.montant ?? 0);
-        if (data.montant > reste + EPSILON) {
+        const avant = await getLigneDisponible(tx, ligne);
+        if (data.montant > avant.reste + BUDGET_EPSILON) {
           throw new BudgetDepenseError(
-            `Budget de la ligne « ${ligne.designation} » atteint : il reste ${Math.max(reste, 0).toLocaleString("fr-FR")} FCFA sur cette ligne.`
+            `Budget de la ligne « ${ligne.designation} » atteint : il reste ${Math.max(avant.reste, 0).toLocaleString("fr-FR")} FCFA. Demandez un dépassement pour aller au-delà.`
           );
         }
 
@@ -167,27 +171,30 @@ export async function POST(
           });
         }
 
-        // Toutes les lignes soldées → budget entièrement consommé (PAYEE), sinon EN_COURS.
-        const consommeParLigne = await tx.budgetDepense.groupBy({
-          by: ["ligneId"],
-          where: { demandeBudgetId: id },
-          _sum: { montant: true },
-        });
-        const toutSolde = demande.lignes.every((l) => {
-          const consomme = Number(consommeParLigne.find((c) => c.ligneId === l.id)?._sum.montant ?? 0);
-          return consomme >= Number(l.montant) - EPSILON;
-        });
-        await tx.demandeBudget.update({
-          where: { id },
-          data: toutSolde
-            ? { statut: StatutDemandeBudget.PAYEE, datePaiement: dateDepense, nomReceveur: data.nomReceveur }
-            : { statut: StatutDemandeBudget.EN_COURS },
+        await logBudget(tx, {
+          demandeBudgetId: id,
+          action: ActionBudget.DEPENSE,
+          auteurEmail: caps.email,
+          auteurNom: caps.name,
+          montant: data.montant,
+          details: `${ligne.designation} — ${data.nomReceveur} — caisse n° ${data.cashRegisterId}, écriture n° ${cashJournalEntry.id}${savedFiles.length === 0 ? ` — SANS JUSTIFICATIF (${data.motifSansJustificatif})` : ""}`,
         });
 
-        return created;
+        // Toutes les lignes soldées → budget entièrement consommé (PAYEE), sinon EN_COURS.
+        await recalculerStatutBudget(tx, id, { datePaiement: dateDepense, nomReceveur: data.nomReceveur });
+
+        return { depense: created, demande, ligne, avant };
       },
       { timeout: 20000 }
     );
+
+    // Alertes 80 % / 100 % de la ligne — hors transaction, un échec d'email ne bloque rien.
+    for (const seuil of seuilsFranchis(avant.consomme, avant.consomme + data.montant, avant.plafond)) {
+      sendAlerteConsommationNotification(
+        demande,
+        { designation: ligne.designation, seuil, consomme: avant.consomme + data.montant, plafond: avant.plafond }
+      ).catch((err) => console.error("Erreur lors de l'envoi de l'alerte de consommation:", err));
+    }
 
     return NextResponse.json(depense, { status: 201 });
   } catch (error) {

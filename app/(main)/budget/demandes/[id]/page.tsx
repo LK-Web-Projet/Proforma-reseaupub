@@ -34,9 +34,13 @@ import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
 import { BudgetDepenseDialog, BudgetDepenseDialogLigne } from '@/components/budget/BudgetDepenseDialog';
 import { BudgetJustificatifDialog } from '@/components/budget/BudgetJustificatifDialog';
 import { BudgetLigneCommentaires, BudgetCommentaire } from '@/components/budget/BudgetLigneCommentaires';
+import { BudgetDepassementDialog, BudgetDepassementDialogLigne } from '@/components/budget/BudgetDepassementDialog';
+import { BudgetDepassementsCard, BudgetDepassement } from '@/components/budget/BudgetDepassementsCard';
+import { BudgetAnnulationDialog, BudgetAnnulationCible } from '@/components/budget/BudgetAnnulationDialog';
+import { BudgetHistoriqueCard, BudgetHistoriqueEntry } from '@/components/budget/BudgetHistoriqueCard';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2 } from 'lucide-react';
 
 interface BudgetDepense {
   id: string;
@@ -50,6 +54,10 @@ interface BudgetDepense {
   sansJustificatif: boolean;
   motifSansJustificatif: string | null;
   createdByEmail: string;
+  annuleeAt: string | null;
+  annuleeParEmail: string | null;
+  motifAnnulation: string | null;
+  contreEcritureId: number | null;
   cashRegister: { id: number; name: string };
   invoice: { id: string; numero: string } | null;
   attachments: { id: string; url: string; fileName: string }[];
@@ -95,6 +103,8 @@ interface DemandeBudgetDetail {
   proformas: { invoice: { id: string; numero: string; objet: string; client: { nom: string } } }[];
   depenses: BudgetDepense[];
   commentaires: BudgetCommentaire[];
+  depassements: BudgetDepassement[];
+  historique: BudgetHistoriqueEntry[];
 }
 
 const MODE_PAIEMENT_LABELS: Record<string, string> = {
@@ -120,6 +130,8 @@ export default function DemandeBudgetDetailPage() {
   const [motifRejet, setMotifRejet] = useState('');
   const [depenseLigne, setDepenseLigne] = useState<BudgetDepenseDialogLigne | null>(null);
   const [justificatifDepenseId, setJustificatifDepenseId] = useState<string | null>(null);
+  const [depassementLigne, setDepassementLigne] = useState<BudgetDepassementDialogLigne | null>(null);
+  const [annulationCible, setAnnulationCible] = useState<BudgetAnnulationCible | null>(null);
   const [isClotureOpen, setIsClotureOpen] = useState(false);
   const [isAddDocsOpen, setIsAddDocsOpen] = useState(false);
   const [isRejetInfoOpen, setIsRejetInfoOpen] = useState(false);
@@ -221,19 +233,28 @@ export default function DemandeBudgetDetailPage() {
     }
   };
 
-  // Suivi prévu / consommé / reste par ligne — le consommé est la somme des dépenses
-  // enregistrées (jamais stocké), comme côté serveur.
+  // Suivi par ligne, même calcul que lib/budgetSuivi.ts (jamais stocké) :
+  // plafond = prévu + dépassements approuvés ; consommé = dépenses non annulées.
   const suiviLignes = useMemo(() => {
     if (!demande) return [];
     return demande.lignes.map((l) => {
-      const depenses = demande.depenses.filter((d) => d.ligneId === l.id);
-      const consomme = depenses.reduce((s, d) => s + Number(d.montant), 0);
+      const consomme = demande.depenses
+        .filter((d) => d.ligneId === l.id && !d.annuleeAt)
+        .reduce((s, d) => s + Number(d.montant), 0);
+      const depassementsLigne = demande.depassements.filter((d) => d.ligneId === l.id);
+      const depassementApprouve = depassementsLigne
+        .filter((d) => d.statut === 'APPROUVE')
+        .reduce((s, d) => s + Number(d.montant), 0);
       const prevu = Number(l.montant);
+      const plafond = prevu + depassementApprouve;
       return {
         ...l,
         prevu,
+        depassementApprouve,
+        plafond,
         consomme,
-        reste: Math.max(prevu - consomme, 0),
+        reste: Math.max(plafond - consomme, 0),
+        depassementEnAttente: depassementsLigne.some((d) => d.statut === 'EN_ATTENTE'),
         commentaires: demande.commentaires.filter((c) => c.ligneId === l.id),
       };
     });
@@ -286,7 +307,17 @@ export default function DemandeBudgetDetailPage() {
   const peutRepondreCommentaire = role.isImplique || estDemandeur;
 
   const totalConsomme = suiviLignes.reduce((s, l) => s + l.consomme, 0);
-  const nbSansJustificatif = demande.depenses.filter((d) => d.attachments.length === 0).length;
+  const totalPlafond = suiviLignes.reduce((s, l) => s + l.plafond, 0);
+  const nbSansJustificatif = demande.depenses.filter((d) => !d.annuleeAt && d.attachments.length === 0).length;
+
+  // Séparation des tâches : qui a validé le budget n'en enregistre pas les dépenses.
+  const estValideur = sameEmail(role.email, demande.validatedByEmail);
+  const peutEnregistrerDepense = budgetOuvert && role.canPay && !estValideur;
+  // Dépassement : budget ouvert, ou entièrement consommé mais pas clôturé.
+  const peutDemanderDepassement =
+    (role.canPay || estDemandeur) &&
+    (budgetOuvert || (demande.statut === 'PAYEE' && !demande.clotureeAt && demande.depenses.length > 0));
+  const nbDepassementsEnAttente = demande.depassements.filter((d) => d.statut === 'EN_ATTENTE').length;
   const lignesParId = new Map(demande.lignes.map((l) => [l.id, l.designation]));
   const documentsDemande = demande.attachments.filter((a) => !a.depenseId);
 
@@ -386,6 +417,11 @@ export default function DemandeBudgetDetailPage() {
             <div>
               <p className="text-xs text-muted-foreground uppercase">Prévu</p>
               <p className="text-lg font-bold">{formatMontant(Number(demande.montantTotal))}</p>
+              {totalPlafond > Number(demande.montantTotal) && (
+                <p className="text-xs text-orange-700">
+                  + {formatMontant(totalPlafond - Number(demande.montantTotal))} de dépassements approuvés
+                </p>
+              )}
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase">Consommé</p>
@@ -393,10 +429,18 @@ export default function DemandeBudgetDetailPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground uppercase">Reste</p>
-              <p className="text-lg font-bold">{formatMontant(Math.max(Number(demande.montantTotal) - totalConsomme, 0))}</p>
+              <p className="text-lg font-bold">{formatMontant(Math.max(totalPlafond - totalConsomme, 0))}</p>
             </div>
             <div className="space-y-2">
-              <BudgetProgressBar consomme={totalConsomme} prevu={Number(demande.montantTotal)} />
+              <BudgetProgressBar consomme={totalConsomme} prevu={totalPlafond} />
+              {nbDepassementsEnAttente > 0 && (
+                <p className="text-xs text-orange-700 flex items-center gap-1">
+                  <TrendingUp className="h-3.5 w-3.5" /> {nbDepassementsEnAttente} dépassement(s) en attente
+                </p>
+              )}
+              {estValideur && role.canPay && budgetOuvert && (
+                <p className="text-xs text-muted-foreground">Vous avez validé ce budget : ses dépenses sont enregistrées par une autre personne.</p>
+              )}
               {nbSansJustificatif > 0 && (
                 <p className="text-xs text-amber-700 flex items-center gap-1">
                   <FileWarning className="h-3.5 w-3.5" /> {nbSansJustificatif} dépense(s) sans justificatif
@@ -473,7 +517,7 @@ export default function DemandeBudgetDetailPage() {
                 <TableHead className="text-right">Consommé</TableHead>
                 <TableHead className="text-right">Reste</TableHead>
                 <TableHead className="min-w-[140px]">Suivi</TableHead>
-                {budgetOuvert && role.canPay && <TableHead className="text-right pr-6">Action</TableHead>}
+                {(peutEnregistrerDepense || peutDemanderDepassement) && <TableHead className="text-right pr-6">Action</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -497,24 +541,48 @@ export default function DemandeBudgetDetailPage() {
                       onAdded={fetchDemande}
                     />
                   </TableCell>
-                  <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(l.prevu)}</TableCell>
+                  <TableCell className="text-right font-medium whitespace-nowrap">
+                    {formatMontant(l.prevu)}
+                    {l.depassementApprouve > 0 && (
+                      <p className="text-xs font-normal text-orange-700">+ {formatMontant(l.depassementApprouve)}</p>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right whitespace-nowrap">{formatMontant(l.consomme)}</TableCell>
                   <TableCell className={cn('text-right whitespace-nowrap font-medium', l.reste === 0 && l.consomme > 0 && 'text-red-600')}>
                     {formatMontant(l.reste)}
                   </TableCell>
-                  <TableCell><BudgetProgressBar consomme={l.consomme} prevu={l.prevu} compact /></TableCell>
-                  {budgetOuvert && role.canPay && (
+                  <TableCell>
+                    <BudgetProgressBar consomme={l.consomme} prevu={l.plafond} compact />
+                    {l.depassementEnAttente && <p className="text-[10px] text-orange-700 mt-1">Dépassement en attente</p>}
+                  </TableCell>
+                  {(peutEnregistrerDepense || peutDemanderDepassement) && (
                     <TableCell className="text-right pr-6">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1"
-                        disabled={l.reste <= 0}
-                        title={l.reste <= 0 ? 'Budget de la ligne atteint' : undefined}
-                        onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste })}
-                      >
-                        <Wallet className="h-3.5 w-3.5" /> Dépense
-                      </Button>
+                      <div className="flex flex-col items-end gap-1">
+                        {peutEnregistrerDepense && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            disabled={l.reste <= 0}
+                            title={l.reste <= 0 ? 'Budget de la ligne atteint — demandez un dépassement' : undefined}
+                            onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste })}
+                          >
+                            <Wallet className="h-3.5 w-3.5" /> Dépense
+                          </Button>
+                        )}
+                        {peutDemanderDepassement && (
+                          <Button
+                            size="sm"
+                            variant={l.reste <= 0 ? 'default' : 'ghost'}
+                            className={cn('gap-1', l.reste <= 0 ? 'bg-orange-600 hover:bg-orange-700' : 'text-orange-700 h-7 px-2 text-xs')}
+                            disabled={l.depassementEnAttente}
+                            title={l.depassementEnAttente ? 'Un dépassement est déjà en attente sur cette ligne' : undefined}
+                            onClick={() => setDepassementLigne({ id: l.id, designation: l.designation, plafond: l.plafond, consomme: l.consomme })}
+                          >
+                            <TrendingUp className="h-3.5 w-3.5" /> Dépassement
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
@@ -531,6 +599,15 @@ export default function DemandeBudgetDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <BudgetDepassementsCard
+        demandeId={id}
+        depassements={demande.depassements}
+        lignesParId={lignesParId}
+        peutDecider={role.canValidateMensuel}
+        userEmail={role.email}
+        onChange={fetchDemande}
+      />
 
       {demande.depenses.length > 0 && (
         <Card>
@@ -554,8 +631,22 @@ export default function DemandeBudgetDetailPage() {
               </TableHeader>
               <TableBody>
                 {demande.depenses.map((d) => (
-                  <TableRow key={d.id} className="align-top">
-                    <TableCell className="pl-6 whitespace-nowrap">{format(new Date(d.dateDepense), 'dd/MM/yyyy')}</TableCell>
+                  <TableRow key={d.id} className={cn('align-top', d.annuleeAt && 'bg-red-50/40 text-muted-foreground')}>
+                    <TableCell className="pl-6 whitespace-nowrap">
+                      {format(new Date(d.dateDepense), 'dd/MM/yyyy')}
+                      {d.annuleeAt && (
+                        <div className="mt-1 space-y-0.5">
+                          <Badge variant="outline" className="gap-1 bg-red-50 text-red-700 border-red-200">
+                            <Undo2 className="h-3 w-3" /> Annulée
+                          </Badge>
+                          <p className="text-[11px] whitespace-normal max-w-[180px]">
+                            le {format(new Date(d.annuleeAt), 'dd/MM/yyyy')} par {d.annuleeParEmail}
+                            {d.motifAnnulation ? ` — ${d.motifAnnulation}` : ''}
+                            {d.contreEcritureId ? ` (contre-écriture n° ${d.contreEcritureId})` : ''}
+                          </p>
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm">
                       {lignesParId.get(d.ligneId) ?? '-'}
                       {d.invoice && (
@@ -575,7 +666,28 @@ export default function DemandeBudgetDetailPage() {
                       {d.cashRegister.name}
                       <p className="text-xs text-muted-foreground">Écriture n° {d.cashJournalEntryId}</p>
                     </TableCell>
-                    <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(d.montant))}</TableCell>
+                    <TableCell className={cn('text-right font-medium whitespace-nowrap', d.annuleeAt && 'line-through')}>
+                      {formatMontant(Number(d.montant))}
+                      {!d.annuleeAt && role.canValidateMensuel && (
+                        <div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs gap-1 text-red-600"
+                            onClick={() =>
+                              setAnnulationCible({
+                                id: d.id,
+                                designation: lignesParId.get(d.ligneId) ?? 'Dépense',
+                                montant: Number(d.montant),
+                                caisse: d.cashRegister.name,
+                              })
+                            }
+                          >
+                            <Undo2 className="h-3 w-3" /> Annuler
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {d.attachments.length > 0 ? (
                         <div className="space-y-1">
@@ -597,7 +709,7 @@ export default function DemandeBudgetDetailPage() {
                           {d.motifSansJustificatif && (
                             <p className="text-xs text-muted-foreground">Motif : {d.motifSansJustificatif}</p>
                           )}
-                          {role.canPay && (
+                          {role.canPay && !d.annuleeAt && (
                             <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1" onClick={() => setJustificatifDepenseId(d.id)}>
                               <Plus className="h-3 w-3" /> Ajouter le justificatif
                             </Button>
@@ -686,6 +798,22 @@ export default function DemandeBudgetDetailPage() {
         onSuccess={fetchDemande}
       />
 
+      <BudgetDepassementDialog
+        demandeId={id}
+        ligne={depassementLigne}
+        onClose={() => setDepassementLigne(null)}
+        onSuccess={fetchDemande}
+      />
+
+      <BudgetAnnulationDialog
+        demandeId={id}
+        depense={annulationCible}
+        onClose={() => setAnnulationCible(null)}
+        onSuccess={fetchDemande}
+      />
+
+      <BudgetHistoriqueCard historique={demande.historique} />
+
       <Dialog open={isClotureOpen} onOpenChange={setIsClotureOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -693,7 +821,7 @@ export default function DemandeBudgetDetailPage() {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Plus aucune dépense ne pourra être imputée à ce budget. Le reste non utilisé (
-            {formatMontant(Math.max(Number(demande.montantTotal) - totalConsomme, 0))}) sera figé.
+            {formatMontant(Math.max(totalPlafond - totalConsomme, 0))}) sera figé.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsClotureOpen(false)}>Annuler</Button>

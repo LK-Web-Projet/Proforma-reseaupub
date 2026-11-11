@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { ActionBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { logBudget } from "@/lib/budgetSuivi";
 import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
 import { sendDemandeValideeNotification } from "@/lib/email/demandeBudget";
 
@@ -26,10 +28,20 @@ export async function POST(
       return NextResponse.json({ error: refus }, { status: 403 });
     }
 
-    const demande = await prisma.demandeBudget.update({
-      where: { id },
-      data: { statut: "VALIDEE", validatedByEmail: caps.email, validatedAt: new Date() },
-      include: { lignes: true },
+    const demande = await prisma.$transaction(async (tx) => {
+      const updated = await tx.demandeBudget.update({
+        where: { id },
+        data: { statut: "VALIDEE", validatedByEmail: caps.email, validatedAt: new Date() },
+        include: { lignes: true },
+      });
+      await logBudget(tx, {
+        demandeBudgetId: id,
+        action: ActionBudget.VALIDATION,
+        auteurEmail: caps.email,
+        auteurNom: caps.name,
+        montant: Number(existing.montantTotal),
+      });
+      return updated;
     });
 
     sendDemandeValideeNotification(demande).catch((err) =>

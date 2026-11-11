@@ -134,6 +134,81 @@ export async function sendDemandeValideeNotification(demande: DemandeBudgetForEm
   });
 }
 
+const fmt = (n: number) => `${new Intl.NumberFormat("fr-FR").format(n)} XOF`;
+
+/** Demande de dépassement → administrateurs (seuls habilités à l'approuver). */
+export async function sendDepassementDemandeNotification(
+  demande: DemandeBudgetForEmail,
+  opts: { designation: string; montant: number; motif: string; auteur: string }
+) {
+  const recipients = await getBudgetRecipients("canValidateBudgetMensuel");
+  if (recipients.length === 0) return;
+  await sendEmail({
+    to: recipients,
+    subject: `Demande de dépassement sur le budget ${demande.numero}`,
+    html: buildBaseHtml({
+      title: "⚠️ Demande de dépassement de budget",
+      intro: `<strong>${escapeHtml(opts.auteur)}</strong> demande un dépassement de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} ».<br/>Motif : <em>${escapeHtml(opts.motif)}</em>`,
+      demande,
+    }),
+  });
+}
+
+/** Décision sur un dépassement → auteur de la demande de dépassement et demandeur du budget. */
+export async function sendDepassementDecisionNotification(
+  demande: DemandeBudgetForEmail,
+  opts: { designation: string; montant: number; approuve: boolean; motifRejet?: string | null; demandeParEmail: string }
+) {
+  const to = Array.from(new Set([opts.demandeParEmail, demande.requesterEmail].map((e) => e.toLowerCase())));
+  await sendEmail({
+    to,
+    subject: `Dépassement ${opts.approuve ? "approuvé" : "refusé"} — budget ${demande.numero}`,
+    html: buildBaseHtml({
+      title: opts.approuve ? "✅ Dépassement approuvé" : "❌ Dépassement refusé",
+      intro: `Le dépassement de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} » a été ${opts.approuve ? "approuvé : le plafond de la ligne est augmenté d'autant" : "refusé"}.`,
+      demande,
+      footer: !opts.approuve && opts.motifRejet ? `Motif du refus : ${escapeHtml(opts.motifRejet)}` : undefined,
+    }),
+  });
+}
+
+/** Alerte de consommation d'une ligne (80 % ou 100 %) → demandeur et administrateurs. */
+export async function sendAlerteConsommationNotification(
+  demande: DemandeBudgetForEmail,
+  opts: { designation: string; seuil: 80 | 100; consomme: number; plafond: number }
+) {
+  const admins = await getBudgetRecipients("canValidateBudgetMensuel");
+  const to = Array.from(new Set([demande.requesterEmail, ...admins].map((e) => e.toLowerCase())));
+  await sendEmail({
+    to,
+    subject: `Budget ${demande.numero} : ligne « ${opts.designation} » consommée à ${opts.seuil} %`,
+    html: buildBaseHtml({
+      title: opts.seuil === 100 ? "🔴 Ligne de budget épuisée" : "🟠 Ligne de budget consommée à 80 %",
+      intro: `La ligne « ${escapeHtml(opts.designation)} » est consommée à hauteur de <strong>${fmt(opts.consomme)}</strong> sur <strong>${fmt(opts.plafond)}</strong>.${opts.seuil === 100 ? " Toute nouvelle dépense sur cette ligne nécessite un dépassement approuvé par l'administrateur." : ""}`,
+      demande,
+    }),
+  });
+}
+
+/** Annulation d'une dépense → demandeur et comptables. */
+export async function sendDepenseAnnuleeNotification(
+  demande: DemandeBudgetForEmail,
+  opts: { designation: string; montant: number; motif: string; auteur: string }
+) {
+  const comptables = await getBudgetRecipients("canPayBudget");
+  const to = Array.from(new Set([demande.requesterEmail, ...comptables].map((e) => e.toLowerCase())));
+  await sendEmail({
+    to,
+    subject: `Dépense annulée sur le budget ${demande.numero}`,
+    html: buildBaseHtml({
+      title: "↩️ Dépense annulée",
+      intro: `<strong>${escapeHtml(opts.auteur)}</strong> a annulé une dépense de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} ». Une contre-écriture a été passée au journal de caisse.`,
+      demande,
+      footer: `Motif : ${escapeHtml(opts.motif)}`,
+    }),
+  });
+}
+
 /** Prévient le demandeur qu'un commentaire a été ouvert sur une ligne de son budget. */
 export async function sendCommentaireLigneNotification(
   demande: DemandeBudgetForEmail,

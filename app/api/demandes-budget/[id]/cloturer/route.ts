@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { StatutDemandeBudget } from "@prisma/client";
+import { ActionBudget, StatutDemandeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { getBudgetTotaux, logBudget } from "@/lib/budgetSuivi";
 import { requireBudgetUser } from "@/lib/budgetAuth";
 
 // POST /api/demandes-budget/[id]/cloturer — clôt un budget partiellement consommé (ex. fin de
@@ -27,9 +28,21 @@ export async function POST(
       return NextResponse.json({ error: "Seul un budget validé ou en cours peut être clôturé." }, { status: 400 });
     }
 
-    const demande = await prisma.demandeBudget.update({
-      where: { id },
-      data: { statut: StatutDemandeBudget.PAYEE, clotureeAt: new Date(), clotureeParEmail: caps.email },
+    const demande = await prisma.$transaction(async (tx) => {
+      const { consomme, plafond } = await getBudgetTotaux(tx, id);
+      const updated = await tx.demandeBudget.update({
+        where: { id },
+        data: { statut: StatutDemandeBudget.PAYEE, clotureeAt: new Date(), clotureeParEmail: caps.email },
+      });
+      await logBudget(tx, {
+        demandeBudgetId: id,
+        action: ActionBudget.CLOTURE,
+        auteurEmail: caps.email,
+        auteurNom: caps.name,
+        montant: consomme,
+        details: `Consommé ${consomme.toLocaleString("fr-FR")} / ${plafond.toLocaleString("fr-FR")} FCFA — reste figé : ${Math.max(plafond - consomme, 0).toLocaleString("fr-FR")} FCFA`,
+      });
+      return updated;
     });
 
     return NextResponse.json(demande);

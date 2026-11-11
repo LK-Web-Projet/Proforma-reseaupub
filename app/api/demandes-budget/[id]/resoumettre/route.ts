@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TypeBudget } from "@prisma/client";
+import { ActionBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { logBudget } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
@@ -38,8 +39,15 @@ export async function POST(
     const data = validation.data;
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
 
-    // Une demande rejetée n'a jamais eu de dépense (les dépenses n'existent qu'à partir de
-    // VALIDEE) : supprimer et recréer ses lignes ne perd donc aucune donnée.
+    // Une demande rejetée n'a jamais eu de dépense ni de dépassement (ils n'existent qu'à partir
+    // de VALIDEE). Ses lignes peuvent en revanche porter des commentaires, supprimés avec elles :
+    // on les recopie dans le journal d'audit pour n'en perdre aucune trace.
+    const anciensCommentaires = await prisma.budgetCommentaire.findMany({
+      where: { demandeBudgetId: id },
+      orderBy: { createdAt: "asc" },
+      include: { ligne: { select: { designation: true } } },
+    });
+
     const demande = await prisma.$transaction(async (tx) => {
       await tx.demandeBudgetLigne.deleteMany({ where: { demandeBudgetId: id } });
       await tx.demandeBudgetProforma.deleteMany({ where: { demandeBudgetId: id } });
@@ -72,6 +80,20 @@ export async function POST(
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }
+
+    await logBudget(prisma, {
+      demandeBudgetId: id,
+      action: ActionBudget.RESOUMISSION,
+      auteurEmail: caps.email,
+      auteurNom: caps.name,
+      montant: montantTotal,
+      details: [
+        `Ancien montant : ${Number(existing.montantTotal).toLocaleString("fr-FR")} FCFA`,
+        ...anciensCommentaires.map(
+          (c) => `Commentaire « ${c.ligne.designation} » (${c.auteurNom || c.auteurEmail}) : ${c.contenu}`
+        ),
+      ].join("\n"),
+    });
 
     sendDemandeSoumiseNotification(demande, caps.plafond).catch((err) =>
       console.error("Erreur lors de l'envoi de la notification de re-soumission:", err)

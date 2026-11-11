@@ -17,7 +17,10 @@ import {
   type RecetteDetailLine,
   type DepenseDetailLine,
   type ProformaValideeDetailLine,
+  type BudgetAnnulationFields,
   isInternalTransferOut,
+  isEcritureBudgetAnnulee,
+  BUDGET_ANNULATION_SELECT,
 } from '@/lib/dashboardReporting';
 
 // Même table de conversion que app/api/statistiques/route.ts, pour rester cohérent
@@ -76,6 +79,7 @@ async function getTresorerieSnapshot(now: Date) {
           },
         },
       },
+      ...BUDGET_ANNULATION_SELECT,
     },
   });
 
@@ -137,7 +141,7 @@ interface MonthlyFluctuationBucket {
 
 async function getMonthlyEvolution(
   now: Date,
-  entries13Mois: {
+  entries13Mois: ({
     id: number;
     date_operation: Date;
     type: OperationType;
@@ -145,7 +149,7 @@ async function getMonthlyEvolution(
     libelle: string;
     cashRegister: { name: string };
     paiement: { invoice: { resteAPayer: unknown; client: DetailClient | null } | null } | null;
-  }[],
+  } & BudgetAnnulationFields)[],
   visibleIdsSet: Set<number>
 ) {
   const windowStart = startOfMonth(subMonths(now, 11));
@@ -187,7 +191,7 @@ async function getMonthlyEvolution(
   let autresMouvementsTotal = 0;
   for (const e of entries13Mois) {
     const bucket = monthlyMap.get(format(e.date_operation, 'yyyy-MM'));
-    if (!bucket) continue;
+    if (!bucket || isEcritureBudgetAnnulee(e)) continue;
     const client = e.paiement?.invoice?.client ?? null;
 
     if (e.type === OperationType.RECETTE && !!e.paiement?.invoice) {
@@ -403,6 +407,7 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
             },
           },
         },
+        ...BUDGET_ANNULATION_SELECT,
       },
     }),
     prisma.paiement.groupBy({
@@ -436,13 +441,15 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
   // apports de caisse et transferts entre caisses n'ont jamais de `paiement.invoice` lié,
   // donc ce seul critère les exclut naturellement (plus fiable que la détection par regex
   // sur le libellé, encore utilisée côté dépenses où la notion ne s'applique pas).
-  const entreesLines = monthEntries.filter(
+  // Une dépense de budget annulée et sa contre-écriture s'annulent : exclues des deux côtés.
+  const reportingEntries = monthEntries.filter((e) => !isEcritureBudgetAnnulee(e));
+  const entreesLines = reportingEntries.filter(
     (e) => e.type === OperationType.RECETTE && !!e.paiement?.invoice
   );
-  const autresMouvementsLines = monthEntries.filter(
+  const autresMouvementsLines = reportingEntries.filter(
     (e) => e.type === OperationType.RECETTE && !e.paiement?.invoice
   );
-  const sortiesLines = monthEntries.filter(
+  const sortiesLines = reportingEntries.filter(
     (e) => e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)
   );
   const entreesTotal = entreesLines.reduce((s, e) => s + e.montant, 0);
@@ -476,7 +483,7 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
       proformasValideesDetail: [],
     });
   }
-  for (const e of monthEntries) {
+  for (const e of reportingEntries) {
     const bucket = dailyMap.get(format(e.date_operation, 'yyyy-MM-dd'));
     if (!bucket) continue;
     const client = e.paiement?.invoice?.client

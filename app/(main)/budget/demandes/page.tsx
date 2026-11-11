@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
 import { TYPE_BUDGET_VALUES, TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel } from '@/lib/budgetTypes';
-import { Plus, Eye, Wallet, CheckCircle2, Clock, X, SlidersHorizontal, ChevronDown, FileQuestion, FileWarning } from 'lucide-react';
+import { Plus, Eye, Wallet, CheckCircle2, Clock, X, SlidersHorizontal, ChevronDown, FileQuestion, FileWarning, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -29,7 +29,9 @@ interface DemandeBudget {
   departement: string | null;
   montantTotal: number;
   montantConsomme: number;
+  montantPlafond: number;
   nbDepensesSansJustificatif: number;
+  nbDepassementsEnAttente: number;
   createdAt: string;
   proformas: { invoice: { client: { nom: string } } }[];
 }
@@ -51,6 +53,7 @@ const defaultFilters = {
   mois: '',
   departement: '',
   sansJustificatif: false,
+  depassementEnAttente: false,
 };
 
 export default function DemandesBudgetListPage() {
@@ -71,6 +74,7 @@ export default function DemandesBudgetListPage() {
     if (filters.mois) params.append('mois', filters.mois);
     if (filters.departement) params.append('departement', filters.departement);
     if (filters.sansJustificatif) params.append('sansJustificatif', '1');
+    if (filters.depassementEnAttente) params.append('depassementEnAttente', '1');
 
     try {
       const res = await fetch(`/api/demandes-budget?${params.toString()}`);
@@ -121,6 +125,9 @@ export default function DemandesBudgetListPage() {
     }
     if (filters.sansJustificatif) {
       chips.push({ key: 'sansJustificatif', label: 'Dépenses sans justificatif', onRemove: () => setFilters((p) => ({ ...p, sansJustificatif: false })) });
+    }
+    if (filters.depassementEnAttente) {
+      chips.push({ key: 'depassementEnAttente', label: 'Dépassement en attente', onRemove: () => setFilters((p) => ({ ...p, depassementEnAttente: false })) });
     }
     return chips;
   }, [filters]);
@@ -221,7 +228,7 @@ export default function DemandesBudgetListPage() {
 
         {showFilters && (
           <Card className="mt-3">
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-6 items-center">
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-6 items-center">
               <Select value={filters.statut} onValueChange={(value) => setFilters((prev) => ({ ...prev, statut: value }))}>
                 <SelectTrigger><SelectValue placeholder="Tous les statuts" /></SelectTrigger>
                 <SelectContent>
@@ -251,6 +258,13 @@ export default function DemandesBudgetListPage() {
                   onCheckedChange={(v) => setFilters((prev) => ({ ...prev, sansJustificatif: v }))}
                 />
                 Avec dépenses sans justificatif
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Switch
+                  checked={filters.depassementEnAttente}
+                  onCheckedChange={(v) => setFilters((prev) => ({ ...prev, depassementEnAttente: v }))}
+                />
+                Dépassement en attente
               </label>
             </CardContent>
           </Card>
@@ -314,10 +328,15 @@ export default function DemandesBudgetListPage() {
                   <TableCell>
                     {['VALIDEE', 'EN_COURS', 'PAYEE'].includes(demande.statut) ? (
                       <div className="space-y-1">
-                        <BudgetProgressBar consomme={demande.montantConsomme} prevu={Number(demande.montantTotal)} />
+                        <BudgetProgressBar consomme={demande.montantConsomme} prevu={demande.montantPlafond} />
                         {demande.nbDepensesSansJustificatif > 0 && (
                           <p className="text-xs text-amber-700 flex items-center gap-1">
                             <FileWarning className="h-3 w-3" /> {demande.nbDepensesSansJustificatif} sans justificatif
+                          </p>
+                        )}
+                        {demande.nbDepassementsEnAttente > 0 && (
+                          <p className="text-xs text-orange-700 flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3" /> dépassement en attente
                           </p>
                         )}
                       </div>

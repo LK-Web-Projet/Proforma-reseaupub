@@ -212,7 +212,9 @@ model CashJournal {
   createdBy        User?                   @relation("CashJournalCreatedBy", fields: [createdById], references: [id])
   attachments      CashJournalAttachment[]
   paiement         Paiement?
-  budgetDepense    BudgetDepense?
+  budgetDepense    BudgetDepense?          @relation("BudgetDepenseEcriture")
+  // Renseigné si cette écriture (RECETTE) est la contre-écriture d'une dépense de budget annulée.
+  budgetDepenseAnnulee BudgetDepense?      @relation("BudgetDepenseContreEcriture")
 }
 
 model CashJournalAttachment {
@@ -424,6 +426,29 @@ enum StatutDemandeBudget {
   PAYEE // budget entièrement consommé ou clôturé
 }
 
+enum StatutDepassement {
+  EN_ATTENTE
+  APPROUVE
+  REJETE
+}
+
+// Journal d'audit d'un budget (BudgetHistorique.action).
+enum ActionBudget {
+  CREATION
+  RESOUMISSION
+  VALIDATION
+  REJET
+  DEPENSE
+  ANNULATION_DEPENSE
+  JUSTIFICATIF
+  DOCUMENTS
+  DEPASSEMENT_DEMANDE
+  DEPASSEMENT_APPROUVE
+  DEPASSEMENT_REJETE
+  CLOTURE
+  PAIEMENT_ANCIEN_CIRCUIT // demandes payées avant le suivi par dépenses
+}
+
 enum TypeBudget {
   MENSUEL // budget prévisionnel d'un service pour un mois
   PONCTUEL // dépense interne imprévue
@@ -487,6 +512,8 @@ model DemandeBudget {
   attachments  DemandeBudgetAttachment[]
   depenses     BudgetDepense[]
   commentaires BudgetCommentaire[]
+  depassements BudgetDepassement[]
+  historique   BudgetHistorique[]
 }
 
 model DemandeBudgetLigne {
@@ -497,11 +524,13 @@ model DemandeBudgetLigne {
   demandeBudget   DemandeBudget @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   depenses        BudgetDepense[]
   commentaires    BudgetCommentaire[]
+  depassements    BudgetDepassement[]
 }
 
 // Une dépense réelle imputée à une ligne de budget. Toujours adossée à UNE écriture
 // DEPENSE du journal de caisse (cashJournalEntryId unique) — le consommé d'une ligne
-// est calculé par somme de ses dépenses, jamais stocké.
+// est calculé par somme de ses dépenses NON annulées, jamais stocké. Une dépense n'est
+// jamais supprimée : son annulation crée une contre-écriture RECETTE (contreEcritureId).
 model BudgetDepense {
   id                    String              @id @default(uuid())
   demandeBudgetId       String
@@ -518,13 +547,55 @@ model BudgetDepense {
   motifSansJustificatif String?
   createdByEmail        String
   createdAt             DateTime            @default(now())
+  annuleeAt             DateTime?
+  annuleeParEmail       String?
+  motifAnnulation       String?
+  contreEcritureId      Int?                @unique
 
   demandeBudget    DemandeBudget             @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   ligne            DemandeBudgetLigne        @relation(fields: [ligneId], references: [id], onDelete: Cascade)
   cashRegister     CashRegister              @relation(fields: [cashRegisterId], references: [id])
-  cashJournalEntry CashJournal               @relation(fields: [cashJournalEntryId], references: [id])
+  cashJournalEntry CashJournal               @relation("BudgetDepenseEcriture", fields: [cashJournalEntryId], references: [id])
+  contreEcriture   CashJournal?              @relation("BudgetDepenseContreEcriture", fields: [contreEcritureId], references: [id])
   invoice          Invoice?                  @relation(fields: [invoiceId], references: [id])
   attachments      DemandeBudgetAttachment[]
+}
+
+// Demande d'augmentation du plafond d'une ligne épuisée (ou insuffisante). Approuvée par un
+// rôle "canValidateBudgetMensuel" uniquement ; le plafond de la ligne devient
+// montant prévu + Σ dépassements APPROUVE.
+model BudgetDepassement {
+  id              String            @id @default(uuid())
+  demandeBudgetId String
+  ligneId         String
+  montant         Decimal           @db.Decimal(12, 2)
+  motif           String
+  statut          StatutDepassement @default(EN_ATTENTE)
+  demandeParEmail String
+  demandeParNom   String?
+  decideParEmail  String?
+  decideAt        DateTime?
+  motifRejet      String?
+  createdAt       DateTime          @default(now())
+
+  demandeBudget DemandeBudget      @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
+  ligne         DemandeBudgetLigne @relation(fields: [ligneId], references: [id], onDelete: Cascade)
+}
+
+// Journal d'audit : une ligne par action sur un budget (qui, quand, quoi). Jamais modifié.
+model BudgetHistorique {
+  id              String       @id @default(uuid())
+  demandeBudgetId String
+  action          ActionBudget
+  details         String?
+  montant         Decimal?     @db.Decimal(12, 2)
+  auteurEmail     String
+  auteurNom       String?
+  createdAt       DateTime     @default(now())
+
+  demandeBudget DemandeBudget @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
+
+  @@index([demandeBudgetId, createdAt])
 }
 
 // Commentaire sur une ligne de budget. Un fil ne peut être ouvert que par un rôle

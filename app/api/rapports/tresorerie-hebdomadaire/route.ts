@@ -14,6 +14,8 @@ import {
   type DepenseDetailLine,
   type ProformaValideeDetailLine,
   isInternalTransferOut,
+  isEcritureBudgetAnnulee,
+  BUDGET_ANNULATION_SELECT,
 } from '@/lib/dashboardReporting';
 
 interface WeeklyBucket {
@@ -70,6 +72,7 @@ export async function GET(request: Request) {
               },
             },
           },
+          ...BUDGET_ANNULATION_SELECT,
         },
       }),
       // Proformas ayant atteint "Valider" (même si elles ont depuis progressé vers
@@ -117,7 +120,7 @@ export async function GET(request: Request) {
     let autresMouvementsTotal = 0;
     for (const e of entries) {
       const bucket = weeklyMap.get(format(startOfWeek(e.date_operation, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
-      if (!bucket) continue;
+      if (!bucket || isEcritureBudgetAnnulee(e)) continue;
       const client = e.paiement?.invoice?.client ?? null;
 
       if (e.type === OperationType.RECETTE && !!e.paiement?.invoice) {
