@@ -15,7 +15,7 @@ import {
 } from '@/components/dashboard/ExtraIndicatorsSection';
 import { CashJournalLinesCard, type CashJournalLine } from '@/components/dashboard/CashJournalLinesCard';
 import { MonthlyFluctuationChart, type DailyFluctuation } from '@/components/dashboard/MonthlyFluctuationChart';
-import { AlertCircle, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { AlertCircle, TrendingUp, TrendingDown, Wallet, ArrowLeftRight } from 'lucide-react';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('fr-FR', {
@@ -28,6 +28,7 @@ interface GlobalData {
   tresorerie: TresorerieData;
   cashFlowEvolution: { month: string; solde: number }[];
   monthlyEvolution: MonthlyEvolutionPoint[];
+  autresMouvementsTotal: number;
   margeParProforma: MargeProforma[];
   tauxConversion: number;
   topDebiteurs: TopDebiteur[];
@@ -39,6 +40,7 @@ interface MonthData {
   tresorerie: TresorerieData;
   entreesLines: CashJournalLine[];
   entreesTotal: number;
+  autresMouvementsTotal: number;
   sortiesLines: CashJournalLine[];
   sortiesTotal: number;
   fluctuation: DailyFluctuation[];
@@ -133,6 +135,11 @@ export default function DashboardPage() {
               <TresorerieSection tresorerie={globalData.tresorerie} formatCurrency={formatCurrency} />
               <CashFlowEvolutionChart data={globalData.cashFlowEvolution} formatCurrency={formatCurrency} />
               <GlobalEvolutionChart data={globalData.monthlyEvolution} formatCurrency={formatCurrency} />
+              <p className="text-xs text-muted-foreground -mt-4 flex items-center gap-1.5">
+                <ArrowLeftRight className="h-3.5 w-3.5 shrink-0" />
+                Autres mouvements de caisse (apports, transferts entre caisses — hors chiffre d&apos;affaires) sur les 12 derniers mois :{' '}
+                <span className="font-medium text-foreground">{formatCurrency(globalData.autresMouvementsTotal)}</span>
+              </p>
               <MargeProformaSection data={globalData.margeParProforma} formatCurrency={formatCurrency} />
               <ExtraIndicatorsSection
                 tauxConversion={globalData.tauxConversion}
@@ -154,10 +161,11 @@ export default function DashboardPage() {
             <>
               <TresorerieSection tresorerie={monthData.tresorerie} formatCurrency={formatCurrency} compact />
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
                   title="Entrées du mois"
                   value={formatCurrency(monthData.entreesTotal)}
+                  subValue="Recettes liées à une proforma (CA réel), hors apports et transferts"
                   icon={TrendingUp}
                   accent={{ bg: 'bg-green-100', text: 'text-green-700', border: 'border-t-green-500' }}
                 />
@@ -173,6 +181,13 @@ export default function DashboardPage() {
                   subValue="Basée sur les paiements liés aux proformas — peut différer de la caisse globale (loyer, salaires, etc.)"
                   icon={Wallet}
                   accent={{ bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-t-blue-500' }}
+                />
+                <StatCard
+                  title="Autres mouvements de caisse"
+                  value={formatCurrency(monthData.autresMouvementsTotal)}
+                  subValue="Apports de caisse et transferts entre caisses — hors chiffre d'affaires"
+                  icon={ArrowLeftRight}
+                  accent={{ bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-t-slate-400' }}
                 />
               </div>
 

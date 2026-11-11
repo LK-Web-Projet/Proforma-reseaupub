@@ -13,7 +13,6 @@ import {
   type RecetteDetailLine,
   type DepenseDetailLine,
   type ProformaValideeDetailLine,
-  isInternalTransferIn,
   isInternalTransferOut,
 } from '@/lib/dashboardReporting';
 
@@ -112,12 +111,16 @@ export async function GET(request: Request) {
       });
     }
 
+    // "Recettes" = uniquement les lignes liées à un paiement de proforma (CA réel) — les
+    // apports de caisse et transferts entre caisses n'ont jamais de `paiement.invoice` lié,
+    // ce seul critère les exclut naturellement (voir app/api/dashboard/route.ts).
+    let autresMouvementsTotal = 0;
     for (const e of entries) {
       const bucket = weeklyMap.get(format(startOfWeek(e.date_operation, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
       if (!bucket) continue;
       const client = e.paiement?.invoice?.client ?? null;
 
-      if (e.type === OperationType.RECETTE && !isInternalTransferIn(e.libelle, visibleIdsSet)) {
+      if (e.type === OperationType.RECETTE && !!e.paiement?.invoice) {
         bucket.recettes += e.montant;
         bucket.recettesDetail.push({
           id: e.id,
@@ -127,6 +130,8 @@ export async function GET(request: Request) {
           client,
           resteAPayer: e.paiement?.invoice ? Number(e.paiement.invoice.resteAPayer) : 0,
         });
+      } else if (e.type === OperationType.RECETTE) {
+        autresMouvementsTotal += e.montant;
       } else if (e.type === OperationType.DEPENSE && !isInternalTransferOut(e.libelle, visibleIdsSet)) {
         bucket.depenses += e.montant;
         bucket.depensesDetail.push({
@@ -152,7 +157,7 @@ export async function GET(request: Request) {
       });
     }
 
-    return NextResponse.json({ weeks: Array.from(weeklyMap.values()) });
+    return NextResponse.json({ weeks: Array.from(weeklyMap.values()), autresMouvementsTotal });
   } catch (error) {
     console.error('Erreur lors de la récupération du rapport trésorerie hebdomadaire :', error);
     return NextResponse.json({ error: 'Erreur Interne du Serveur' }, { status: 500 });

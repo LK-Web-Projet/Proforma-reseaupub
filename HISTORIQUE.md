@@ -21,6 +21,33 @@ Ce qui a été demandé et pourquoi.
 ```
 
 ---
+## REBUILD
+
+## 2026-11-10 — Dashboard : "Recettes" basées uniquement sur les paiements de proforma
+
+**Demande / Contexte**
+L'utilisateur a signalé que les "Recettes" affichées sur le dashboard (StatCard, graphiques "Ce mois"/"Général", rapport trésorerie hebdomadaire) mélangeaient les vrais paiements de proforma avec les apports de caisse et les transferts entre caisses — faussant la lecture du chiffre d'affaires réel. Décisions confirmées : appliquer le filtre partout de façon cohérente (StatCard + graphiques + tableau "Lignes d'entrée"), garder une ligne distincte "Autres mouvements de caisse" pour la transparence, et laisser les "Dépenses" inchangées (pas de notion de CA côté dépenses).
+
+**Diagnostic & solution**
+Chaque ligne `CashJournal` créée pour un vrai paiement de proforma porte un lien `paiement.invoice` (via `recordPaiement`/l'ancienne logique inline). Les apports de caisse et les transferts n'ont jamais ce lien. La présence de `paiement.invoice` est donc un critère fiable et suffisant pour isoler le CA réel — plus robuste que l'ancienne détection par regex sur le libellé (`isInternalTransferIn`), qui ne couvrait que les transferts entre deux caisses toutes deux "visibles" et laissait passer apports et transferts non détectés.
+
+**Modifications apportées**
+- [app/api/dashboard/route.ts](app/api/dashboard/route.ts) : `getMonthView` et `getMonthlyEvolution` — le calcul des "recettes" (lignes, totaux, buckets jour/mois, détail du dialog au clic) ne retient plus que les `CashJournal` de type RECETTE avec `paiement.invoice` non nul. Les lignes RECETTE restantes (apports, transferts) sont désormais comptabilisées à part dans un nouveau total `autresMouvementsTotal` (+ `autresMouvementsLines` côté "Ce mois"), retourné par l'API. Import `isInternalTransferIn` retiré (devenu inutilisé pour les recettes ; `isInternalTransferOut` reste utilisé côté dépenses, inchangé).
+- [app/api/rapports/tresorerie-hebdomadaire/route.ts](app/api/rapports/tresorerie-hebdomadaire/route.ts) : même traitement, `autresMouvementsTotal` ajouté à la réponse.
+- [app/(main)/dashboard/page.tsx](app/(main)/dashboard/page.tsx) : onglet "Ce mois" — nouvelle 4e StatCard "Autres mouvements de caisse" (grille passée de 3 à 4 colonnes), sous-titre ajouté sur "Entrées du mois" précisant "CA réel, hors apports/transferts". Onglet "Général" — ligne d'info sous le graphique "Évolution CA vs Dépenses" affichant le total des autres mouvements sur 12 mois.
+- [app/(main)/dashboard/rapports/tresorerie-hebdomadaire/page.tsx](app/(main)/dashboard/rapports/tresorerie-hebdomadaire/page.tsx) : même ligne d'info sous le graphique.
+- `CashJournalLinesCard`/`MonthlyFluctuationChart`/`GlobalEvolutionChart`/`WeeklyTreasuryChart` : aucun changement de code nécessaire — ils affichent simplement les données déjà filtrées en amont par l'API.
+
+**Erreurs rencontrées & solutions**
+Aucune — `tsc --noEmit` et `next lint` propres.
+
+**À tester / points d'attention**
+- Comparer "Entrées du mois" avant/après sur un mois contenant un apport de caisse connu : le montant doit baisser exactement du montant de l'apport, qui doit apparaître dans la nouvelle StatCard "Autres mouvements de caisse".
+- Vérifier que le graphique "Évolution de la trésorerie (12 derniers mois)" (solde réel) n'a PAS changé — il doit continuer à inclure tous les mouvements (apports/transferts), sinon le solde reconstitué ne correspondrait plus aux caisses réelles.
+- Vérifier que "Lignes d'entrée" (Ce mois) ne liste plus que des lignes avec un client — les apports de caisse n'y apparaissent plus (déplacés conceptuellement vers "Autres mouvements de caisse", visibles en détail uniquement dans /journal-caisse).
+- "Dépenses" volontairement inchangées (toujours tous les décaissements réels, loyer/salaires inclus) — pas de régression attendue de ce côté.
+
+---
 
 ## 2026-11-09 (suite 2) — Sidebar : section "Dashboard" dépliable (Tableau de bord + Rapports)
 
