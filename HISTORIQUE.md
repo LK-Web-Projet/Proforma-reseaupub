@@ -23,6 +23,8 @@ Ce qui a été demandé et pourquoi.
 ---
 ## REBUILD
 
+## REBUILD
+
 ## 2026-11-10 — Dashboard : "Recettes" basées uniquement sur les paiements de proforma
 
 **Demande / Contexte**
