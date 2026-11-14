@@ -1,0 +1,143 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS } from '@/lib/budgetTypes';
+import { toast } from 'sonner';
+
+export interface BudgetLigneCorrectionCible {
+  id: string;
+  designation: string;
+  categorie: string | null;
+  montant: number;
+  motifDecision: string | null;
+  mode: 'MODIFIER' | 'RETIRER';
+}
+
+/**
+ * Le demandeur traite une ligne renvoyée en correction : la modifier (elle repart en validation)
+ * ou la retirer du budget (le budget peut alors être entièrement validé sans elle).
+ */
+export function BudgetLigneCorrectionDialog({
+  demandeId,
+  ligne,
+  onClose,
+  onSuccess,
+}: {
+  demandeId: string;
+  ligne: BudgetLigneCorrectionCible | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [designation, setDesignation] = useState('');
+  const [categorie, setCategorie] = useState('');
+  const [montant, setMontant] = useState('');
+  const [reponse, setReponse] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!ligne) return;
+    setDesignation(ligne.designation);
+    setCategorie(ligne.categorie ?? '');
+    setMontant(String(ligne.montant));
+    setReponse('');
+  }, [ligne]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ligne) return;
+    let body: Record<string, unknown>;
+    if (ligne.mode === 'MODIFIER') {
+      const m = Number(montant);
+      if (!designation.trim()) return void toast.error('La désignation est requise.');
+      if (!categorie) return void toast.error('Choisissez une catégorie.');
+      if (!m || m <= 0) return void toast.error('Indiquez un montant valide.');
+      body = { action: 'MODIFIER', designation: designation.trim(), categorie, montant: m, reponse: reponse.trim() || undefined };
+    } else {
+      body = { action: 'RETIRER', reponse: reponse.trim() || undefined };
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/demandes-budget/${demandeId}/lignes/${ligne.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === 'string' ? err.error : 'Erreur lors de la correction.');
+      }
+      toast.success(ligne.mode === 'MODIFIER' ? 'Ligne corrigée : elle repart en validation.' : 'Ligne retirée du budget.');
+      onSuccess();
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!ligne} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{ligne?.mode === 'MODIFIER' ? 'Corriger la ligne' : 'Retirer la ligne du budget ?'}</DialogTitle>
+        </DialogHeader>
+        {ligne && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {ligne.motifDecision && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <strong>Correction demandée :</strong> {ligne.motifDecision}
+              </div>
+            )}
+            {ligne.mode === 'MODIFIER' ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="corr-designation">Désignation *</Label>
+                  <Input id="corr-designation" value={designation} onChange={(e) => setDesignation(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Catégorie *</Label>
+                    <Select value={categorie} onValueChange={setCategorie}>
+                      <SelectTrigger><SelectValue placeholder="Catégorie" /></SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIE_DEPENSE_VALUES.map((c) => (
+                          <SelectItem key={c} value={c}>{CATEGORIE_DEPENSE_LABELS[c]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="corr-montant">Montant (XOF) *</Label>
+                    <Input id="corr-montant" type="number" min={0} step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                « {ligne.designation} » sortira du budget (elle restera visible, barrée). Si toutes les autres lignes sont accordées, le budget sera validé.
+              </p>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="corr-reponse">Réponse au valideur (facultatif)</Label>
+              <Textarea id="corr-reponse" rows={2} value={reponse} onChange={(e) => setReponse(e.target.value)} placeholder="Ex. : devis joint, quantité revue…" />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+              <Button type="submit" disabled={isSubmitting} variant={ligne.mode === 'RETIRER' ? 'destructive' : 'default'}>
+                {isSubmitting ? 'Envoi...' : ligne.mode === 'MODIFIER' ? 'Renvoyer en validation' : 'Retirer la ligne'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

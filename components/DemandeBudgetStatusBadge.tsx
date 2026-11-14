@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-export type DemandeBudgetStatus = 'SOUMISE' | 'VALIDEE' | 'EN_COURS' | 'REJETEE' | 'PAYEE';
+export type DemandeBudgetStatus = 'SOUMISE' | 'VALIDATION_PARTIELLE' | 'VALIDEE' | 'EN_COURS' | 'REJETEE' | 'PAYEE';
 
 export const DEMANDE_BUDGET_STATUS_META: Record<
   DemandeBudgetStatus,
@@ -12,6 +12,13 @@ export const DEMANDE_BUDGET_STATUS_META: Record<
     bg: 'bg-orange-50',
     text: 'text-orange-700',
     ring: 'ring-orange-600/20',
+  },
+  VALIDATION_PARTIELLE: {
+    label: 'Validation partielle',
+    dot: 'bg-teal-500',
+    bg: 'bg-teal-50',
+    text: 'text-teal-700',
+    ring: 'ring-teal-600/20',
   },
   VALIDEE: {
     label: 'Validée',

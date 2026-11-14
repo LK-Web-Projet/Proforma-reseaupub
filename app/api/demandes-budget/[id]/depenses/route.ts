@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ActionBudget, ModePaiementDemande, Prisma, StatutDemandeBudget } from "@prisma/client";
+import { ActionBudget, ModePaiementDemande, Prisma, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
@@ -95,7 +95,8 @@ export async function POST(
           include: { lignes: true, proformas: { include: { invoice: { select: { id: true, numero: true } } } } },
         });
         if (!demande) throw new BudgetDepenseError("Demande introuvable.");
-        if (demande.statut !== StatutDemandeBudget.VALIDEE && demande.statut !== StatutDemandeBudget.EN_COURS) {
+        const statutsDepensables: StatutDemandeBudget[] = [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS, StatutDemandeBudget.VALIDATION_PARTIELLE];
+        if (!statutsDepensables.includes(demande.statut)) {
           throw new BudgetDepenseError("Les dépenses ne peuvent être enregistrées que sur un budget validé et non clôturé.");
         }
         if (isSameEmail(demande.validatedByEmail, caps.email)) {
@@ -117,6 +118,17 @@ export async function POST(
 
         const ligne = demande.lignes.find((l) => l.id === data.ligneId);
         if (!ligne) throw new BudgetDepenseError("Cette ligne n'appartient pas à ce budget.");
+        if (ligne.statutValidation !== StatutLigneBudget.ACCORDEE) {
+          throw new BudgetDepenseError(
+            ligne.statutValidation === StatutLigneBudget.RETIREE
+              ? "Cette ligne a été retirée du budget."
+              : "Cette ligne n'est pas encore accordée : aucune dépense possible avant sa validation."
+          );
+        }
+        // Séparation des tâches aussi au niveau de la ligne (validation ligne par ligne).
+        if (isSameEmail(ligne.decideParEmail, caps.email)) {
+          throw new BudgetDepenseError("Vous avez accordé cette ligne : ses dépenses doivent être enregistrées par une autre personne.");
+        }
 
         // Verrou sur la ligne : deux dépenses simultanées ne peuvent pas dépasser le plafond ensemble.
         await tx.$queryRaw`SELECT id FROM "DemandeBudgetLigne" WHERE id = ${ligne.id} FOR UPDATE`;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget, budgetMensuelExistant, cloturerBudgetsMensuelsEchus } from "@/lib/budgetSuivi";
+import { logBudget, budgetMensuelExistant, cloturerBudgetsMensuelsEchus, montantAccordeLigne } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
@@ -78,12 +78,14 @@ export async function GET(request: NextRequest) {
       demandes.map(({ depenses, depassements, ...d }) => ({
         ...d,
         // Plafond effectif = prévu + dépassements approuvés ; consommé = dépenses non annulées.
+        // Plafond effectif = Σ montants accordés + dépassements approuvés (0 tant que rien n'est accordé).
         montantPlafond:
-          Number(d.montantTotal) +
+          d.lignes.reduce((s, l) => s + montantAccordeLigne(l), 0) +
           depassements.filter((x) => x.statut === StatutDepassement.APPROUVE).reduce((s, x) => s + Number(x.montant), 0),
         montantConsomme: depenses.reduce((s, dep) => s + Number(dep.montant), 0),
         nbDepensesSansJustificatif: depenses.filter((dep) => dep._count.attachments === 0).length,
         nbDepassementsEnAttente: depassements.filter((x) => x.statut === StatutDepassement.EN_ATTENTE).length,
+        nbLignesACorriger: d.lignes.filter((l) => l.statutValidation === "A_CORRIGER").length,
       }))
     );
   } catch (error) {

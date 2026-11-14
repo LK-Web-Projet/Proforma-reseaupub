@@ -22,6 +22,37 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-14 (suite 3) — Budgets : validation ligne par ligne, correction ou retrait par le demandeur
+
+**Demande / Contexte**
+L'admin veut valider un budget **ligne par ligne** ; le bouton « Valider » existant devient « tout valider d'un coup ». Une ligne non validée n'est pas refusée définitivement : le demandeur la **corrige** selon le commentaire laissé (elle repart en validation) ou la **retire** du budget, pour que le budget puisse passer entièrement validé. Décisions confirmées : montant ajustable **à la baisse** par le valideur ; une ligne accordée est **dépensable immédiatement** (validation partielle).
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261114200000_budget_validation_par_ligne` (écrite à la main faute d'accès à Supabase au moment de la génération, puis vérifiée : `migrate diff` base ↔ schéma = migration vide) : enum `StatutLigneBudget` (EN_ATTENTE, ACCORDEE, A_CORRIGER, RETIREE) ; `DemandeBudgetLigne.statutValidation / montantAccorde / decideParEmail / decideAt / motifDecision` (`montant` = montant **demandé**) ; statut budget `VALIDATION_PARTIELLE` ; actions d'historique `LIGNE_ACCORDEE / LIGNE_A_CORRIGER / LIGNE_CORRIGEE / LIGNE_RETIREE`. Reprise : les lignes des budgets déjà validés sont ACCORDEE (vérifié : 4 lignes VALIDEE → ACCORDEE, 4 autres EN_ATTENTE) — aucun changement pour l'existant.
+- `lib/budgetSuivi.ts` : `montantAccordeLigne` (ACCORDEE → accordé ou demandé ; sinon 0) remplace `ligne.montant` partout où il sert de plafond (`getLigneDisponible`, `getBudgetTotaux`, `recalculerStatutBudget`) ; `majStatutApresDecision` (toutes retirées → REJETEE ; plus rien à décider → VALIDEE puis EN_COURS / PAYEE si déjà dépensé ; ≥ 1 accordée → VALIDATION_PARTIELLE ; sinon SOUMISE ; recalcule `montantTotal` demandé hors lignes retirées) ; `retirerLignesNonAccordees` (clôture).
+- Nouvelles routes : `POST /api/demandes-budget/[id]/lignes/[ligneId]/decider` (valideur, même matrice `refusValidation` : ACCORDER au demandé ou à un montant réduit avec motif, jamais plus ; CORRIGER avec motif, qui ouvre aussi le fil de commentaires de la ligne et prévient le demandeur) et `PATCH /api/demandes-budget/[id]/lignes/[ligneId]` (demandeur ou comptable, ligne A_CORRIGER : MODIFIER → EN_ATTENTE + notification aux valideurs ; RETIRER → RETIREE ; réponse facultative ajoutée au fil).
+- Routes modifiées : `valider` = « tout valider » (accorde les lignes EN_ATTENTE, garde les décisions déjà prises, refusé tant qu'une ligne est à corriger) ; `rejeter` aussi en validation partielle si aucune dépense ; `depenses` (validation partielle acceptée, ligne ACCORDEE uniquement, interdite à celui qui a accordé la ligne) ; `depassements` (ligne ACCORDEE uniquement) ; `cloturer` + clôture automatique (validation partielle incluse, lignes non accordées retirées) ; `documents` ; liste (plafond = accordé, compteur « lignes à corriger ») ; rapport « Suivi budgétaire » (lignes accordées seulement, colonne Demandé en plus) ; reconduction (reprend le montant accordé, ignore les lignes retirées).
+- E-mails : tableau des lignes avec statut / montant accordé / motif ; nouvelles notifications « ligne à corriger » (demandeur) et « ligne corrigée » (valideurs compétents).
+- Interface : fiche budget — colonnes Demandé / Accordé, pastille par ligne (En attente, Accordée, Accordée partiellement, À corriger, Retirée), boutons **Accorder / Ajuster / Demander une correction** pour le valideur, **Modifier la ligne / Retirer du budget** pour le demandeur, bandeau « N ligne(s) à corriger », avancement dans la carte de validation (« Tout valider » grisé tant qu'une ligne est en correction), synthèse « Accordé … sur … demandés » ; badge « Validation partielle » ; filtre de statut dans la liste. Composants `components/budget/BudgetLigneDecisionDialog.tsx` et `BudgetLigneCorrectionDialog.tsx`.
+
+**Erreurs rencontrées & solutions**
+- Supabase injoignable pendant `migrate diff` → SQL écrit à la main au format Prisma, appliqué dès le retour de la connexion, puis contrôle d'écart nul.
+- `prisma generate` : EPERM (moteur verrouillé par `next dev` lancé pour les tests) — types bien générés ; redémarrer `next dev` pour charger le nouveau moteur.
+- Le fichier de test en base avait été ré-encodé par PowerShell (`Get-Content`/`Set-Content` : accents abîmés, BOM, CRLF) → réécrit proprement ; à l'avenir, ne pas modifier ces fichiers via PowerShell.
+- `next build` non lancé (serveur de dev actif sur `.next`) ; `tsc` + `lint` OK.
+
+**Tests**
+- Sans base : 89/89 (dont validation ligne par ligne : montant accordé, SOUMISE → VALIDATION_PARTIELLE → VALIDEE, correction avec recalcul du total demandé, retrait, tout retiré → REJETEE).
+- En base, transaction annulée : 37/37 (dont lignes EN_ATTENTE par défaut, verrou de toutes les lignes, plafond de 7 000 sur une ligne ajustée, retrait → VALIDEE avec total recalculé, clôture qui retire les lignes non accordées) — `ROLLBACK` vérifié.
+
+**À tester / points d'attention**
+- Redémarrer `next dev` (nouveau moteur Prisma).
+- Scénario manuel : budget de 3 lignes → accorder la 1re (statut « Validation partielle », Dépense possible dessus) ; ajuster la 2e (10 000 → 7 000, motif) ; demander une correction sur la 3e → le demandeur reçoit l'e-mail, voit le bandeau, modifie la ligne → elle revient « En attente » → l'accorder → budget « Validé ». Variante : le demandeur retire la ligne → budget « Validé » sans elle.
+- « Tout valider » sur un budget dont une ligne est à corriger → refusé avec message ; « Rejeter » refusé si des dépenses ont déjà été faites en validation partielle.
+- Le valideur d'une ligne ne peut pas en enregistrer les dépenses (séparation des tâches, maintenant aussi au niveau de la ligne).
+
+---
+
 ## 2026-11-14 (suite 2) — Budgets : tests, audit et corrections de sécurité (envois de fichiers, verrou de caisse)
 
 **Demande / Contexte**

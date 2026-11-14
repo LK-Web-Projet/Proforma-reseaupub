@@ -1,43 +1,61 @@
-import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement } from "@prisma/client";
+import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, StatutLigneBudget } from "@prisma/client";
 
 type Db = Prisma.TransactionClient;
 
 // Tolérance d'arrondi sur les comparaisons de montants (Decimal 2 décimales).
 export const BUDGET_EPSILON = 0.005;
 
+type LigneMontants = {
+  montant: Prisma.Decimal | number;
+  montantAccorde: Prisma.Decimal | number | null;
+  statutValidation: StatutLigneBudget | string;
+};
+
+/**
+ * Montant ACCORDÉ d'une ligne — base de tout plafond de dépense. Une ligne en attente, à
+ * corriger ou retirée n'a aucun plafond (0) ; une ligne accordée vaut le montant accordé par le
+ * valideur, ou le montant demandé s'il l'a accordée telle quelle. Le champ `montant` reste le
+ * montant DEMANDÉ (validation ligne par ligne, voir app/api/demandes-budget/[id]/lignes/).
+ */
+export function montantAccordeLigne(l: LigneMontants): number {
+  if (l.statutValidation !== StatutLigneBudget.ACCORDEE) return 0;
+  return Number(l.montantAccorde ?? l.montant);
+}
+
 /**
  * Plafond, consommé et reste d'une ligne de budget — toujours recalculés, jamais stockés :
- * - plafond  = montant prévu + Σ dépassements APPROUVÉS ;
+ * - plafond  = montant accordé + Σ dépassements APPROUVÉS ;
  * - consommé = Σ dépenses NON annulées.
  */
-export async function getLigneDisponible(db: Db, ligne: { id: string; montant: Prisma.Decimal | number }) {
+export async function getLigneDisponible(db: Db, ligne: LigneMontants & { id: string }) {
   const [consomme, depassements] = await Promise.all([
     db.budgetDepense.aggregate({ where: { ligneId: ligne.id, annuleeAt: null }, _sum: { montant: true } }),
     db.budgetDepassement.aggregate({ where: { ligneId: ligne.id, statut: StatutDepassement.APPROUVE }, _sum: { montant: true } }),
   ]);
-  const plafond = Number(ligne.montant) + Number(depassements._sum.montant ?? 0);
+  const plafond = montantAccordeLigne(ligne) + Number(depassements._sum.montant ?? 0);
   const consommeNum = Number(consomme._sum.montant ?? 0);
   return { plafond, consomme: consommeNum, reste: plafond - consommeNum };
 }
 
-/** Totaux d'un budget entier : plafond (prévu + dépassements approuvés) et consommé actif. */
+/** Totaux d'un budget entier : plafond (Σ accordé + dépassements approuvés) et consommé actif. */
 export async function getBudgetTotaux(db: Db, demandeBudgetId: string) {
-  const [demande, consomme, depassements] = await Promise.all([
-    db.demandeBudget.findUnique({ where: { id: demandeBudgetId }, select: { montantTotal: true } }),
+  const [lignes, consomme, depassements] = await Promise.all([
+    db.demandeBudgetLigne.findMany({ where: { demandeBudgetId }, select: { montant: true, montantAccorde: true, statutValidation: true } }),
     db.budgetDepense.aggregate({ where: { demandeBudgetId, annuleeAt: null }, _sum: { montant: true } }),
     db.budgetDepassement.aggregate({ where: { demandeBudgetId, statut: StatutDepassement.APPROUVE }, _sum: { montant: true } }),
   ]);
   return {
-    plafond: Number(demande?.montantTotal ?? 0) + Number(depassements._sum.montant ?? 0),
+    plafond: lignes.reduce((s, l) => s + montantAccordeLigne(l), 0) + Number(depassements._sum.montant ?? 0),
     consomme: Number(consomme._sum.montant ?? 0),
   };
 }
 
 /**
  * Recalcule le statut d'un budget ouvert après une dépense, une annulation ou un dépassement :
- * PAYEE si toutes les lignes sont soldées, EN_COURS s'il reste au moins une dépense active,
- * sinon VALIDEE. Un budget clôturé manuellement (clotureeAt) n'est jamais rouvert, et les
- * statuts hors circuit de dépense (SOUMISE, REJETEE) ne sont pas touchés.
+ * PAYEE si toutes les lignes ACCORDÉES sont soldées, EN_COURS s'il reste au moins une dépense
+ * active, sinon VALIDEE. Un budget clôturé (clotureeAt) n'est jamais rouvert ; les statuts hors
+ * circuit de dépense (SOUMISE, REJETEE) et VALIDATION_PARTIELLE (géré par majStatutApresDecision
+ * tant que des lignes restent à décider) ne sont pas touchés.
  */
 export async function recalculerStatutBudget(db: Db, demandeBudgetId: string, opts: { datePaiement?: Date; nomReceveur?: string } = {}) {
   const demande = await db.demandeBudget.findUnique({ where: { id: demandeBudgetId }, include: { lignes: true } });
@@ -58,11 +76,13 @@ export async function recalculerStatutBudget(db: Db, demandeBudgetId: string, op
     return StatutDemandeBudget.VALIDEE;
   }
 
-  const toutSolde = demande.lignes.every((l) => {
-    const plafond = Number(l.montant) + Number(depassements.find((d) => d.ligneId === l.id)?._sum.montant ?? 0);
-    const consomme = Number(consommes.find((c) => c.ligneId === l.id)?._sum.montant ?? 0);
-    return consomme >= plafond - BUDGET_EPSILON;
-  });
+  const toutSolde = demande.lignes
+    .filter((l) => l.statutValidation === StatutLigneBudget.ACCORDEE)
+    .every((l) => {
+      const plafond = montantAccordeLigne(l) + Number(depassements.find((d) => d.ligneId === l.id)?._sum.montant ?? 0);
+      const consomme = Number(consommes.find((c) => c.ligneId === l.id)?._sum.montant ?? 0);
+      return consomme >= plafond - BUDGET_EPSILON;
+    });
   const statut = toutSolde ? StatutDemandeBudget.PAYEE : StatutDemandeBudget.EN_COURS;
   if (statut !== demande.statut || (toutSolde && opts.datePaiement)) {
     await db.demandeBudget.update({
@@ -73,6 +93,93 @@ export async function recalculerStatutBudget(db: Db, demandeBudgetId: string, op
     });
   }
   return statut;
+}
+
+export type ResultatDecision = { statut: StatutDemandeBudget; devenuValide: boolean; devenuRejete: boolean };
+
+/**
+ * Met à jour le statut d'un budget après une décision sur une ligne (accorder, demander une
+ * correction), une correction ou un retrait par le demandeur, ou un « tout valider » :
+ * - toutes les lignes retirées → REJETEE ;
+ * - plus aucune ligne EN_ATTENTE ni A_CORRIGER → VALIDEE (puis EN_COURS / PAYEE si des dépenses
+ *   ont déjà été faites pendant la validation partielle) ;
+ * - au moins une ligne accordée et d'autres en cours → VALIDATION_PARTIELLE ;
+ * - aucune accordée → reste SOUMISE.
+ * Recalcule aussi montantTotal (demandé) = Σ montants demandés des lignes non retirées.
+ */
+export async function majStatutApresDecision(
+  db: Db,
+  demandeBudgetId: string,
+  auteur: { email: string; name?: string | null }
+): Promise<ResultatDecision | null> {
+  const demande = await db.demandeBudget.findUnique({ where: { id: demandeBudgetId }, include: { lignes: true } });
+  if (!demande) return null;
+  const enDecision: StatutDemandeBudget[] = [StatutDemandeBudget.SOUMISE, StatutDemandeBudget.VALIDATION_PARTIELLE];
+  if (!enDecision.includes(demande.statut)) return { statut: demande.statut, devenuValide: false, devenuRejete: false };
+
+  const actives = demande.lignes.filter((l) => l.statutValidation !== StatutLigneBudget.RETIREE);
+  const montantTotal = actives.reduce((s, l) => s + Number(l.montant), 0);
+
+  if (actives.length === 0) {
+    await db.demandeBudget.update({
+      where: { id: demandeBudgetId },
+      data: {
+        statut: StatutDemandeBudget.REJETEE,
+        rejectionReason: "Toutes les lignes ont été retirées du budget.",
+        validatedByEmail: auteur.email,
+        validatedAt: new Date(),
+      },
+    });
+    await logBudget(db, { demandeBudgetId, action: ActionBudget.REJET, auteurEmail: auteur.email, auteurNom: auteur.name, details: "Toutes les lignes ont été retirées du budget." });
+    return { statut: StatutDemandeBudget.REJETEE, devenuValide: false, devenuRejete: true };
+  }
+
+  const resteADecider = actives.some(
+    (l) => l.statutValidation === StatutLigneBudget.EN_ATTENTE || l.statutValidation === StatutLigneBudget.A_CORRIGER
+  );
+  const auMoinsUneAccordee = actives.some((l) => l.statutValidation === StatutLigneBudget.ACCORDEE);
+
+  if (!resteADecider) {
+    await db.demandeBudget.update({
+      where: { id: demandeBudgetId },
+      data: { statut: StatutDemandeBudget.VALIDEE, montantTotal, validatedByEmail: auteur.email, validatedAt: new Date() },
+    });
+    const totaux = await getBudgetTotaux(db, demandeBudgetId);
+    await logBudget(db, {
+      demandeBudgetId,
+      action: ActionBudget.VALIDATION,
+      auteurEmail: auteur.email,
+      auteurNom: auteur.name,
+      montant: totaux.plafond,
+      details: `Toutes les lignes sont décidées — accordé ${totaux.plafond.toLocaleString("fr-FR")} FCFA sur ${montantTotal.toLocaleString("fr-FR")} FCFA demandés`,
+    });
+    const statut = (await recalculerStatutBudget(db, demandeBudgetId)) ?? StatutDemandeBudget.VALIDEE;
+    return { statut, devenuValide: true, devenuRejete: false };
+  }
+
+  const statut = auMoinsUneAccordee ? StatutDemandeBudget.VALIDATION_PARTIELLE : StatutDemandeBudget.SOUMISE;
+  if (statut !== demande.statut || Number(demande.montantTotal) !== montantTotal) {
+    await db.demandeBudget.update({ where: { id: demandeBudgetId }, data: { statut, montantTotal } });
+  }
+  return { statut, devenuValide: false, devenuRejete: false };
+}
+
+/**
+ * À la clôture d'un budget en validation partielle, les lignes encore en attente ou à corriger
+ * sont retirées (avec trace) : seules les lignes accordées restent dans le budget clôturé.
+ */
+export async function retirerLignesNonAccordees(db: Db, demandeBudgetId: string, auteurEmail: string) {
+  const lignes = await db.demandeBudgetLigne.findMany({
+    where: { demandeBudgetId, statutValidation: { in: [StatutLigneBudget.EN_ATTENTE, StatutLigneBudget.A_CORRIGER] } },
+  });
+  for (const l of lignes) {
+    await db.demandeBudgetLigne.update({
+      where: { id: l.id },
+      data: { statutValidation: StatutLigneBudget.RETIREE, decideParEmail: auteurEmail, decideAt: new Date(), motifDecision: "Budget clôturé" },
+    });
+    await logBudget(db, { demandeBudgetId, action: ActionBudget.LIGNE_RETIREE, auteurEmail, montant: Number(l.montant), details: `${l.designation} — retirée : budget clôturé` });
+  }
+  return lignes.length;
 }
 
 /**
@@ -142,7 +249,7 @@ export async function cloturerBudgetsMensuelsEchus(db: Db, now = new Date()): Pr
     where: {
       type: "MENSUEL",
       periodeMois: { lt: limite },
-      statut: { in: [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS] },
+      statut: { in: [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS, StatutDemandeBudget.VALIDATION_PARTIELLE] },
       clotureeAt: null,
     },
     select: { id: true, numero: true },
@@ -152,7 +259,7 @@ export async function cloturerBudgetsMensuelsEchus(db: Db, now = new Date()): Pr
   for (const b of echus) {
     // updateMany conditionnel : si deux appels se croisent, un seul clôture et journalise.
     const res = await db.demandeBudget.updateMany({
-      where: { id: b.id, clotureeAt: null, statut: { in: [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS] } },
+      where: { id: b.id, clotureeAt: null, statut: { in: [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS, StatutDemandeBudget.VALIDATION_PARTIELLE] } },
       data: { statut: StatutDemandeBudget.PAYEE, clotureeAt: now, clotureeParEmail: "clôture automatique" },
     });
     if (res.count === 0) continue;
@@ -166,6 +273,7 @@ export async function cloturerBudgetsMensuelsEchus(db: Db, now = new Date()): Pr
       details: `Consommé ${consomme.toLocaleString("fr-FR")} / ${plafond.toLocaleString("fr-FR")} FCFA — reste figé : ${Math.max(plafond - consomme, 0).toLocaleString("fr-FR")} FCFA`,
     });
     await refuserDepassementsEnAttente(db, b.id, "système");
+    await retirerLignesNonAccordees(db, b.id, "système");
     clotures.push(b.numero);
   }
   return clotures;

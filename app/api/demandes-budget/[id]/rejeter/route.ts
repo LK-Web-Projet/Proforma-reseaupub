@@ -30,8 +30,16 @@ export async function POST(
     if (!existing) {
       return NextResponse.json({ error: "Demande introuvable." }, { status: 404 });
     }
-    if (existing.statut !== "SOUMISE") {
-      return NextResponse.json({ error: "Seule une demande soumise peut être rejetée." }, { status: 400 });
+    if (existing.statut !== "SOUMISE" && existing.statut !== "VALIDATION_PARTIELLE") {
+      return NextResponse.json({ error: "Seule une demande soumise ou en validation partielle peut être rejetée." }, { status: 400 });
+    }
+    // En validation partielle, des lignes accordées ont pu être dépensées : on ne rejette plus tout.
+    const depensesActives = await prisma.budgetDepense.count({ where: { demandeBudgetId: id, annuleeAt: null } });
+    if (depensesActives > 0) {
+      return NextResponse.json(
+        { error: "Des dépenses ont déjà été enregistrées sur les lignes accordées : le budget ne peut plus être rejeté. Clôturez-le plutôt." },
+        { status: 400 }
+      );
     }
 
     // Même matrice que la validation : qui peut valider peut rejeter.

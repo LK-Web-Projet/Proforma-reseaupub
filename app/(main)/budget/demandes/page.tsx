@@ -32,6 +32,7 @@ interface DemandeBudget {
   montantPlafond: number;
   nbDepensesSansJustificatif: number;
   nbDepassementsEnAttente: number;
+  nbLignesACorriger: number;
   createdAt: string;
   proformas: { invoice: { client: { nom: string } } }[];
 }
@@ -41,6 +42,7 @@ const formatMontant = (value: number) =>
 
 const STATUT_OPTIONS: { value: DemandeBudgetStatus; label: string }[] = [
   { value: 'SOUMISE', label: 'Soumise' },
+  { value: 'VALIDATION_PARTIELLE', label: 'Validation partielle' },
   { value: 'VALIDEE', label: 'Validée' },
   { value: 'EN_COURS', label: 'En cours' },
   { value: 'REJETEE', label: 'Rejetée' },
@@ -326,7 +328,7 @@ export default function DemandesBudgetListPage() {
                   <TableCell className="whitespace-nowrap">{format(new Date(demande.createdAt), 'dd/MM/yyyy')}</TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(demande.montantTotal))}</TableCell>
                   <TableCell>
-                    {['VALIDEE', 'EN_COURS', 'PAYEE'].includes(demande.statut) ? (
+                    {['VALIDATION_PARTIELLE', 'VALIDEE', 'EN_COURS', 'PAYEE'].includes(demande.statut) ? (
                       <div className="space-y-1">
                         <BudgetProgressBar consomme={demande.montantConsomme} prevu={demande.montantPlafond} />
                         {demande.nbDepensesSansJustificatif > 0 && (
@@ -344,7 +346,12 @@ export default function DemandesBudgetListPage() {
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell><DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} /></TableCell>
+                  <TableCell>
+                    <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} />
+                    {demande.nbLignesACorriger > 0 && (
+                      <p className="text-[11px] text-amber-700 mt-1">{demande.nbLignesACorriger} ligne(s) à corriger</p>
+                    )}
+                  </TableCell>
                   <TableCell className="text-center">
                     <Button variant="outline" size="icon" onClick={() => router.push(`/budget/demandes/${demande.id}`)}>
                       <Eye className="h-4 w-4" />

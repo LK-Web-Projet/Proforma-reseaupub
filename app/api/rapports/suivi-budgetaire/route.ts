@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma, StatutDemandeBudget, StatutDepassement, TypeBudget } from "@prisma/client";
+import { Prisma, StatutDemandeBudget, StatutDepassement, StatutLigneBudget, TypeBudget } from "@prisma/client";
+import { montantAccordeLigne } from "@/lib/budgetSuivi";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { toPeriodeMois } from "@/lib/budgetSchema";
@@ -13,7 +14,8 @@ export interface SuiviBudgetaireLigne {
   departement: string;
   designation: string;
   categorie: string | null;
-  prevu: number; // montant prévu initial
+  demande: number; // montant demandé
+  prevu: number; // montant accordé (= prévu du budget)
   depassements: number; // dépassements approuvés
   plafond: number; // prévu + dépassements
   realise: number; // dépenses non annulées (ou montant total pour l'ancien circuit)
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     const periode = { gte: debut, lt: fin };
     const where: Prisma.DemandeBudgetWhereInput = {
-      statut: { in: [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS, StatutDemandeBudget.PAYEE] },
+      statut: { in: [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.VALIDATION_PARTIELLE, StatutDemandeBudget.EN_COURS, StatutDemandeBudget.PAYEE] },
       // Mois de rattachement : periodeMois (mensuel), sinon date de validation, sinon de création.
       OR: [
         { periodeMois: periode },
@@ -78,8 +80,10 @@ export async function GET(request: NextRequest) {
       const mois = moisCle(d.periodeMois ?? d.validatedAt ?? d.createdAt);
       const ancienCircuit = d.statut === StatutDemandeBudget.PAYEE && d.depenses.length === 0 && !d.clotureeAt;
       for (const l of d.lignes) {
+        // Seules les lignes accordées font partie du budget (en attente, à corriger ou retirées : hors rapport).
+        if (l.statutValidation !== StatutLigneBudget.ACCORDEE) continue;
         if (categorie && (categorie === "__aucune__" ? l.categorie !== null : l.categorie !== categorie)) continue;
-        const prevu = Number(l.montant);
+        const prevu = montantAccordeLigne(l);
         const depassements = d.depassements.filter((x) => x.ligneId === l.id).reduce((s, x) => s + Number(x.montant), 0);
         const realise = ancienCircuit
           ? prevu
@@ -93,6 +97,7 @@ export async function GET(request: NextRequest) {
           departement: d.departement || "Sans service",
           designation: l.designation,
           categorie: l.categorie,
+          demande: Number(l.montant),
           prevu,
           depassements,
           plafond: prevu + depassements,

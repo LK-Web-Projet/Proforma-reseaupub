@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ActionBudget, StatutDemandeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { getBudgetTotaux, logBudget, refuserDepassementsEnAttente } from "@/lib/budgetSuivi";
+import { getBudgetTotaux, logBudget, refuserDepassementsEnAttente, retirerLignesNonAccordees } from "@/lib/budgetSuivi";
 import { requireBudgetUser } from "@/lib/budgetAuth";
 
 // POST /api/demandes-budget/[id]/cloturer — clôt un budget partiellement consommé (ex. fin de
@@ -24,7 +24,11 @@ export async function POST(
     if (!existing) {
       return NextResponse.json({ error: "Demande introuvable." }, { status: 404 });
     }
-    if (existing.statut !== StatutDemandeBudget.VALIDEE && existing.statut !== StatutDemandeBudget.EN_COURS) {
+    if (
+      existing.statut !== StatutDemandeBudget.VALIDEE &&
+      existing.statut !== StatutDemandeBudget.EN_COURS &&
+      existing.statut !== StatutDemandeBudget.VALIDATION_PARTIELLE
+    ) {
       return NextResponse.json({ error: "Seul un budget validé ou en cours peut être clôturé." }, { status: 400 });
     }
 
@@ -43,6 +47,7 @@ export async function POST(
         details: `Consommé ${consomme.toLocaleString("fr-FR")} / ${plafond.toLocaleString("fr-FR")} FCFA — reste figé : ${Math.max(plafond - consomme, 0).toLocaleString("fr-FR")} FCFA`,
       });
       await refuserDepassementsEnAttente(tx, id, caps.email);
+      await retirerLignesNonAccordees(tx, id, caps.email);
       return updated;
     });
 

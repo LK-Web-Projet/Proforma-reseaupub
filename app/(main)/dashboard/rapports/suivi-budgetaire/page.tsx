@@ -34,6 +34,7 @@ interface Ligne {
   departement: string;
   designation: string;
   categorie: string | null;
+  demande: number;
   prevu: number;
   depassements: number;
   plafond: number;
@@ -227,7 +228,8 @@ export default function SuiviBudgetairePage() {
           Service: l.departement,
           Ligne: l.designation,
           Catégorie: categorieLabel(l.categorie),
-          'Prévu (FCFA)': l.prevu,
+          'Demandé (FCFA)': l.demande,
+          'Accordé (FCFA)': l.prevu,
           'Dépassements (FCFA)': l.depassements,
           'Réalisé (FCFA)': l.realise,
           'Écart (FCFA)': l.plafond - l.realise,
@@ -407,6 +409,7 @@ export default function SuiviBudgetairePage() {
                       <TableCell className="text-right whitespace-nowrap">
                         {formatCurrency(l.plafond)}
                         {l.depassements > 0 && <p className="text-[11px] text-orange-700">dont + {formatCurrency(l.depassements)}</p>}
+                        {l.demande > l.prevu && <p className="text-[11px] text-muted-foreground">demandé {formatCurrency(l.demande)}</p>}
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         {formatCurrency(l.realise)}

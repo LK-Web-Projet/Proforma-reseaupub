@@ -1,6 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { sendEmail, escapeHtml } from "./sendEmail";
 import { getBudgetRecipients, requiresValidationAdmin } from "@/lib/budgetAuth";
+import { getEntrepriseConfig } from "@/lib/entreprise";
+
+const plafondDelegue = async () => Number((await getEntrepriseConfig()).plafondValidationDeleguee);
 
 export type DemandeBudgetForEmail = Prisma.DemandeBudgetGetPayload<{
   include: { lignes: true };
@@ -10,13 +13,31 @@ function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "https://proforma.reseaupub.com";
 }
 
+const nf = (n: unknown) => new Intl.NumberFormat("fr-FR").format(Number(n));
+
+/** Statut de validation d'une ligne, tel qu'affiché dans les e-mails (validation ligne par ligne). */
+function libelleLigne(l: DemandeBudgetForEmail["lignes"][number]): string {
+  switch (l.statutValidation) {
+    case "ACCORDEE":
+      return l.montantAccorde !== null && Number(l.montantAccorde) < Number(l.montant)
+        ? `<span style="color:#c2410c;">accordé ${nf(l.montantAccorde)} XOF</span>${l.motifDecision ? ` — ${escapeHtml(l.motifDecision)}` : ""}`
+        : '<span style="color:#15803d;">accordée</span>';
+    case "A_CORRIGER":
+      return `<span style="color:#c2410c;">à corriger</span>${l.motifDecision ? ` — ${escapeHtml(l.motifDecision)}` : ""}`;
+    case "RETIREE":
+      return '<span style="color:#64748b;">retirée</span>';
+    default:
+      return "";
+  }
+}
+
 function buildLignesRows(lignes: DemandeBudgetForEmail["lignes"]) {
   return lignes
     .map(
       (l, idx) => `
         <tr style="background:${idx % 2 === 0 ? "#ffffff" : "#f8fafc"};">
-          <td style="padding:10px 14px;border-bottom:1px solid #eef0f3;color:#1f2937;font-size:13px;">${escapeHtml(l.designation)}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #eef0f3;color:#1f2937;font-size:13px;text-align:right;">${new Intl.NumberFormat("fr-FR").format(Number(l.montant))} XOF</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eef0f3;color:#1f2937;font-size:13px;${l.statutValidation === "RETIREE" ? "text-decoration:line-through;color:#94a3b8;" : ""}">${escapeHtml(l.designation)}${libelleLigne(l) ? `<br/><span style="font-size:11px;">${libelleLigne(l)}</span>` : ""}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eef0f3;color:#1f2937;font-size:13px;text-align:right;">${nf(l.montant)} XOF</td>
         </tr>`
     )
     .join("");
@@ -205,6 +226,39 @@ export async function sendDepenseAnnuleeNotification(
       intro: `<strong>${escapeHtml(opts.auteur)}</strong> a annulé une dépense de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} ». Une contre-écriture a été passée au journal de caisse.`,
       demande,
       footer: `Motif : ${escapeHtml(opts.motif)}`,
+    }),
+  });
+}
+
+/** Validation ligne par ligne : une ligne est renvoyée au demandeur pour correction. */
+export async function sendLigneACorrigerNotification(
+  demande: DemandeBudgetForEmail,
+  opts: { designation: string; motif: string; auteur: string }
+) {
+  await sendEmail({
+    to: demande.requesterEmail,
+    subject: `Budget ${demande.numero} : une ligne est à corriger`,
+    html: buildBaseHtml({
+      title: "✏️ Ligne à corriger",
+      intro: `<strong>${escapeHtml(opts.auteur)}</strong> demande une correction sur la ligne « ${escapeHtml(opts.designation)} » :<br/><em>${escapeHtml(opts.motif)}</em><br/>Depuis la fiche du budget, modifiez la ligne (elle repartira en validation) ou retirez-la du budget. Les lignes déjà accordées restent utilisables.`,
+      demande,
+    }),
+  });
+}
+
+/** Validation ligne par ligne : une ligne corrigée par le demandeur repart en validation. */
+export async function sendLigneCorrigeeNotification(demande: DemandeBudgetForEmail, opts: { designation: string; auteur: string }) {
+  const recipients = await getBudgetRecipients(
+    requiresValidationAdmin(demande, await plafondDelegue()) ? "canValidateBudgetMensuel" : "canValidateBudget"
+  );
+  if (recipients.length === 0) return;
+  await sendEmail({
+    to: recipients,
+    subject: `Budget ${demande.numero} : ligne corrigée, à valider`,
+    html: buildBaseHtml({
+      title: "🔁 Ligne corrigée",
+      intro: `<strong>${escapeHtml(opts.auteur)}</strong> a corrigé la ligne « ${escapeHtml(opts.designation)} ». Elle attend de nouveau votre validation.`,
+      demande,
     }),
   });
 }

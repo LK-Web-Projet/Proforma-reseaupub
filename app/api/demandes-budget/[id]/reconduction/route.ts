@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { StatutDepassement } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { montantAccordeLigne } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAuth";
 
 /**
@@ -55,14 +56,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       bonCommandeId: null,
       // Les proformas d'une campagne sont propres à cette campagne : non reprises.
       proformaIds: source.type === "MENSUEL" || source.type === "CAMPAGNE" ? [] : source.proformas.map((p) => p.invoiceId),
-      lignes: source.lignes.map((l) => {
+      // Lignes retirées non reprises ; proposition = montant ACCORDÉ (ou demandé si la ligne n'a pas été décidée).
+      lignes: source.lignes.filter((l) => l.statutValidation !== "RETIREE").map((l) => {
+        const accorde = l.statutValidation === "ACCORDEE" ? montantAccordeLigne(l) : Number(l.montant);
         const realise = source.depenses.filter((d) => d.ligneId === l.id).reduce((s, d) => s + Number(d.montant), 0);
         const depassement = source.depassements.filter((d) => d.ligneId === l.id).reduce((s, d) => s + Number(d.montant), 0);
         return {
           designation: l.designation,
-          montant: Number(l.montant),
+          montant: accorde,
           categorie: l.categorie,
-          precedent: { prevu: Number(l.montant), plafond: Number(l.montant) + depassement, realise },
+          precedent: { prevu: accorde, plafond: accorde + depassement, realise },
         };
       }),
     });

@@ -62,7 +62,7 @@ export async function POST(
     if (!isAutorise) {
       return NextResponse.json({ error: "Vous n'êtes pas autorisé à modifier cette demande." }, { status: 403 });
     }
-    if (demande.statut !== "VALIDEE" && demande.statut !== "EN_COURS") {
+    if (demande.statut !== "VALIDEE" && demande.statut !== "EN_COURS" && demande.statut !== "VALIDATION_PARTIELLE") {
       return NextResponse.json({ error: "Des documents ne peuvent être ajoutés que sur une demande validée ou en cours." }, { status: 400 });
     }
 

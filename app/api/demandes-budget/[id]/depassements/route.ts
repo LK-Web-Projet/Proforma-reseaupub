@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ActionBudget, StatutDemandeBudget, StatutDepassement } from "@prisma/client";
+import { ActionBudget, StatutDemandeBudget, StatutDepassement, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { logBudget } from "@/lib/budgetSuivi";
@@ -48,6 +48,7 @@ export async function POST(
     // Budget ouvert, ou entièrement consommé mais pas clôturé (c'est justement le cas d'usage).
     const ouvert =
       demande.statut === StatutDemandeBudget.VALIDEE ||
+      demande.statut === StatutDemandeBudget.VALIDATION_PARTIELLE ||
       demande.statut === StatutDemandeBudget.EN_COURS ||
       (demande.statut === StatutDemandeBudget.PAYEE && !demande.clotureeAt && demande._count.depenses > 0);
     if (!ouvert) {
@@ -57,6 +58,9 @@ export async function POST(
     const ligne = demande.lignes.find((l) => l.id === ligneId);
     if (!ligne) {
       return NextResponse.json({ error: "Cette ligne n'appartient pas à ce budget." }, { status: 400 });
+    }
+    if (ligne.statutValidation !== StatutLigneBudget.ACCORDEE) {
+      return NextResponse.json({ error: "Un dépassement ne peut être demandé que sur une ligne accordée." }, { status: 400 });
     }
 
     const enAttente = await prisma.budgetDepassement.count({ where: { ligneId, statut: StatutDepassement.EN_ATTENTE } });

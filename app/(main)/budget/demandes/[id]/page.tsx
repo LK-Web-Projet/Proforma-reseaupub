@@ -38,9 +38,11 @@ import { BudgetDepassementDialog, BudgetDepassementDialogLigne } from '@/compone
 import { BudgetDepassementsCard, BudgetDepassement } from '@/components/budget/BudgetDepassementsCard';
 import { BudgetAnnulationDialog, BudgetAnnulationCible } from '@/components/budget/BudgetAnnulationDialog';
 import { BudgetHistoriqueCard, BudgetHistoriqueEntry } from '@/components/budget/BudgetHistoriqueCard';
+import { BudgetLigneDecisionDialog, BudgetLigneDecisionCible } from '@/components/budget/BudgetLigneDecisionDialog';
+import { BudgetLigneCorrectionDialog, BudgetLigneCorrectionCible } from '@/components/budget/BudgetLigneCorrectionDialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface BudgetDepense {
   id: string;
@@ -97,7 +99,16 @@ interface DemandeBudgetDetail {
   validatedAt: string | null;
   rejectionReason: string | null;
   createdAt: string;
-  lignes: { id: string; designation: string; montant: number; categorie: string | null }[];
+  lignes: {
+    id: string;
+    designation: string;
+    montant: number; // demandé
+    categorie: string | null;
+    statutValidation: 'EN_ATTENTE' | 'ACCORDEE' | 'A_CORRIGER' | 'RETIREE';
+    montantAccorde: number | null;
+    decideParEmail: string | null;
+    motifDecision: string | null;
+  }[];
   attachments: { id: string; kind: string; url: string; fileName: string; depenseId: string | null }[];
   bonCommande: { id: string; numero: string; fournisseur: { entreprise: string } } | null;
   proformas: { invoice: { id: string; numero: string; objet: string; client: { nom: string } } }[];
@@ -132,6 +143,8 @@ export default function DemandeBudgetDetailPage() {
   const [justificatifDepenseId, setJustificatifDepenseId] = useState<string | null>(null);
   const [depassementLigne, setDepassementLigne] = useState<BudgetDepassementDialogLigne | null>(null);
   const [annulationCible, setAnnulationCible] = useState<BudgetAnnulationCible | null>(null);
+  const [decisionLigne, setDecisionLigne] = useState<BudgetLigneDecisionCible | null>(null);
+  const [correctionLigne, setCorrectionLigne] = useState<BudgetLigneCorrectionCible | null>(null);
   const [isClotureOpen, setIsClotureOpen] = useState(false);
   const [isAddDocsOpen, setIsAddDocsOpen] = useState(false);
   const [isRejetInfoOpen, setIsRejetInfoOpen] = useState(false);
@@ -180,7 +193,29 @@ export default function DemandeBudgetDetailPage() {
         const err = await res.json();
         throw new Error(typeof err.error === 'string' ? err.error : 'Erreur lors de la validation.');
       }
-      toast.success('Demande validée !');
+      toast.success('Toutes les lignes en attente sont accordées.');
+      await fetchDemande();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erreur.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Validation ligne par ligne : accorder une ligne au montant demandé (sans dialogue).
+  const handleAccorderLigne = async (ligneId: string) => {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/demandes-budget/${id}/lignes/${ligneId}/decider`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'ACCORDER' }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === 'string' ? err.error : 'Erreur lors de la décision.');
+      }
+      toast.success('Ligne accordée.');
       await fetchDemande();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erreur.');
@@ -234,7 +269,8 @@ export default function DemandeBudgetDetailPage() {
   };
 
   // Suivi par ligne, même calcul que lib/budgetSuivi.ts (jamais stocké) :
-  // plafond = prévu + dépassements approuvés ; consommé = dépenses non annulées.
+  // plafond = montant accordé + dépassements approuvés ; consommé = dépenses non annulées.
+  // Une ligne en attente, à corriger ou retirée n'a pas de plafond (0).
   const suiviLignes = useMemo(() => {
     if (!demande) return [];
     return demande.lignes.map((l) => {
@@ -245,11 +281,14 @@ export default function DemandeBudgetDetailPage() {
       const depassementApprouve = depassementsLigne
         .filter((d) => d.statut === 'APPROUVE')
         .reduce((s, d) => s + Number(d.montant), 0);
-      const prevu = Number(l.montant);
+      const demandeLigne = Number(l.montant);
+      const prevu = l.statutValidation === 'ACCORDEE' ? Number(l.montantAccorde ?? l.montant) : 0;
       const plafond = prevu + depassementApprouve;
       return {
         ...l,
+        demandeLigne,
         prevu,
+        accordeeReduite: l.statutValidation === 'ACCORDEE' && l.montantAccorde !== null && Number(l.montantAccorde) < demandeLigne,
         depassementApprouve,
         plafond,
         consomme,
@@ -289,7 +328,8 @@ export default function DemandeBudgetDetailPage() {
 
   const clients = Array.from(new Set(demande.proformas.map((p) => p.invoice.client.nom)));
   const estDemandeur = sameEmail(role.email, demande.requesterEmail);
-  const budgetOuvert = demande.statut === 'VALIDEE' || demande.statut === 'EN_COURS';
+  const enValidation = demande.statut === 'SOUMISE' || demande.statut === 'VALIDATION_PARTIELLE';
+  const budgetOuvert = demande.statut === 'VALIDEE' || demande.statut === 'EN_COURS' || demande.statut === 'VALIDATION_PARTIELLE';
   const peutAjouterDocuments = budgetOuvert && (role.isImplique || estDemandeur);
 
   // Même matrice que lib/budgetAuth.ts (refusValidation) — le serveur reste juge en dernier ressort.
@@ -303,11 +343,21 @@ export default function DemandeBudgetDetailPage() {
         ? "l'administrateur (montant au-dessus du plafond délégué)"
         : "l'Assistant-Direction ou l'administrateur";
 
+  // Validation ligne par ligne : qui décide (matrice ci-dessus) et qui corrige (demandeur ou comptable).
+  const peutDeciderLignes = enValidation && peutValider;
+  const peutCorrigerLignes = enValidation && (estDemandeur || role.canPay);
+  const lignesActives = demande.lignes.filter((l) => l.statutValidation !== 'RETIREE');
+  const nbLignesEnAttente = lignesActives.filter((l) => l.statutValidation === 'EN_ATTENTE').length;
+  const nbLignesACorriger = lignesActives.filter((l) => l.statutValidation === 'A_CORRIGER').length;
+  const nbLignesAccordees = lignesActives.filter((l) => l.statutValidation === 'ACCORDEE').length;
+
   const peutOuvrirCommentaire = role.canValidateMensuel || role.canPay;
   const peutRepondreCommentaire = role.isImplique || estDemandeur;
 
   const totalConsomme = suiviLignes.reduce((s, l) => s + l.consomme, 0);
   const totalPlafond = suiviLignes.reduce((s, l) => s + l.plafond, 0);
+  const totalAccorde = suiviLignes.reduce((s, l) => s + l.prevu, 0);
+  const totalDepassements = suiviLignes.reduce((s, l) => s + l.depassementApprouve, 0);
   const nbSansJustificatif = demande.depenses.filter((d) => !d.annuleeAt && d.attachments.length === 0).length;
 
   // Séparation des tâches : qui a validé le budget n'en enregistre pas les dépenses.
@@ -398,17 +448,44 @@ export default function DemandeBudgetDetailPage() {
         </Card>
       )}
 
-      {demande.statut === 'SOUMISE' && role.isImplique && (
+      {peutCorrigerLignes && nbLignesACorriger > 0 && (
+        <Card className="border-t-4 border-t-amber-500 shadow-sm">
+          <CardContent className="pt-6 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800">{nbLignesACorriger} ligne(s) à corriger</p>
+              <p className="text-muted-foreground">
+                Le valideur a laissé un commentaire sur chacune. Modifiez-la (elle repartira en validation) ou retirez-la du budget.
+                {nbLignesAccordees > 0 ? ' Les lignes déjà accordées sont utilisables dès maintenant.' : ''}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {enValidation && role.isImplique && (
         <Card className="border-t-4 border-t-green-500 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Validation requise</CardTitle>
-            <p className="text-xs text-muted-foreground">À valider par {valideurAttendu}.</p>
+            <p className="text-xs text-muted-foreground">
+              À valider par {valideurAttendu}. Décidez ligne par ligne dans le tableau ci-dessous, ou accordez tout d&apos;un coup.
+            </p>
+            <p className="text-xs font-medium mt-1">
+              {nbLignesAccordees} / {lignesActives.length} ligne(s) accordée(s)
+              {nbLignesEnAttente > 0 ? ` · ${nbLignesEnAttente} en attente` : ''}
+              {nbLignesACorriger > 0 ? ` · ${nbLignesACorriger} en correction chez le demandeur` : ''}
+            </p>
           </CardHeader>
           <CardContent>
             {peutValider ? (
               <div className="flex gap-3">
-                <Button onClick={handleValider} disabled={isSubmitting} className="gap-2 bg-green-600 hover:bg-green-700">
-                  <CheckCircle2 className="h-4 w-4" /> Valider
+                <Button
+                  onClick={handleValider}
+                  disabled={isSubmitting || nbLignesEnAttente === 0 || nbLignesACorriger > 0}
+                  title={nbLignesACorriger > 0 ? 'Des lignes attendent une correction du demandeur' : undefined}
+                  className="gap-2 bg-green-600 hover:bg-green-700"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Tout valider
                 </Button>
                 <Button variant="outline" onClick={() => setIsRejectOpen(true)} disabled={isSubmitting} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
                   <XCircle className="h-4 w-4" /> Rejeter
@@ -425,16 +502,17 @@ export default function DemandeBudgetDetailPage() {
         </Card>
       )}
 
-      {['VALIDEE', 'EN_COURS', 'PAYEE'].includes(demande.statut) && (
+      {['VALIDEE', 'VALIDATION_PARTIELLE', 'EN_COURS', 'PAYEE'].includes(demande.statut) && (
         <Card className="border-t-4 border-t-indigo-500 shadow-sm">
           <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
             <div>
-              <p className="text-xs text-muted-foreground uppercase">Prévu</p>
-              <p className="text-lg font-bold">{formatMontant(Number(demande.montantTotal))}</p>
-              {totalPlafond > Number(demande.montantTotal) && (
-                <p className="text-xs text-orange-700">
-                  + {formatMontant(totalPlafond - Number(demande.montantTotal))} de dépassements approuvés
-                </p>
+              <p className="text-xs text-muted-foreground uppercase">Accordé</p>
+              <p className="text-lg font-bold">{formatMontant(totalAccorde)}</p>
+              {totalAccorde < Number(demande.montantTotal) && (
+                <p className="text-xs text-muted-foreground">sur {formatMontant(Number(demande.montantTotal))} demandés</p>
+              )}
+              {totalDepassements > 0 && (
+                <p className="text-xs text-orange-700">+ {formatMontant(totalDepassements)} de dépassements approuvés</p>
               )}
             </div>
             <div>
@@ -527,19 +605,34 @@ export default function DemandeBudgetDetailPage() {
             <TableHeader>
               <TableRow className="bg-gray-50">
                 <TableHead className="pl-6">Désignation</TableHead>
-                <TableHead className="text-right">Prévu</TableHead>
+                <TableHead className="text-right">Demandé</TableHead>
+                <TableHead className="text-right">Accordé</TableHead>
                 <TableHead className="text-right">Consommé</TableHead>
                 <TableHead className="text-right">Reste</TableHead>
                 <TableHead className="min-w-[140px]">Suivi</TableHead>
-                {(peutEnregistrerDepense || peutDemanderDepassement) && <TableHead className="text-right pr-6">Action</TableHead>}
+                {(peutEnregistrerDepense || peutDemanderDepassement || peutDeciderLignes || peutCorrigerLignes) && <TableHead className="text-right pr-6">Action</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {suiviLignes.map((l) => (
-                <TableRow key={l.id} className="align-top">
+                <TableRow key={l.id} className={cn('align-top', l.statutValidation === 'RETIREE' && 'opacity-60')}>
                   <TableCell className="pl-6">
-                    <div className="flex items-center gap-1.5">
-                      <span>{l.designation}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={cn(l.statutValidation === 'RETIREE' && 'line-through')}>{l.designation}</span>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'h-5 px-1.5 text-[10px] font-medium',
+                          l.statutValidation === 'ACCORDEE' && (l.accordeeReduite ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'),
+                          l.statutValidation === 'EN_ATTENTE' && 'bg-slate-50 text-slate-600 border-slate-200',
+                          l.statutValidation === 'A_CORRIGER' && 'bg-amber-50 text-amber-800 border-amber-300',
+                          l.statutValidation === 'RETIREE' && 'bg-gray-50 text-gray-500 border-gray-200'
+                        )}
+                      >
+                        {l.statutValidation === 'ACCORDEE'
+                          ? l.accordeeReduite ? 'Accordée partiellement' : 'Accordée'
+                          : l.statutValidation === 'EN_ATTENTE' ? 'En attente' : l.statutValidation === 'A_CORRIGER' ? 'À corriger' : 'Retirée'}
+                      </Badge>
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground">
                         {categorieLabel(l.categorie)}
                       </Badge>
@@ -549,6 +642,12 @@ export default function DemandeBudgetDetailPage() {
                         </Badge>
                       )}
                     </div>
+                    {l.motifDecision && (l.statutValidation === 'A_CORRIGER' || l.accordeeReduite) && (
+                      <p className={cn('text-xs mt-1', l.statutValidation === 'A_CORRIGER' ? 'text-amber-800' : 'text-orange-700')}>
+                        {l.statutValidation === 'A_CORRIGER' ? 'Correction demandée : ' : 'Réduction : '}
+                        {l.motifDecision}
+                      </p>
+                    )}
                     <BudgetLigneCommentaires
                       demandeId={id}
                       ligneId={l.id}
@@ -558,8 +657,9 @@ export default function DemandeBudgetDetailPage() {
                       onAdded={fetchDemande}
                     />
                   </TableCell>
+                  <TableCell className="text-right whitespace-nowrap text-muted-foreground">{formatMontant(l.demandeLigne)}</TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">
-                    {formatMontant(l.prevu)}
+                    {l.statutValidation === 'ACCORDEE' ? formatMontant(l.prevu) : <span className="text-muted-foreground">—</span>}
                     {l.depassementApprouve > 0 && (
                       <p className="text-xs font-normal text-orange-700">+ {formatMontant(l.depassementApprouve)}</p>
                     )}
@@ -572,22 +672,49 @@ export default function DemandeBudgetDetailPage() {
                     <BudgetProgressBar consomme={l.consomme} prevu={l.plafond} compact />
                     {l.depassementEnAttente && <p className="text-[10px] text-orange-700 mt-1">Dépassement en attente</p>}
                   </TableCell>
-                  {(peutEnregistrerDepense || peutDemanderDepassement) && (
+                  {(peutEnregistrerDepense || peutDemanderDepassement || peutDeciderLignes || peutCorrigerLignes) && (
                     <TableCell className="text-right pr-6">
                       <div className="flex flex-col items-end gap-1">
-                        {peutEnregistrerDepense && (
+                        {peutDeciderLignes && l.statutValidation === 'EN_ATTENTE' && (
+                          <>
+                            <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" disabled={isSubmitting} onClick={() => handleAccorderLigne(l.id)}>
+                              <Check className="h-3.5 w-3.5" /> Accorder
+                            </Button>
+                            <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs" onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'AJUSTER' })}>
+                              <Scale className="h-3 w-3" /> Ajuster
+                            </Button>
+                            <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs text-amber-700" onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'CORRIGER' })}>
+                              <Pencil className="h-3 w-3" /> Demander une correction
+                            </Button>
+                          </>
+                        )}
+                        {peutCorrigerLignes && l.statutValidation === 'A_CORRIGER' && (
+                          <>
+                            <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'MODIFIER' })}>
+                              <Pencil className="h-3.5 w-3.5" /> Modifier la ligne
+                            </Button>
+                            <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs text-red-600" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'RETIRER' })}>
+                              <Trash2 className="h-3 w-3" /> Retirer du budget
+                            </Button>
+                          </>
+                        )}
+                        {peutEnregistrerDepense && l.statutValidation === 'ACCORDEE' && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="gap-1"
-                            disabled={l.reste <= 0}
-                            title={l.reste <= 0 ? 'Budget de la ligne atteint — demandez un dépassement' : undefined}
+                            disabled={l.reste <= 0 || sameEmail(role.email, l.decideParEmail)}
+                            title={
+                              sameEmail(role.email, l.decideParEmail)
+                                ? 'Vous avez accordé cette ligne : une autre personne doit en enregistrer les dépenses'
+                                : l.reste <= 0 ? 'Budget de la ligne atteint — demandez un dépassement' : undefined
+                            }
                             onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste })}
                           >
                             <Wallet className="h-3.5 w-3.5" /> Dépense
                           </Button>
                         )}
-                        {peutDemanderDepassement && (
+                        {peutDemanderDepassement && l.statutValidation === 'ACCORDEE' && (
                           <Button
                             size="sm"
                             variant={l.reste <= 0 ? 'default' : 'ghost'}
@@ -829,6 +956,10 @@ export default function DemandeBudgetDetailPage() {
         onClose={() => setAnnulationCible(null)}
         onSuccess={fetchDemande}
       />
+
+      <BudgetLigneDecisionDialog demandeId={id} ligne={decisionLigne} onClose={() => setDecisionLigne(null)} onSuccess={fetchDemande} />
+
+      <BudgetLigneCorrectionDialog demandeId={id} ligne={correctionLigne} onClose={() => setCorrectionLigne(null)} onSuccess={fetchDemande} />
 
       <BudgetHistoriqueCard historique={demande.historique} />
 
