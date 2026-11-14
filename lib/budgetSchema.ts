@@ -1,9 +1,23 @@
 import { z } from "zod";
-import { ModePaiementDemande, TypeBudget } from "@prisma/client";
+import { CategorieDepense, ModePaiementDemande, TypeBudget } from "@prisma/client";
+import { JOURS_GRACE_CLOTURE_MENSUELLE } from "@/lib/budgetSuivi";
+
+/**
+ * Un budget mensuel ne peut viser qu'un mois en cours ou futur — ou le mois précédent pendant
+ * le délai de grâce de clôture (sinon il serait clôturé automatiquement dès sa validation).
+ */
+export function moisMensuelAccepte(periode: Date, now = new Date()): boolean {
+  const debutMoisCourant = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  const debutMoisPrecedent = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1);
+  const debutPeriode = Date.UTC(periode.getUTCFullYear(), periode.getUTCMonth(), 1);
+  if (debutPeriode >= debutMoisCourant) return true;
+  return debutPeriode === debutMoisPrecedent && now.getUTCDate() <= JOURS_GRACE_CLOTURE_MENSUELLE;
+}
 
 const ligneSchema = z.object({
   designation: z.string().min(1),
   montant: z.number().min(0),
+  categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie pour chaque ligne." }),
 });
 
 /**
@@ -30,6 +44,10 @@ export const demandeBudgetSchema = z
   .superRefine((d, ctx) => {
     if (d.type === TypeBudget.MENSUEL) {
       if (!d.periodeMois) ctx.addIssue({ code: "custom", path: ["periodeMois"], message: "Le mois du budget mensuel est requis." });
+      const periode = toPeriodeMois(d.periodeMois);
+      if (periode && !moisMensuelAccepte(periode)) {
+        ctx.addIssue({ code: "custom", path: ["periodeMois"], message: "Ce mois est terminé : un budget mensuel ne peut viser que le mois en cours ou un mois à venir." });
+      }
       if (!d.departement) ctx.addIssue({ code: "custom", path: ["departement"], message: "Le service est requis pour un budget mensuel." });
     }
     if (d.type === TypeBudget.CAMPAGNE && d.proformaIds.length === 0) {

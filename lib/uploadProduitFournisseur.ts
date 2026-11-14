@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { ALLOWED_IMAGE_EXTENSIONS, assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 
 export interface SavedPhoto {
   url: string;
@@ -9,6 +10,8 @@ export interface SavedPhoto {
 
 export async function saveProduitFournisseurPhotos(produitId: string, files: File[]): Promise<SavedPhoto[]> {
   if (files.length === 0) return [];
+  // Photos de produit : images uniquement.
+  for (const file of files) assertAllowedUpload(file, ALLOWED_IMAGE_EXTENSIONS);
 
   const uploadDir = path.join(process.cwd(), "public", "Upload", "ProduitFournisseur", produitId);
   await mkdir(uploadDir, { recursive: true });
@@ -16,7 +19,7 @@ export async function saveProduitFournisseurPhotos(produitId: string, files: Fil
   const saved: SavedPhoto[] = [];
   for (const file of files) {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const filename = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
+    const filename = `${Date.now()}-${safeUploadFileName(file.name)}`;
     await writeFile(path.join(uploadDir, filename), buffer);
     saved.push({
       url: `/Upload/ProduitFournisseur/${produitId}/${filename}`,

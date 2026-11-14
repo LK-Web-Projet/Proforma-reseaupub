@@ -421,6 +421,7 @@ enum StatutCommandeFournisseur {
 enum StatutDemandeBudget {
   SOUMISE
   VALIDEE
+  VALIDATION_PARTIELLE // au moins une ligne accordée (dépensable), d'autres en attente ou à corriger
   EN_COURS // au moins une dépense enregistrée, budget pas encore soldé
   REJETEE
   PAYEE // budget entièrement consommé ou clôturé
@@ -447,6 +448,34 @@ enum ActionBudget {
   DEPASSEMENT_REJETE
   CLOTURE
   PAIEMENT_ANCIEN_CIRCUIT // demandes payées avant le suivi par dépenses
+  LIGNE_ACCORDEE
+  LIGNE_A_CORRIGER
+  LIGNE_CORRIGEE
+  LIGNE_RETIREE
+}
+
+enum CategorieDepense {
+  CARBURANT
+  TRANSPORT
+  LOYER_CHARGES // loyer, électricité, eau
+  COMMUNICATION // téléphone, internet
+  FOURNITURES
+  EQUIPEMENT
+  MAINTENANCE
+  IMPRESSION // supports, bâches, affichage
+  PRESTATION // sous-traitance, prestataires
+  PERSONNEL // primes, per diem, frais de mission
+  RESTAURATION
+  AUTRE
+}
+
+// Validation ligne par ligne d'un budget soumis. Une ligne non validée n'est pas refusée
+// définitivement : elle revient au demandeur (A_CORRIGER), qui la modifie (→ EN_ATTENTE) ou la retire.
+enum StatutLigneBudget {
+  EN_ATTENTE
+  ACCORDEE
+  A_CORRIGER
+  RETIREE
 }
 
 enum TypeBudget {
@@ -520,7 +549,17 @@ model DemandeBudgetLigne {
   id              String        @id @default(uuid())
   demandeBudgetId String
   designation     String
-  montant         Decimal       @db.Decimal(12, 2) // montant prévu
+  montant         Decimal       @db.Decimal(12, 2) // montant demandé
+  statutValidation StatutLigneBudget @default(EN_ATTENTE)
+  // Montant accordé par le valideur (≤ demandé) ; null = montant demandé. Seules les lignes
+  // ACCORDEE ont un plafond de dépense (voir montantAccordeLigne, lib/budgetSuivi.ts).
+  montantAccorde  Decimal?      @db.Decimal(12, 2)
+  decideParEmail  String?
+  decideAt        DateTime?
+  motifDecision   String? // motif d'ajustement ou de correction demandée
+  // Catégorie normalisée, pour comparer les budgets d'un mois à l'autre (null = non catégorisé,
+  // lignes antérieures au Lot 3). Libellés dans lib/budgetTypes.ts.
+  categorie       CategorieDepense?
   demandeBudget   DemandeBudget @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   depenses        BudgetDepense[]
   commentaires    BudgetCommentaire[]

@@ -153,7 +153,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
               </div>
               <div className="space-y-2">
                 <Label htmlFor="dep-date">Date *</Label>
-                <Input id="dep-date" type="date" value={dateDepense} onChange={(e) => setDateDepense(e.target.value)} required />
+                <Input id="dep-date" type="date" value={dateDepense} max={new Date().toISOString().split('T')[0]} onChange={(e) => setDateDepense(e.target.value)} required />
               </div>
               <div className="space-y-2">
                 <Label>Caisse *</Label>

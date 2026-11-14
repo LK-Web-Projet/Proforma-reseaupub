@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 import { writeFile } from "fs/promises";
+import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +21,12 @@ export async function POST(
         { error: "Paiement ID and files are required." },
         { status: 400 },
       );
+    }
+
+    try {
+      files.forEach((f) => assertAllowedUpload(f));
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Fichier refusé." }, { status: 400 });
     }
 
     const paiement = await prisma.paiement.findUnique({
@@ -48,7 +55,8 @@ export async function POST(
     for (const file of files) {
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      const path = join(uploadDir, file.name);
+      const safeName = safeUploadFileName(file.name);
+      const path = join(uploadDir, safeName);
       await writeFile(path, buffer);
 
       const fileUrl = join(
@@ -56,7 +64,7 @@ export async function POST(
         "Upload",
         "CashJournal",
         String(paiement.cashJournalEntryId),
-        file.name,
+        safeName,
       ).replace(/\\/g, "/");
 
       await prisma.cashJournalAttachment.create({

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget } from "@/lib/budgetSuivi";
+import { logBudget, budgetMensuelExistant } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
-import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
+import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
 
 // POST /api/demandes-budget/[id]/resoumettre - Modifier une demande rejetée et la resoumettre
@@ -37,6 +37,21 @@ export async function POST(
       return NextResponse.json({ error: firstZodMessage(validation.error) }, { status: 400 });
     }
     const data = validation.data;
+    assertTypedAttachmentsAllowed(formData);
+
+    // Un seul budget mensuel par service et par mois (hors demandes rejetées).
+    if (data.type === TypeBudget.MENSUEL && data.departement) {
+      const periode = toPeriodeMois(data.periodeMois);
+      const doublon = periode
+        ? await budgetMensuelExistant(prisma, { departement: data.departement, periodeMois: periode, excludeId: id })
+        : null;
+      if (doublon) {
+        return NextResponse.json(
+          { error: `Un budget mensuel existe déjà pour ce service et ce mois (${doublon}). Complétez-le plutôt que d'en créer un second.` },
+          { status: 409 }
+        );
+      }
+    }
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
 
     // Une demande rejetée n'a jamais eu de dépense ni de dépassement (ils n'existent qu'à partir
@@ -101,6 +116,9 @@ export async function POST(
 
     return NextResponse.json(demande);
   } catch (error) {
+    if (error instanceof UploadRejectedError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error(`Erreur lors de la re-soumission de la demande ${id}:`, error);
     const fsMessage = describeFsError(error);
     const message = fsMessage || (error instanceof Error ? error.message : "Erreur interne du serveur");

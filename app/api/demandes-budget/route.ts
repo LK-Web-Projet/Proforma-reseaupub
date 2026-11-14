@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget } from "@/lib/budgetSuivi";
+import { logBudget, budgetMensuelExistant, cloturerBudgetsMensuelsEchus } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
-import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
+import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
 
 // GET /api/demandes-budget - Liste des demandes de budget
@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
   if (caps instanceof NextResponse) return caps;
 
   try {
+    // Clôture automatique des budgets mensuels échus (idempotente, voir lib/budgetSuivi.ts).
+    await cloturerBudgetsMensuelsEchus(prisma).catch((err) => console.error("Clôture automatique des budgets mensuels:", err));
+
     const { searchParams } = new URL(request.url);
     const statut = searchParams.get("statut");
     const type = searchParams.get("type");
@@ -101,14 +104,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: firstZodMessage(validation.error) }, { status: 400 });
     }
     const data = validation.data;
+    assertTypedAttachmentsAllowed(formData);
+
+    // Un seul budget mensuel par service et par mois (hors demandes rejetées).
+    if (data.type === TypeBudget.MENSUEL && data.departement) {
+      const periode = toPeriodeMois(data.periodeMois);
+      const doublon = periode
+        ? await budgetMensuelExistant(prisma, { departement: data.departement, periodeMois: periode })
+        : null;
+      if (doublon) {
+        return NextResponse.json(
+          { error: `Un budget mensuel existe déjà pour ce service et ce mois (${doublon}). Complétez-le plutôt que d'en créer un second.` },
+          { status: 409 }
+        );
+      }
+    }
 
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
 
+    // Numéro = plus grand numéro de l'année + 1 (et non un simple comptage, qui donnait des
+    // doublons) ; nouvel essai si deux soumissions simultanées obtiennent le même numéro.
     const year = new Date().getFullYear();
-    const count = await prisma.demandeBudget.count();
-    const numero = `DB-${year}-${String(count + 1).padStart(4, "0")}`;
+    const prochainNumero = async () => {
+      const existants = await prisma.demandeBudget.findMany({ where: { numero: { startsWith: `DB-${year}-` } }, select: { numero: true } });
+      const max = existants.reduce((m, d) => Math.max(m, parseInt(d.numero.split("-")[2] ?? "0", 10) || 0), 0);
+      return `DB-${year}-${String(max + 1).padStart(4, "0")}`;
+    };
 
-    const demande = await prisma.demandeBudget.create({
+    let demande: Prisma.DemandeBudgetGetPayload<{ include: { lignes: true } }> | null = null;
+    for (let essai = 0; essai < 3 && !demande; essai++) {
+      const numero = await prochainNumero();
+      try {
+    demande = await prisma.demandeBudget.create({
       data: {
         numero,
         type: data.type,
@@ -128,6 +155,12 @@ export async function POST(request: NextRequest) {
       },
       include: { lignes: true },
     });
+      } catch (e) {
+        const doublonNumero = e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+        if (!doublonNumero || essai === 2) throw e;
+      }
+    }
+    if (!demande) throw new Error("Impossible d'attribuer un numéro à la demande.");
 
     const attachmentRows = await saveTypedDemandeBudgetAttachments(demande.id, formData);
     if (attachmentRows.length > 0) {
@@ -149,6 +182,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(demande, { status: 201 });
   } catch (error) {
+    if (error instanceof UploadRejectedError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error("Erreur lors de la création de la demande de budget:", error);
     const fsMessage = describeFsError(error);
     const message = fsMessage || (error instanceof Error ? error.message : "Erreur interne du serveur");

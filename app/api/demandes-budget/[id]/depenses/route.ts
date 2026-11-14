@@ -4,8 +4,8 @@ import { ActionBudget, ModePaiementDemande, Prisma, StatutDemandeBudget } from "
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
-import { saveDemandeBudgetFiles, describeFsError } from "@/lib/uploadDemandeBudget";
-import { BUDGET_EPSILON, getLigneDisponible, logBudget, recalculerStatutBudget, seuilsFranchis } from "@/lib/budgetSuivi";
+import { saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
+import { BUDGET_EPSILON, cloturerBudgetsMensuelsEchus, getLigneDisponible, logBudget, recalculerStatutBudget, seuilsFranchis } from "@/lib/budgetSuivi";
 import { sendAlerteConsommationNotification } from "@/lib/email/demandeBudget";
 
 /** Erreur métier → réponse 400 avec le message tel quel. */
@@ -49,6 +49,9 @@ export async function POST(
   const { id } = await params;
 
   try {
+    // Un budget mensuel échu est clôturé avant toute nouvelle dépense (refusée ensuite).
+    await cloturerBudgetsMensuelsEchus(prisma);
+
     const formData = await request.formData();
     const preuves = (formData.getAll("preuves") as File[]).filter((f) => f && f.size > 0);
 
@@ -98,6 +101,17 @@ export async function POST(
         if (isSameEmail(demande.validatedByEmail, caps.email)) {
           throw new BudgetDepenseError(
             "Vous avez validé ce budget : ses dépenses doivent être enregistrées par une autre personne (séparation des tâches)."
+          );
+        }
+        // Pas d'écriture de caisse antidatée avant la validation, ni datée dans le futur
+        // (marge d'un jour pour les écarts de fuseau horaire).
+        const UN_JOUR = 24 * 3600 * 1000;
+        if (dateDepense.getTime() > Date.now() + UN_JOUR) {
+          throw new BudgetDepenseError("La date de la dépense ne peut pas être dans le futur.");
+        }
+        if (demande.validatedAt && dateDepense.getTime() < demande.validatedAt.getTime() - UN_JOUR) {
+          throw new BudgetDepenseError(
+            `La date de la dépense est antérieure à la validation du budget (${demande.validatedAt.toLocaleDateString("fr-FR")}).`
           );
         }
 
@@ -198,7 +212,7 @@ export async function POST(
 
     return NextResponse.json(depense, { status: 201 });
   } catch (error) {
-    if (error instanceof BudgetDepenseError) {
+    if (error instanceof BudgetDepenseError || error instanceof UploadRejectedError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     // "Solde insuffisant…" levé par recordCashDepense : erreur métier, pas une panne serveur.

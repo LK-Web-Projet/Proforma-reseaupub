@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
+import { getBudgetCapabilities } from '@/lib/budgetAuth';
+import { requirePage } from '@/lib/authz';
 
 // GET /api/cash-registers — liste des caisses (id, nom, solde), pour choisir la caisse
 // d'une dépense (ex. enregistrement d'une dépense de budget).
 export async function GET() {
+  // Soldes de toutes les caisses : réservé au comptable (droit budget « Enregistrer les dépenses »)
+  // ou à un rôle ayant la section Finance.
+  const caps = await getBudgetCapabilities();
+  if (!caps?.canPay) {
+    const refus = await requirePage('finance');
+    if (refus) return refus;
+  }
   try {
     const registers = await prisma.cashRegister.findMany({
       select: { id: true, name: true, balance: true },

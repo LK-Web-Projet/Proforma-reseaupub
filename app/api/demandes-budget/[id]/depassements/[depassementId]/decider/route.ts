@@ -51,6 +51,11 @@ export async function POST(
       if (isSameEmail(depassement.demandeParEmail, caps.email)) {
         throw new DecisionError("Vous ne pouvez pas décider d'un dépassement que vous avez demandé.");
       }
+      // Séparation des tâches : un admin qui est lui-même le demandeur du budget ne peut pas
+      // augmenter son propre plafond, même si le dépassement a été demandé par le comptable.
+      if (isSameEmail(depassement.demandeBudget.requesterEmail, caps.email)) {
+        throw new DecisionError("Vous êtes le demandeur de ce budget : un autre administrateur doit décider de ses dépassements.");
+      }
       if (depassement.demandeBudget.clotureeAt) throw new DecisionError("Ce budget est clôturé.");
 
       const updated = await tx.budgetDepassement.update({

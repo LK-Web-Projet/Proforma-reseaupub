@@ -24,7 +24,13 @@ import {
 import { InvoiceMultiCombobox, InvoiceOption } from '@/components/InvoiceMultiCombobox';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { DOCUMENT_UPLOAD_TYPES, DocumentUploadType, ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
-import { TYPE_BUDGET_VALUES, TYPE_BUDGET_META, TypeBudgetValue } from '@/lib/budgetTypes';
+import {
+  TYPE_BUDGET_VALUES,
+  TYPE_BUDGET_META,
+  TypeBudgetValue,
+  CATEGORIE_DEPENSE_VALUES,
+  CATEGORIE_DEPENSE_LABELS,
+} from '@/lib/budgetTypes';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -36,6 +42,9 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 interface Ligne {
   designation: string;
   montant: string;
+  categorie: string;
+  // Reconduction : prévu / plafond / réalisé de la même ligne sur le budget d'origine (lecture seule).
+  precedent?: { prevu: number; plafond: number; realise: number };
 }
 
 interface CommandeFournisseurOption {
@@ -83,7 +92,15 @@ const DEPARTEMENT_OPTIONS = [
   'Autre',
 ];
 
-const emptyLigne: Ligne = { designation: '', montant: '' };
+// Même règle que le serveur (lib/budgetSchema.ts, moisMensuelAccepte) : mois en cours ou à venir,
+// ou le mois précédent pendant les 5 premiers jours (délai de grâce de clôture).
+function moisMensuelMinimum(): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - (now.getDate() <= 5 ? 1 : 0), 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const emptyLigne: Ligne = { designation: '', montant: '', categorie: '' };
 
 const emptyForm = {
   departement: '',
@@ -111,7 +128,12 @@ export interface DemandeBudgetInitialData {
   dateLimiteSouhaitee: string | null;
   bonCommandeId: string | null;
   proformaIds: string[];
-  lignes: { designation: string; montant: number }[];
+  lignes: {
+    designation: string;
+    montant: number;
+    categorie?: string | null;
+    precedent?: { prevu: number; plafond: number; realise: number };
+  }[];
   existingAttachments: ExistingAttachment[];
 }
 
@@ -176,7 +198,14 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       dateLimiteSouhaitee: initialData.dateLimiteSouhaitee ? initialData.dateLimiteSouhaitee.split('T')[0] : '',
       bonCommandeId: initialData.bonCommandeId ?? '',
     });
-    setLignes(initialData.lignes.map((l) => ({ designation: l.designation, montant: String(l.montant) })));
+    setLignes(
+      initialData.lignes.map((l) => ({
+        designation: l.designation,
+        montant: String(l.montant),
+        categorie: l.categorie ?? '',
+        precedent: l.precedent,
+      }))
+    );
     setProformaIds(initialData.proformaIds);
 
     // "Pour le compte de" est reconstruit à partir de la chaîne déjà enregistrée
@@ -208,7 +237,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
   const addLigne = () => setLignes((prev) => [...prev, { ...emptyLigne }]);
   const removeLigne = (index: number) => setLignes((prev) => prev.filter((_, i) => i !== index));
-  const updateLigne = (index: number, field: keyof Ligne, value: string) => {
+  const updateLigne = (index: number, field: 'designation' | 'montant' | 'categorie', value: string) => {
     setLignes((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -246,6 +275,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     const lignesValides = lignes.filter((l) => l.designation.trim() && Number(l.montant) > 0);
     if (lignesValides.length === 0) {
       toast.error('Ajoutez au moins une ligne de dépense avec un montant valide.');
+      return;
+    }
+    if (lignesValides.some((l) => !l.categorie)) {
+      toast.error('Choisissez une catégorie pour chaque ligne.');
       return;
     }
 
@@ -310,7 +343,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       data.append('proformaIds', JSON.stringify(beneficiaireType === 'CAMPAGNE_CLIENT' ? proformaIds : []));
       data.append(
         'lignes',
-        JSON.stringify(lignesValides.map((l) => ({ designation: l.designation, montant: Number(l.montant) })))
+        JSON.stringify(lignesValides.map((l) => ({ designation: l.designation, montant: Number(l.montant), categorie: l.categorie })))
       );
       documents.forEach((doc) => {
         if (doc.file) data.append(`documents_${doc.type}`, doc.file);
@@ -366,6 +399,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
               id="periodeMois"
               type="month"
               className="max-w-[200px]"
+              min={moisMensuelMinimum()}
               value={periodeMois}
               onChange={(e) => setPeriodeMois(e.target.value)}
               required
@@ -451,9 +485,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[65%]">Désignation</TableHead>
-                <TableHead className="w-[25%]">Montant (XOF)</TableHead>
-                <TableHead className="w-[10%]"></TableHead>
+                <TableHead className="w-[42%]">Désignation</TableHead>
+                <TableHead className="w-[28%] min-w-[170px]">Catégorie *</TableHead>
+                <TableHead className="w-[22%] min-w-[130px]">Montant (XOF)</TableHead>
+                <TableHead className="w-[8%]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -467,12 +502,33 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                     />
                   </TableCell>
                   <TableCell>
+                    <Select value={ligne.categorie} onValueChange={(v) => updateLigne(index, 'categorie', v)}>
+                      <SelectTrigger><SelectValue placeholder="Catégorie" /></SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIE_DEPENSE_VALUES.map((c) => (
+                          <SelectItem key={c} value={c}>{CATEGORIE_DEPENSE_LABELS[c]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
                     <Input
                       type="number"
                       step="0.01"
                       value={ligne.montant}
                       onChange={(e) => updateLigne(index, 'montant', e.target.value)}
                     />
+                    {ligne.precedent && (
+                      <p
+                        className={cn(
+                          'text-[11px] mt-1 leading-tight',
+                          ligne.precedent.realise > ligne.precedent.prevu ? 'text-orange-700' : 'text-muted-foreground'
+                        )}
+                        title="Budget d'origine : prévu / dépensé réellement"
+                      >
+                        Précédent : {formatMontant(ligne.precedent.prevu)} prévu, {formatMontant(ligne.precedent.realise)} dépensé
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell>
                     {lignes.length > 1 && (

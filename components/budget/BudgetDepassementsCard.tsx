@@ -44,6 +44,7 @@ export function BudgetDepassementsCard({
   lignesParId,
   peutDecider,
   userEmail,
+  estDemandeurBudget = false,
   onChange,
 }: {
   demandeId: string;
@@ -51,6 +52,8 @@ export function BudgetDepassementsCard({
   lignesParId: Map<string, string>;
   peutDecider: boolean;
   userEmail: string | null;
+  /** Le demandeur du budget ne décide pas de ses dépassements (règle aussi appliquée côté serveur). */
+  estDemandeurBudget?: boolean;
   onChange: () => void;
 }) {
   const [refusId, setRefusId] = useState<string | null>(null);
@@ -92,7 +95,7 @@ export function BudgetDepassementsCard({
       </CardHeader>
       <CardContent className="space-y-3">
         {depassements.map((d) => {
-          const propre = !!userEmail && userEmail.toLowerCase() === d.demandeParEmail.toLowerCase();
+          const propre = estDemandeurBudget || (!!userEmail && userEmail.toLowerCase() === d.demandeParEmail.toLowerCase());
           return (
             <div key={d.id} className="rounded-lg border p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -116,7 +119,7 @@ export function BudgetDepassementsCard({
               )}
               {d.statut === 'EN_ATTENTE' && peutDecider && (
                 propre ? (
-                  <p className="text-xs text-muted-foreground italic">Vous avez demandé ce dépassement : un autre administrateur doit en décider.</p>
+                  <p className="text-xs text-muted-foreground italic">{estDemandeurBudget ? 'Vous êtes le demandeur de ce budget' : 'Vous avez demandé ce dépassement'} : un autre administrateur doit en décider.</p>
                 ) : (
                   <div className="flex gap-2">
                     <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" disabled={isSubmitting} onClick={() => decider(d.id, 'APPROUVE')}>

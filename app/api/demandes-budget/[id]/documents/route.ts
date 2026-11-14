@@ -3,7 +3,7 @@ import { ActionBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logBudget } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAuth";
-import { saveTypedDemandeBudgetAttachments, saveDemandeBudgetFiles, describeFsError } from "@/lib/uploadDemandeBudget";
+import { saveTypedDemandeBudgetAttachments, saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 
 // POST /api/demandes-budget/[id]/documents
 // - Sans `depenseId` : ajoute des documents complémentaires à une demande validée ou en cours
@@ -84,6 +84,9 @@ export async function POST(
 
     return NextResponse.json({ success: true, count: attachmentRows.length });
   } catch (error) {
+    if (error instanceof UploadRejectedError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error(`Erreur lors de l'ajout de documents à la demande ${id}:`, error);
     const fsMessage = describeFsError(error);
     const message = fsMessage || (error instanceof Error ? error.message : "Erreur interne du serveur");

@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
+export { UploadRejectedError } from "@/lib/uploadSecurity";
 import { DOCUMENT_UPLOAD_TYPES, DocumentUploadType } from "@/lib/demandeBudgetAttachmentTypes";
 
 export interface SavedFile {
@@ -18,6 +20,18 @@ const MAX_DEMANDE_BUDGET_FILE_SIZE_BYTES = 10 * 1024 * 1024;
  * `documents_FACTURE`, etc. — voir components/DemandeBudgetForm.tsx) et retourne les lignes
  * prêtes pour `prisma.demandeBudgetAttachment.createMany()`.
  */
+/**
+ * Vérifie les documents typés d'un FormData SANS rien écrire : à appeler avant de créer ou de
+ * modifier la demande en base, pour qu'un fichier refusé n'en laisse jamais une à moitié créée.
+ */
+export function assertTypedAttachmentsAllowed(formData: FormData): void {
+  for (const type of DOCUMENT_UPLOAD_TYPES) {
+    for (const file of formData.getAll(`documents_${type}`) as File[]) {
+      if (file && file.size > 0) assertAllowedUpload(file);
+    }
+  }
+}
+
 export async function saveTypedDemandeBudgetAttachments(demandeBudgetId: string, formData: FormData) {
   const rows: (SavedFile & { demandeBudgetId: string; kind: DocumentUploadType })[] = [];
 
@@ -35,6 +49,7 @@ export async function saveDemandeBudgetFiles(demandeBudgetId: string, files: Fil
   if (files.length === 0) return [];
 
   for (const file of files) {
+    assertAllowedUpload(file);
     if (file.size > MAX_DEMANDE_BUDGET_FILE_SIZE_BYTES) {
       throw new Error(`Le fichier "${file.name}" dépasse la taille maximale autorisée (10 Mo).`);
     }
@@ -46,7 +61,7 @@ export async function saveDemandeBudgetFiles(demandeBudgetId: string, files: Fil
   const saved: SavedFile[] = [];
   for (const file of files) {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const filename = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
+    const filename = `${Date.now()}-${safeUploadFileName(file.name)}`;
     await writeFile(path.join(uploadDir, filename), buffer);
     saved.push({
       url: `/Upload/DemandeBudget/${demandeBudgetId}/${filename}`,

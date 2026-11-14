@@ -1,9 +1,11 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 
 export async function saveFactureFournisseurPieceJointe(file: File): Promise<string> {
+  assertAllowedUpload(file);
   const buffer = Buffer.from(await file.arrayBuffer());
-  const filename = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
+  const filename = `${Date.now()}-${safeUploadFileName(file.name)}`;
   const uploadDir = path.join(
     process.cwd(),
     "public",

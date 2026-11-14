@@ -22,6 +22,102 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-14 (suite 2) — Budgets : tests, audit et corrections de sécurité (envois de fichiers, verrou de caisse)
+
+**Demande / Contexte**
+Tester les Lots 1 à 3 puis auditer le module budget. Aucune base de test locale (ni Docker ni Postgres sur le poste) : seule la base Supabase de production est disponible → tests sans base (base simulée en mémoire) et scénario réel en base **dans une transaction annulée** (accord de l'utilisateur). Corrections retenues par l'utilisateur : points 1 à 8 de l'audit ; le point 9 (demandeur ≠ payeur) n'est pas appliqué.
+
+**Tests**
+- `next build` : OK. Logique sans base : 71/71 (matrice de validation, seuils 80/100 %, règles par type, prévu/consommé/reste, dépassements, annulation, statuts, clôture automatique, unicité, noms de fichiers, mois acceptés). Scénario réel en base, transaction annulée : 27/27 (journal de caisse, solde insuffisant, paiement sur proforma, filtres de liste, dépassement, contre-écriture, marge neutralisée, exclusion au dashboard, clôture automatique, rapport) — `ROLLBACK` vérifié, journal de caisse inchangé. Les scripts de test sont dans le dossier temporaire de la session (non versionnés).
+- Non testé ici : les écrans et les routes protégées par Clerk (pas de navigateur dans la session) → test manuel.
+
+**Modifications apportées (corrections de l'audit)**
+1. **Envois de fichiers** — nouveau `lib/uploadSecurity.ts` (`safeUploadFileName`, `assertAllowedUpload`, liste blanche pdf / images / Word / Excel / OpenDocument / csv / txt ; images seules pour les photos produit et le logo). Faille vérifiée : un nom `../../../x` était écrit hors du dossier d'upload, et un `.html` pouvait être envoyé puis ouvert dans l'aperçu (iframe, même origine). Appliqué à **tous** les envois : `lib/uploadDemandeBudget.ts`, `uploadFournisseurDocument.ts`, `uploadProduitFournisseur.ts`, `uploadFactureFournisseur.ts`, routes `cash-journal/[id]/upload`, `factures/[id]/paiements` (+ `upload-proof`), `factures/[id]/upload`, `entreprise/logo`. Contrôle fait **avant** toute écriture en base là où le fichier était enregistré après (paiement proforma, création / re-soumission de demande via `assertTypedAttachmentsAllowed`, création de produit fournisseur) : un fichier refusé ne laisse jamais un paiement ou une demande à moitié enregistré (sinon risque de double saisie). Refus → 400 avec message.
+2. **Verrou de caisse** — `lockCashRegister` (`SELECT … FOR UPDATE`) dans `lib/cashJournal.ts`, appelé par `recordCashMovement`, `recordCashDepense` (avant la lecture du solde), les transferts entre caisses (deux caisses, par id croissant) et l'encaissement d'une proforma. Deux écritures simultanées sur une même caisse ne peuvent plus partir du même solde.
+3. Un admin **demandeur d'un budget** ne peut plus approuver les dépassements de ce budget (serveur + interface).
+4. Un budget mensuel ne peut viser qu'un mois en cours ou à venir (ou le mois précédent pendant les 5 jours de grâce) — `moisMensuelAccepte` dans `lib/budgetSchema.ts`, `min` sur le sélecteur de mois.
+5. À la clôture (manuelle ou automatique), les dépassements en attente sont refusés automatiquement (« Budget clôturé »), avec trace — `refuserDepassementsEnAttente`.
+6. Date de dépense bornée : pas dans le futur, pas avant la validation du budget (tolérance 1 jour).
+7. `GET /api/cash-registers` réservé au comptable (droit « Enregistrer les dépenses ») ou à la section Finance ; client Prisma partagé au lieu d'un `new PrismaClient()`.
+8. Numérotation `DB-AAAA-NNNN` : plus grand numéro de l'année + 1 (au lieu d'un comptage) et nouvel essai en cas de collision (P2002).
+
+**Erreurs rencontrées & solutions**
+- ⚠️ **Incident local** : la 2e compilation `next build` de la journée a **vidé des paquets de `node_modules`** (`next`, `react`, `react-dom`, `typescript`…). Cause : avec `output: "standalone"` sous Windows + pnpm, `.next/standalone/node_modules` contient des **liens symboliques vers les vrais paquets**, et le nettoyage de `.next` au début d'une compilation les a suivis. Réparé par `pnpm install --frozen-lockfile --force` (rien retéléchargé, magasin pnpm intact), puis `.next/standalone` supprimé avec `cmd /c rmdir /s /q` (supprime les liens sans toucher aux cibles — vérifié sur un dossier de test). Sans effet sur le VPS (Linux).
+- Scripts de modification : `\s` perdu dans un heredoc bash → scripts placés dans des fichiers ; tous les remplacements « tout ou rien » (aucun fichier écrit si un motif manque).
+- `pnpm install` : EPERM tant que le dossier courant de la session était dans le paquet à réinstaller.
+
+**À tester / points d'attention**
+- **En local, ne jamais relancer `next build` sans d'abord supprimer `.next\standalone` avec `cmd /c rmdir /s /q .next\standalone`**, sinon les paquets sont de nouveau vidés.
+- Envoyer un PDF / une photo comme justificatif → accepté ; un `.html` ou `.svg` → refusé avec message clair, sans demande ni paiement créé.
+- Encaissements et dépenses : fonctionnement inchangé ; deux opérations simultanées sur la même caisse passent l'une après l'autre.
+- Fichiers déjà envoyés avant la correction : non modifiés (contrôle à faire manuellement si besoin dans `public/Upload`).
+- Recommandations non appliquées : demandeur ≠ payeur (point 9), plafond ou alerte sur les dépenses sans justificatif (10), accès au rapport sans la page Tableau de bord (11).
+
+---
+
+## 2026-11-14 (suite) — Budgets : reconduction, unicité et clôture des mensuels, catégories, rapport de suivi (Lot 3)
+
+**Demande / Contexte**
+Dernier lot du plan budget : faciliter l'élaboration des budgets (reprendre le mois précédent), empêcher les doublons de budget mensuel, clôturer automatiquement les mensuels en fin de mois, normaliser les catégories de dépense et offrir un rapport « prévu vs réalisé » dans Rapports.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261114100000_budget_categories_depense` (appliquée) : enum `CategorieDepense` (carburant, transport, loyer & charges, téléphone & internet, fournitures, équipement, entretien, impression, prestations, personnel, restauration, autre) et `DemandeBudgetLigne.categorie` (nullable : les lignes existantes restent « Non catégorisé »).
+- `lib/budgetTypes.ts` : libellés des catégories (`CATEGORIE_DEPENSE_LABELS`, `categorieLabel`). `lib/budgetSchema.ts` : catégorie **obligatoire** sur chaque ligne d'une nouvelle demande ou d'une re-soumission.
+- `lib/budgetSuivi.ts` :
+  - `budgetMensuelExistant` : un seul budget mensuel par service et par mois (les demandes rejetées ne comptent pas) → 409 à la création ou à la re-soumission, avec le numéro du budget existant ;
+  - `cloturerBudgetsMensuelsEchus` : clôture des mensuels VALIDEE/EN_COURS dont le mois est fini depuis plus de **5 jours** (`JOURS_GRACE_CLOTURE_MENSUELLE`, laisse le temps de saisir les derniers reçus), journalisée dans l'historique (« Clôture automatique »). Idempotente (`updateMany` conditionnel) ; déclenchée à l'ouverture de la liste des budgets et avant chaque dépense.
+- Nouvelle route `POST /api/integration/budgets/cloture-mensuelle` (clé `INTEGRATION_API_KEY`, déjà exclue de Clerk) : même clôture, à appeler par une tâche planifiée quotidienne si on veut ne pas dépendre de l'ouverture de la liste.
+- Reconduction : `GET /api/demandes-budget/[id]/reconduction` renvoie les données de préremplissage (mêmes lignes et catégories, mois suivant pour un mensuel, proformas non reprises pour une campagne) et, pour chaque ligne, le prévu / plafond / réalisé du budget d'origine. Page `budget/nouvelle-demande?depuis=<id>` (boundary `Suspense` pour `useSearchParams`) ; bouton « Reconduire au mois suivant » (mensuel) / « Dupliquer » (autres types) sur la fiche. La nouvelle demande repasse par le circuit normal de validation.
+- Formulaire : colonne « Catégorie » par ligne ; en reconduction, rappel « Précédent : X prévu, Y dépensé » sous chaque montant (en orange si le dépensé a dépassé le prévu).
+- Rapport « Suivi budgétaire » (`/dashboard/rapports/suivi-budgetaire`, carte dans Rapports à la place de « Frais supplémentaires — bientôt ») : API `GET /api/rapports/suivi-budgetaire` (réservée aux rôles du circuit budget), filtres mois début/fin (6 derniers mois par défaut), type, service, catégorie ; indicateurs prévu / réalisé / écart / taux ; graphique prévu vs réalisé par mois ; tableaux par service et par catégorie ; détail ligne à ligne ; export Excel 4 onglets (par mois, par service, par catégorie, détail).
+
+**Erreurs rencontrées & solutions**
+- `zod` v4 : `nativeEnum(…, { errorMap })` n'existe plus → `{ message }`.
+- Scripts de modification : fichiers en CRLF, les motifs multi-lignes ne correspondaient pas → normalisation `\r\n` ↔ `\n` avant/après remplacement.
+
+**À tester / points d'attention**
+- Créer un 2e budget mensuel pour le même service et le même mois → refus avec le numéro de l'existant.
+- Reconduire un mensuel d'octobre → formulaire prérempli pour novembre, avec le dépensé d'octobre rappelé sous chaque ligne.
+- Un mensuel d'octobre encore ouvert le 6 novembre → clôturé à l'ouverture de la liste, entrée « Clôture automatique » dans son historique ; une dépense sur ce budget est alors refusée.
+- Rapport : vérifier les totaux par service / catégorie et l'export Excel. Les budgets payés avec l'ancien circuit sont comptés avec réalisé = prévu (signalé dans le rapport).
+- Re-soumettre une ancienne demande rejetée impose désormais de choisir une catégorie par ligne.
+- Optionnel : planifier l'appel quotidien de `/api/integration/budgets/cloture-mensuelle` sur le serveur.
+
+---
+
+## 2026-11-14 — Budgets : dépassements, journal d'audit, annulation par contre-écriture, alertes (Lot 2)
+
+**Demande / Contexte**
+Suite du plan budget : quand une ligne est épuisée, pouvoir demander un dépassement approuvé par l'admin ; tracer chaque action (qui, quand, quoi) ; séparer les tâches (qui valide un budget n'en enregistre pas les dépenses) ; annuler une dépense sans jamais la supprimer ; alerter à 80 % et 100 % de consommation d'une ligne. Code écrit le 2026-11-10 et commité sur la branche `feature/budgets` (`99c9572`), migration appliquée et vérifiée le 2026-11-14.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261110150000_budget_depassements_historique_annulation` :
+  - modèles `BudgetDepassement` (ligne, montant, motif, statut EN_ATTENTE/APPROUVE/REJETE, demandeur, décideur) et `BudgetHistorique` (journal d'audit, enum `ActionBudget`) ;
+  - `BudgetDepense` : `annuleeAt`, `annuleeParEmail`, `motifAnnulation`, `contreEcritureId` (2e relation vers `CashJournal`, d'où les relations nommées `BudgetDepenseEcriture` / `BudgetDepenseContreEcriture`) ;
+  - reprise SQL de l'historique des demandes existantes (création, validation, rejet, dépenses, clôture, ancien circuit « payée »).
+- `lib/budgetSuivi.ts` (nouveau) : `getLigneDisponible` (plafond = prévu + dépassements approuvés, consommé = dépenses non annulées — jamais stockés), `getBudgetTotaux`, `recalculerStatutBudget` (VALIDEE / EN_COURS / PAYEE, ne rouvre jamais un budget clôturé ni une demande de l'ancien circuit), `logBudget`, `seuilsFranchis` (80/100 %).
+- API :
+  - `[id]/depenses` : contrôle du reste sur le plafond avec dépassements, refus si l'utilisateur a validé ce budget, écriture au journal d'audit, alertes email 80/100 % hors transaction ;
+  - `[id]/depenses/[depenseId]/annuler` (nouveau, admin) : contre-écriture RECETTE dans la même caisse, Paiement DEPENSE négatif **sans écriture de caisse** sur la proforma (neutralise la marge sans être compté comme CA), dépense marquée annulée, statut recalculé ;
+  - `[id]/depassements` (nouveau, comptable ou demandeur, une seule demande en attente par ligne) et `[id]/depassements/[depassementId]/decider` (nouveau, admin, jamais sur sa propre demande de dépassement) ;
+  - journal d'audit ajouté à création, re-soumission (les commentaires des lignes recréées y sont recopiés pour ne pas être perdus), validation, rejet, clôture, documents, justificatif ;
+  - liste : plafond effectif, consommé hors annulations, compteur et filtre « dépassement en attente ».
+- Reporting : `lib/dashboardReporting.ts` (`BUDGET_ANNULATION_SELECT`, `isEcritureBudgetAnnulee`) appliqué à `app/api/dashboard/route.ts` et au rapport hebdomadaire — une dépense annulée et sa contre-écriture sont exclues des « Dépenses » et des « Autres mouvements ». La courbe du solde réel n'est pas touchée (le couple s'y annule naturellement).
+- E-mails (`lib/email/demandeBudget.ts`) : demande de dépassement (admins), décision (demandeur du dépassement + du budget), alerte de consommation (demandeur + admins), dépense annulée (demandeur + comptables).
+- UI : fiche budget (plafond avec dépassements, boutons Dépense / Dépassement par ligne, carte Dépassements avec Approuver/Refuser, dépenses annulées barrées avec motif et n° de contre-écriture, bouton Annuler pour l'admin, carte Historique), liste (barre sur le plafond effectif, filtre). Composants `components/budget/BudgetDepassementDialog`, `BudgetDepassementsCard`, `BudgetAnnulationDialog`, `BudgetHistoriqueCard`.
+
+**Erreurs rencontrées & solutions**
+- `prisma migrate dev --create-only` refuse de tourner en non-interactif à cause de l'avertissement d'index unique → SQL généré avec `prisma migrate diff --from-schema-datasource … --to-schema-datamodel … --script`, puis réécrit sans BOM (PowerShell `Out-File` en ajoute un).
+- Supabase injoignable (P1001) au moment du déploiement de la migration → appliquée ensuite ; `migrate status` confirme « Database schema is up to date ».
+- Le 2026-11-11, le travail était sur `feature/budgets` mais la session a repris sur `review_code` (commits « REBUILD »), où les fichiers budget semblaient avoir disparu → rien de perdu, retour sur `feature/budgets`. ⚠️ Cette branche n'est pas encore fusionnée dans `review_code` / `develop` / `main` : le code déployé en production n'a pas les budgets, alors que la base partagée a déjà les deux migrations (sans conséquence : Prisma ignore les colonnes et tables qu'il ne connaît pas).
+
+**À tester / points d'attention**
+- **Rôles toujours pas configurés** (vérifié le 2026-11-14) : « ASSISTANT » n'a aucune case budget, et aucun rôle n'a « Enregistrer les dépenses » → personne ne peut enregistrer de dépense tant qu'un rôle Comptable n'est pas créé et coché.
+- Scénarios : ligne de 10 000 consommée à 8 000 → alerte 80 % ; à 10 000 → alerte 100 % et bouton Dépense grisé ; demande de dépassement de 3 000 → l'admin approuve → reste 3 000, statut repasse EN_COURS ; un admin ne peut pas approuver son propre dépassement ; annulation d'une dépense sur un budget Campagne → recette compensatoire dans la caisse, paiement négatif dans la proforma, marge du dashboard revenue à l'état d'avant ; dépense refusée pour l'utilisateur qui a validé le budget.
+- Le Paiement négatif d'annulation apparaît dans la liste des paiements de la proforma : vérifier que l'affichage du montant négatif y reste lisible.
+
+---
+
 ## 2026-11-10 — Budgets : types, suivi par ligne lié au journal de caisse, droits par rôle (Lot 1)
 
 **Demande / Contexte**

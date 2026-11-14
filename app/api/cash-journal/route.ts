@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient, OperationType } from '@prisma/client';
 import { auth } from '@clerk/nextjs/server';
-import { recordCashMovement } from '@/lib/cashJournal';
+import { lockCashRegister, recordCashMovement } from '@/lib/cashJournal';
 import { safeCreatedById } from '@/lib/authz';
 
 const prisma = new PrismaClient();
@@ -73,6 +73,10 @@ export async function POST(request: Request) {
           throw new Error('Destination cash register is required and must be different from source for transfers.');
         }
         const parsedDestinationCashRegisterId = parseInt(destinationCashRegisterId);
+        // Les deux caisses verrouillées, par id croissant (évite tout interblocage).
+        for (const caisseId of [parsedCashRegisterId, parsedDestinationCashRegisterId].sort((a, b) => a - b)) {
+          await lockCashRegister(tx, caisseId);
+        }
 
         // Handle source register
         const lastSourceEntry = await tx.cashJournal.findFirst({

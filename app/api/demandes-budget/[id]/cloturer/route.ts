@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ActionBudget, StatutDemandeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { getBudgetTotaux, logBudget } from "@/lib/budgetSuivi";
+import { getBudgetTotaux, logBudget, refuserDepassementsEnAttente } from "@/lib/budgetSuivi";
 import { requireBudgetUser } from "@/lib/budgetAuth";
 
 // POST /api/demandes-budget/[id]/cloturer — clôt un budget partiellement consommé (ex. fin de
@@ -42,6 +42,7 @@ export async function POST(
         montant: consomme,
         details: `Consommé ${consomme.toLocaleString("fr-FR")} / ${plafond.toLocaleString("fr-FR")} FCFA — reste figé : ${Math.max(plafond - consomme, 0).toLocaleString("fr-FR")} FCFA`,
       });
+      await refuserDepassementsEnAttente(tx, id, caps.email);
       return updated;
     });
 

@@ -3,6 +3,7 @@ import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import prisma from '@/lib/prisma';
+import { assertAllowedUpload, safeUploadFileName } from '@/lib/uploadSecurity';
 
 const UPLOAD_DIR = 'public/Upload';
 
@@ -56,6 +57,13 @@ export async function POST(
     });
   }
 
+  try {
+    assertAllowedUpload(file);
+  } catch (e) {
+    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'Fichier refusé.' }, { status: 400 });
+  }
+  const safeName = safeUploadFileName(file.name);
+
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
   });
@@ -73,10 +81,10 @@ export async function POST(
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
-  const filePath = join(uploadPath, file.name);
+  const filePath = join(uploadPath, safeName);
   await writeFile(filePath, buffer);
 
-  const fileUrl = `/${subfolder}/${invoice.numero}/${file.name}`;
+  const fileUrl = `/${subfolder}/${invoice.numero}/${safeName}`;
 
   if (type === "bon") {
     await prisma.bonCommande.upsert({

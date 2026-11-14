@@ -1,6 +1,18 @@
 import { OperationType, Prisma } from "@prisma/client";
 import { safeCreatedById } from "@/lib/authz";
 
+/**
+ * Verrouille la caisse jusqu'à la fin de la transaction (SELECT … FOR UPDATE).
+ * Chaque écriture lit le dernier solde du journal puis écrit le nouveau : sans verrou, deux
+ * écritures simultanées sur la même caisse partent du même solde et l'une « efface » l'autre
+ * dans le solde courant. Le verrou les fait passer l'une après l'autre. Sans effet hors
+ * transaction ; ré-entrant dans une même transaction (verrouiller deux fois ne bloque pas).
+ * Pour plusieurs caisses, verrouiller par id croissant (évite les interblocages).
+ */
+export async function lockCashRegister(tx: Prisma.TransactionClient, cashRegisterId: number) {
+  await tx.$queryRaw`SELECT id FROM "CashRegister" WHERE id = ${cashRegisterId} FOR UPDATE`;
+}
+
 interface RecordCashMovementInput {
   cashRegisterId: number;
   type: typeof OperationType.RECETTE | typeof OperationType.DEPENSE;
@@ -21,6 +33,7 @@ export async function recordCashMovement(
   tx: Prisma.TransactionClient,
   { cashRegisterId, type, montant, libelle, date_operation, isApportDeCaisse, createdById }: RecordCashMovementInput
 ) {
+  await lockCashRegister(tx, cashRegisterId);
   const lastEntry = await tx.cashJournal.findFirst({
     where: { cashRegisterId },
     orderBy: { id: "desc" },

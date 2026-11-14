@@ -29,7 +29,7 @@ import { DemandeBudgetAddDocumentsDialog } from '@/components/DemandeBudgetAddDo
 import { DemandeBudgetStatusBadge, DemandeBudgetStatus } from '@/components/DemandeBudgetStatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
-import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel } from '@/lib/budgetTypes';
+import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel } from '@/lib/budgetTypes';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
 import { BudgetDepenseDialog, BudgetDepenseDialogLigne } from '@/components/budget/BudgetDepenseDialog';
 import { BudgetJustificatifDialog } from '@/components/budget/BudgetJustificatifDialog';
@@ -40,7 +40,7 @@ import { BudgetAnnulationDialog, BudgetAnnulationCible } from '@/components/budg
 import { BudgetHistoriqueCard, BudgetHistoriqueEntry } from '@/components/budget/BudgetHistoriqueCard';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2 } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy } from 'lucide-react';
 
 interface BudgetDepense {
   id: string;
@@ -97,7 +97,7 @@ interface DemandeBudgetDetail {
   validatedAt: string | null;
   rejectionReason: string | null;
   createdAt: string;
-  lignes: { id: string; designation: string; montant: number }[];
+  lignes: { id: string; designation: string; montant: number; categorie: string | null }[];
   attachments: { id: string; kind: string; url: string; fileName: string; depenseId: string | null }[];
   bonCommande: { id: string; numero: string; fournisseur: { entreprise: string } } | null;
   proformas: { invoice: { id: string; numero: string; objet: string; client: { nom: string } } }[];
@@ -328,7 +328,21 @@ export default function DemandeBudgetDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" />
           Retour aux demandes
         </Button>
-        <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} />
+        <div className="flex items-center gap-2">
+          {(role.isImplique || estDemandeur) && demande.statut !== 'REJETEE' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => router.push(`/budget/nouvelle-demande?depuis=${id}`)}
+              title={demande.type === 'MENSUEL' ? 'Créer le budget du mois suivant à partir de celui-ci' : 'Créer une nouvelle demande à partir de celle-ci'}
+            >
+              {demande.type === 'MENSUEL' ? <Repeat className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {demande.type === 'MENSUEL' ? 'Reconduire au mois suivant' : 'Dupliquer'}
+            </Button>
+          )}
+          <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} />
+        </div>
       </div>
 
       <Card className="border-0 shadow-md overflow-hidden">
@@ -526,6 +540,9 @@ export default function DemandeBudgetDetailPage() {
                   <TableCell className="pl-6">
                     <div className="flex items-center gap-1.5">
                       <span>{l.designation}</span>
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground">
+                        {categorieLabel(l.categorie)}
+                      </Badge>
                       {l.commentaires.length > 0 && (
                         <Badge variant="secondary" className="h-5 px-1.5 gap-1 text-[10px]" title="Ligne commentée">
                           <MessageSquare className="h-3 w-3" /> {l.commentaires.length}
@@ -606,6 +623,7 @@ export default function DemandeBudgetDetailPage() {
         lignesParId={lignesParId}
         peutDecider={role.canValidateMensuel}
         userEmail={role.email}
+        estDemandeurBudget={estDemandeur}
         onChange={fetchDemande}
       />
 

@@ -4,8 +4,10 @@ import { z } from "zod";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 import { writeFile } from "fs/promises";
+import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 import { auth } from "@clerk/nextjs/server";
 import { recordDepensePaiement } from "@/lib/paiements";
+import { lockCashRegister } from "@/lib/cashJournal";
 import { safeCreatedById } from "@/lib/authz";
 import { sendProformaPaiementNotification } from "@/lib/email/proformaPaiement";
 
@@ -45,6 +47,12 @@ export async function POST(
 
     const paymentData = JSON.parse(paymentDataString);
     const files = formData.getAll("files") as File[];
+    // Vérifié AVANT la transaction : un fichier refusé ne doit jamais laisser un paiement enregistré.
+    try {
+      files.forEach((f) => assertAllowedUpload(f));
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Fichier refusé." }, { status: 400 });
+    }
 
     const validation = paiementSchema.safeParse(paymentData);
     if (!validation.success) {
@@ -147,6 +155,7 @@ export async function POST(
         return { updatedInvoice, newCashJournalEntryId: cashJournalEntry.id };
       }
 
+      await lockCashRegister(tx, finalCashRegisterId);
       const lastCashJournalEntry = await tx.cashJournal.findFirst({
         where: { cashRegisterId: finalCashRegisterId },
         orderBy: { id: "desc" },
@@ -253,7 +262,8 @@ export async function POST(
       for (const file of files) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
-        const path = join(uploadDir, file.name);
+        const safeName = safeUploadFileName(file.name);
+        const path = join(uploadDir, safeName);
         await writeFile(path, buffer);
 
         const fileUrl = join(
@@ -261,7 +271,7 @@ export async function POST(
           "Upload",
           "CashJournal",
           String(result.newCashJournalEntryId),
-          file.name,
+          safeName,
         ).replace(/\\/g, "/");
 
         await prisma.cashJournalAttachment.create({
