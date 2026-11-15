@@ -6,6 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
+    "test:e2e": "playwright test",
     "lint": "next lint",
     "db:seed": "tsx prisma/seed.ts",
     "db:backup": "tsx scripts/backup.ts",
