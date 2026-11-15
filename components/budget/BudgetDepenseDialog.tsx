@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
+import { etatLiasse, payeSurCommande } from '@/lib/commandeFournisseurLiasse';
 
 // 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts).
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -24,13 +25,29 @@ interface CashRegisterOption {
   balance: number;
 }
 
+/** Bon de commande financé par la ligne (avance / solde) — voir lib/commandeFournisseurLiasse.ts. */
+export interface CommandeDeLigne {
+  id: string;
+  numero: string;
+  statut: string;
+  montantNet: number | string;
+  fournisseur: { entreprise: string };
+  documents: { kind: string }[];
+  factures: { id: string; reference: string; montant: number | string; status: string; pieceJointe: string | null }[];
+  depenses: { montant: number | string; annuleeAt: string | null }[];
+}
+
 export interface BudgetDepenseDialogLigne {
   id: string;
   designation: string;
   reste: number;
   // Moyen de paiement prévu sur la ligne (pré-sélectionné ; null = celui de la demande).
   modePaiement?: string | null;
+  commandes?: CommandeDeLigne[];
 }
+
+// Valeur du choix « Paiement » : dépense simple, ou "<commandeId>|AVANCE" / "<commandeId>|SOLDE".
+const PAIEMENT_SIMPLE = 'NORMALE';
 
 interface BudgetDepenseDialogProps {
   demandeId: string;
@@ -57,7 +74,30 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
   const [preuves, setPreuves] = useState<File[]>([]);
   const [sansJustificatif, setSansJustificatif] = useState(false);
   const [motifSansJustificatif, setMotifSansJustificatif] = useState('');
+  const [paiement, setPaiement] = useState(PAIEMENT_SIMPLE);
+  const [factureFournisseurId, setFactureFournisseurId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [commandeChoisieId, natureChoisie] = paiement === PAIEMENT_SIMPLE ? [null, 'NORMALE'] : paiement.split('|');
+  const commandeChoisie = ligne?.commandes?.find((c) => c.id === commandeChoisieId) ?? null;
+  const liasse = commandeChoisie ? etatLiasse(commandeChoisie.documents, commandeChoisie.factures) : null;
+  const resteCommande = commandeChoisie ? Number(commandeChoisie.montantNet) - payeSurCommande(commandeChoisie.depenses) : 0;
+  const facturesAPayer = commandeChoisie?.factures.filter((f) => f.status === 'EN_ATTENTE') ?? [];
+  const commandePayable = (c: CommandeDeLigne) => (c.statut === 'VALIDEE' || c.statut === 'LIVREE') && etatLiasse(c.documents).bcSigne;
+
+  const choisirPaiement = (valeur: string) => {
+    setPaiement(valeur);
+    setFactureFournisseurId('');
+    if (valeur === PAIEMENT_SIMPLE || !ligne) return;
+    const [cid] = valeur.split('|');
+    const c = ligne.commandes?.find((x) => x.id === cid);
+    if (!c) return;
+    const resteC = Number(c.montantNet) - payeSurCommande(c.depenses);
+    setMontant(String(Math.max(Math.min(ligne.reste, resteC), 0)));
+    setNomReceveur(c.fournisseur.entreprise);
+    const enAttente = c.factures.filter((f) => f.status === 'EN_ATTENTE');
+    if (enAttente.length === 1) setFactureFournisseurId(enAttente[0].id);
+  };
 
   useEffect(() => {
     fetch('/api/cash-registers')
@@ -78,6 +118,8 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
     setPreuves([]);
     setSansJustificatif(false);
     setMotifSansJustificatif('');
+    setPaiement(PAIEMENT_SIMPLE);
+    setFactureFournisseurId('');
   }, [ligne, proformas, defaultModePaiement]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -88,6 +130,17 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
     if (!montantNum || montantNum <= 0) return void toast.error('Indiquez un montant valide.');
     if (montantNum > ligne.reste + 0.005) {
       return void toast.error(`Budget de la ligne atteint : il reste ${formatMontant(ligne.reste)}.`);
+    }
+    if (commandeChoisie) {
+      if (montantNum > resteCommande + 0.005) {
+        return void toast.error(`Montant supérieur au reste du bon de commande : il reste ${formatMontant(resteCommande)}.`);
+      }
+      if (natureChoisie === 'SOLDE' && !liasse?.complete) {
+        return void toast.error(`Liasse incomplète : manque ${liasse?.manquantes.join(', ')}.`);
+      }
+      if (natureChoisie === 'SOLDE' && !factureFournisseurId) {
+        return void toast.error('Choisissez la facture fournisseur réglée par ce solde.');
+      }
     }
     if (!cashRegisterId) return void toast.error('Choisissez la caisse concernée.');
     if (!nomReceveur.trim()) return void toast.error('Le nom du receveur est requis.');
@@ -109,6 +162,11 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
       data.append('nomReceveur', nomReceveur.trim());
       data.append('modePaiement', modePaiement);
       if (invoiceId) data.append('invoiceId', invoiceId);
+      if (commandeChoisie) {
+        data.append('commandeId', commandeChoisie.id);
+        data.append('nature', natureChoisie);
+        if (natureChoisie === 'SOLDE') data.append('factureFournisseurId', factureFournisseurId);
+      }
       if (notes.trim()) data.append('notes', notes.trim());
       data.append('sansJustificatif', String(preuves.length === 0 && sansJustificatif));
       if (preuves.length === 0) data.append('motifSansJustificatif', motifSansJustificatif.trim());
@@ -141,6 +199,55 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
               <p className="font-medium">{ligne.designation}</p>
               <p className="text-muted-foreground">Reste disponible : <strong>{formatMontant(ligne.reste)}</strong></p>
             </div>
+
+            {(ligne.commandes?.length ?? 0) > 0 && (
+              <div className="space-y-2">
+                <Label>Paiement</Label>
+                <Select value={paiement} onValueChange={choisirPaiement}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={PAIEMENT_SIMPLE}>Dépense simple (hors bon de commande)</SelectItem>
+                    {ligne.commandes!.map((c) => (
+                      <React.Fragment key={c.id}>
+                        <SelectItem value={`${c.id}|AVANCE`} disabled={!commandePayable(c)}>
+                          Avance — {c.numero} ({c.fournisseur.entreprise})
+                        </SelectItem>
+                        <SelectItem value={`${c.id}|SOLDE`} disabled={!commandePayable(c) || !etatLiasse(c.documents, c.factures).complete}>
+                          Solde — {c.numero} ({c.fournisseur.entreprise})
+                        </SelectItem>
+                      </React.Fragment>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {ligne.commandes!.some((c) => !commandePayable(c)) && (
+                  <p className="text-xs text-muted-foreground">Un bon non validé ou sans scan signé ne peut pas être payé.</p>
+                )}
+                {commandeChoisie && liasse && (
+                  <div className={`rounded-md border p-3 text-xs space-y-1 ${liasse.complete ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
+                    <p>
+                      Bon de commande <strong>{commandeChoisie.numero}</strong> : reste à payer <strong>{formatMontant(resteCommande)}</strong> sur {formatMontant(Number(commandeChoisie.montantNet))}.
+                    </p>
+                    <p>
+                      Liasse {liasse.nbPieces}/4{liasse.complete ? ' — complète' : ` — manque : ${liasse.manquantes.join(', ')}`}
+                      {natureChoisie === 'AVANCE' && !liasse.complete ? ". L'avance restera « non justifiée » jusqu'à la liasse complète." : ''}
+                    </p>
+                  </div>
+                )}
+                {natureChoisie === 'SOLDE' && (
+                  <div className="space-y-2">
+                    <Label>Facture fournisseur réglée *</Label>
+                    <Select value={factureFournisseurId} onValueChange={setFactureFournisseurId}>
+                      <SelectTrigger><SelectValue placeholder={facturesAPayer.length ? 'Choisir la facture' : 'Aucune facture en attente sur ce bon'} /></SelectTrigger>
+                      <SelectContent>
+                        {facturesAPayer.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>{f.reference} — {formatMontant(Number(f.montant))}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">

@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
-import { sendEmail, escapeHtml } from "./sendEmail";
+import { escapeHtml } from "./sendEmail";
+import { notifier, texteBrut } from "@/lib/notifications/notifier";
+import type { EvenementNotification } from "@/lib/notifications/evenements";
 import { getBudgetRecipients, requiresValidationAdmin } from "@/lib/budgetAuth";
 import { getEntrepriseConfig } from "@/lib/entreprise";
 
@@ -113,6 +115,25 @@ function buildBaseHtml(opts: { title: string; intro: string; demande: DemandeBud
   `;
 }
 
+/**
+ * Notification d'un événement de budget (email et/ou cloche selon Paramètres > Notifications) :
+ * même email qu'avant ; dans l'application, l'introduction en texte brut et un lien vers la fiche.
+ */
+async function notifierBudget(
+  evenement: EvenementNotification,
+  demande: DemandeBudgetForEmail,
+  opts: { to: string | string[]; cc?: string | string[]; subject: string; title: string; intro: string; footer?: string }
+) {
+  await notifier(evenement, {
+    to: opts.to,
+    cc: opts.cc,
+    subject: opts.subject,
+    html: buildBaseHtml({ title: opts.title, intro: opts.intro, demande, footer: opts.footer }),
+    message: texteBrut(opts.footer ? `${opts.intro} — ${opts.footer}` : opts.intro),
+    lien: `/budget/demandes/${demande.id}`,
+  });
+}
+
 const TYPE_LABELS: Record<string, string> = {
   MENSUEL: "budget mensuel",
   PONCTUEL: "budget ponctuel",
@@ -130,28 +151,22 @@ export async function sendDemandeSoumiseNotification(demande: DemandeBudgetForEm
     requiresValidationAdmin(demande, plafond) ? "canValidateBudgetMensuel" : "canValidateBudget"
   );
   if (recipients.length === 0) return;
-  await sendEmail({
+  await notifierBudget("BUDGET_SOUMIS", demande, {
     to: recipients,
     subject: `Nouvelle demande de budget ${demande.numero} à valider`,
-    html: buildBaseHtml({
-      title: "📝 Nouvelle demande de budget",
-      intro: `Une nouvelle demande (${TYPE_LABELS[demande.type] ?? "budget"}) vient d'être soumise et attend votre validation.`,
-      demande,
-    }),
+    title: "📝 Nouvelle demande de budget",
+    intro: `Une nouvelle demande (${TYPE_LABELS[demande.type] ?? "budget"}) vient d'être soumise et attend votre validation.`,
   });
 }
 
 export async function sendDemandeValideeNotification(demande: DemandeBudgetForEmail) {
   const recipients = await getBudgetRecipients("canPayBudget");
   if (recipients.length === 0) return;
-  await sendEmail({
+  await notifierBudget("BUDGET_VALIDE", demande, {
     to: recipients,
     subject: `Demande de budget ${demande.numero} validée — à traiter`,
-    html: buildBaseHtml({
-      title: "✅ Demande de budget validée",
-      intro: `La demande de budget <strong>${escapeHtml(demande.numero)}</strong> a été validée${demande.validatedByEmail ? ` par ${escapeHtml(demande.validatedByEmail)}` : ""}. Vous pouvez désormais enregistrer les dépenses ligne par ligne.`,
-      demande,
-    }),
+    title: "✅ Demande de budget validée",
+    intro: `La demande de budget <strong>${escapeHtml(demande.numero)}</strong> a été validée${demande.validatedByEmail ? ` par ${escapeHtml(demande.validatedByEmail)}` : ""}. Vous pouvez désormais enregistrer les dépenses ligne par ligne.`,
   });
 }
 
@@ -164,14 +179,11 @@ export async function sendDepassementDemandeNotification(
 ) {
   const recipients = await getBudgetRecipients("canValidateBudgetMensuel");
   if (recipients.length === 0) return;
-  await sendEmail({
+  await notifierBudget("DEPASSEMENT_DEMANDE", demande, {
     to: recipients,
     subject: `Demande de dépassement sur le budget ${demande.numero}`,
-    html: buildBaseHtml({
-      title: "⚠️ Demande de dépassement de budget",
-      intro: `<strong>${escapeHtml(opts.auteur)}</strong> demande un dépassement de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} ».<br/>Motif : <em>${escapeHtml(opts.motif)}</em>`,
-      demande,
-    }),
+    title: "⚠️ Demande de dépassement de budget",
+    intro: `<strong>${escapeHtml(opts.auteur)}</strong> demande un dépassement de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} ».<br/>Motif : <em>${escapeHtml(opts.motif)}</em>`,
   });
 }
 
@@ -181,15 +193,12 @@ export async function sendDepassementDecisionNotification(
   opts: { designation: string; montant: number; approuve: boolean; motifRejet?: string | null; demandeParEmail: string }
 ) {
   const to = Array.from(new Set([opts.demandeParEmail, demande.requesterEmail].map((e) => e.toLowerCase())));
-  await sendEmail({
+  await notifierBudget("DEPASSEMENT_DECIDE", demande, {
     to,
     subject: `Dépassement ${opts.approuve ? "approuvé" : "refusé"} — budget ${demande.numero}`,
-    html: buildBaseHtml({
-      title: opts.approuve ? "✅ Dépassement approuvé" : "❌ Dépassement refusé",
-      intro: `Le dépassement de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} » a été ${opts.approuve ? "approuvé : le plafond de la ligne est augmenté d'autant" : "refusé"}.`,
-      demande,
-      footer: !opts.approuve && opts.motifRejet ? `Motif du refus : ${escapeHtml(opts.motifRejet)}` : undefined,
-    }),
+    title: opts.approuve ? "✅ Dépassement approuvé" : "❌ Dépassement refusé",
+    intro: `Le dépassement de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} » a été ${opts.approuve ? "approuvé : le plafond de la ligne est augmenté d'autant" : "refusé"}.`,
+    footer: !opts.approuve && opts.motifRejet ? `Motif du refus : ${escapeHtml(opts.motifRejet)}` : undefined,
   });
 }
 
@@ -200,14 +209,11 @@ export async function sendAlerteConsommationNotification(
 ) {
   const admins = await getBudgetRecipients("canValidateBudgetMensuel");
   const to = Array.from(new Set([demande.requesterEmail, ...admins].map((e) => e.toLowerCase())));
-  await sendEmail({
+  await notifierBudget("ALERTE_CONSOMMATION", demande, {
     to,
     subject: `Budget ${demande.numero} : ligne « ${opts.designation} » consommée à ${opts.seuil} %`,
-    html: buildBaseHtml({
-      title: opts.seuil === 100 ? "🔴 Ligne de budget épuisée" : "🟠 Ligne de budget consommée à 80 %",
-      intro: `La ligne « ${escapeHtml(opts.designation)} » est consommée à hauteur de <strong>${fmt(opts.consomme)}</strong> sur <strong>${fmt(opts.plafond)}</strong>.${opts.seuil === 100 ? " Toute nouvelle dépense sur cette ligne nécessite un dépassement approuvé par l'administrateur." : ""}`,
-      demande,
-    }),
+    title: opts.seuil === 100 ? "🔴 Ligne de budget épuisée" : "🟠 Ligne de budget consommée à 80 %",
+    intro: `La ligne « ${escapeHtml(opts.designation)} » est consommée à hauteur de <strong>${fmt(opts.consomme)}</strong> sur <strong>${fmt(opts.plafond)}</strong>.${opts.seuil === 100 ? " Toute nouvelle dépense sur cette ligne nécessite un dépassement approuvé par l'administrateur." : ""}`,
   });
 }
 
@@ -218,15 +224,12 @@ export async function sendDepenseAnnuleeNotification(
 ) {
   const comptables = await getBudgetRecipients("canPayBudget");
   const to = Array.from(new Set([demande.requesterEmail, ...comptables].map((e) => e.toLowerCase())));
-  await sendEmail({
+  await notifierBudget("DEPENSE_ANNULEE", demande, {
     to,
     subject: `Dépense annulée sur le budget ${demande.numero}`,
-    html: buildBaseHtml({
-      title: "↩️ Dépense annulée",
-      intro: `<strong>${escapeHtml(opts.auteur)}</strong> a annulé une dépense de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} ». Une contre-écriture a été passée au journal de caisse.`,
-      demande,
-      footer: `Motif : ${escapeHtml(opts.motif)}`,
-    }),
+    title: "↩️ Dépense annulée",
+    intro: `<strong>${escapeHtml(opts.auteur)}</strong> a annulé une dépense de <strong>${fmt(opts.montant)}</strong> sur la ligne « ${escapeHtml(opts.designation)} ». Une contre-écriture a été passée au journal de caisse.`,
+    footer: `Motif : ${escapeHtml(opts.motif)}`,
   });
 }
 
@@ -235,14 +238,11 @@ export async function sendLigneACorrigerNotification(
   demande: DemandeBudgetForEmail,
   opts: { designation: string; motif: string; auteur: string }
 ) {
-  await sendEmail({
+  await notifierBudget("LIGNE_A_CORRIGER", demande, {
     to: demande.requesterEmail,
     subject: `Budget ${demande.numero} : une ligne est à corriger`,
-    html: buildBaseHtml({
-      title: "✏️ Ligne à corriger",
-      intro: `<strong>${escapeHtml(opts.auteur)}</strong> demande une correction sur la ligne « ${escapeHtml(opts.designation)} » :<br/><em>${escapeHtml(opts.motif)}</em><br/>Depuis la fiche du budget, modifiez la ligne (elle repartira en validation) ou retirez-la du budget. Les lignes déjà accordées restent utilisables.`,
-      demande,
-    }),
+    title: "✏️ Ligne à corriger",
+    intro: `<strong>${escapeHtml(opts.auteur)}</strong> demande une correction sur la ligne « ${escapeHtml(opts.designation)} » :<br/><em>${escapeHtml(opts.motif)}</em><br/>Depuis la fiche du budget, modifiez la ligne (elle repartira en validation) ou retirez-la du budget. Les lignes déjà accordées restent utilisables.`,
   });
 }
 
@@ -252,14 +252,11 @@ export async function sendLigneCorrigeeNotification(demande: DemandeBudgetForEma
     requiresValidationAdmin(demande, await plafondDelegue()) ? "canValidateBudgetMensuel" : "canValidateBudget"
   );
   if (recipients.length === 0) return;
-  await sendEmail({
+  await notifierBudget("LIGNE_CORRIGEE", demande, {
     to: recipients,
     subject: `Budget ${demande.numero} : ligne corrigée, à valider`,
-    html: buildBaseHtml({
-      title: "🔁 Ligne corrigée",
-      intro: `<strong>${escapeHtml(opts.auteur)}</strong> a corrigé la ligne « ${escapeHtml(opts.designation)} ». Elle attend de nouveau votre validation.`,
-      demande,
-    }),
+    title: "🔁 Ligne corrigée",
+    intro: `<strong>${escapeHtml(opts.auteur)}</strong> a corrigé la ligne « ${escapeHtml(opts.designation)} ». Elle attend de nouveau votre validation.`,
   });
 }
 
@@ -268,27 +265,21 @@ export async function sendCommentaireLigneNotification(
   demande: DemandeBudgetForEmail,
   opts: { designation: string; auteur: string; contenu: string }
 ) {
-  await sendEmail({
+  await notifierBudget("COMMENTAIRE_LIGNE", demande, {
     to: demande.requesterEmail,
     subject: `Commentaire sur votre demande de budget ${demande.numero}`,
-    html: buildBaseHtml({
-      title: "💬 Nouveau commentaire",
-      intro: `<strong>${escapeHtml(opts.auteur)}</strong> a commenté la ligne « ${escapeHtml(opts.designation)} » :<br/><em>${escapeHtml(opts.contenu)}</em><br/>Vous pouvez répondre depuis la fiche de la demande.`,
-      demande,
-    }),
+    title: "💬 Nouveau commentaire",
+    intro: `<strong>${escapeHtml(opts.auteur)}</strong> a commenté la ligne « ${escapeHtml(opts.designation)} » :<br/><em>${escapeHtml(opts.contenu)}</em><br/>Vous pouvez répondre depuis la fiche de la demande.`,
   });
 }
 
 export async function sendDemandeRejeteeNotification(demande: DemandeBudgetForEmail) {
-  await sendEmail({
+  await notifierBudget("BUDGET_REJETE", demande, {
     to: demande.requesterEmail,
     subject: `Demande de budget ${demande.numero} rejetée`,
-    html: buildBaseHtml({
-      title: "❌ Demande de budget rejetée",
-      intro: `Votre demande de budget <strong>${escapeHtml(demande.numero)}</strong> a été rejetée.`,
-      demande,
-      footer: demande.rejectionReason ? `Motif du rejet : ${escapeHtml(demande.rejectionReason)}` : undefined,
-    }),
+    title: "❌ Demande de budget rejetée",
+    intro: `Votre demande de budget <strong>${escapeHtml(demande.numero)}</strong> a été rejetée.`,
+    footer: demande.rejectionReason ? `Motif du rejet : ${escapeHtml(demande.rejectionReason)}` : undefined,
   });
 }
 
@@ -378,11 +369,13 @@ export async function sendJustificatifsManquantsNotification(items: Justificatif
     </div>
   </div>`;
 
-  await sendEmail({
+  await notifier("ETAT_DU_SOIR", {
     to: dg,
     cc: cc.length > 0 ? cc : undefined,
     subject: `Justificatifs manquants : ${items.length} dépense(s)${enRetard.length > 0 ? `, dont ${enRetard.length} en retard` : ""}`,
     html,
+    message: `${items.length} dépense(s) de budget sans justificatif, dont ${enRetard.length} en retard (plus de 24 h ouvrées).`,
+    lien: "/budget/demandes?sansJustificatif=1",
   });
   return { envoye: true, destinataires: dg.length + cc.length };
 }

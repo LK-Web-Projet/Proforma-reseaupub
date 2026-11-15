@@ -36,10 +36,15 @@ const NOM_DOCUMENT: Record<string, string> = {
   BON_COMMANDE: "Bon-commande",
   BUDGET_SIGNE: "Budget-signe",
   PREUVE_PAIEMENT: "Preuve-paiement",
+  // Liasse des bons de commande fournisseur (lib/uploadCommandeFournisseur.ts)
+  BC_SIGNE: "BC-signe",
+  BORDEREAU_LIVRAISON: "Bordereau-livraison",
+  ATTESTATION_SERVICE_FAIT: "Attestation-service-fait",
+  RAPPORT: "Rapport",
   AUTRE: "Document",
 };
 
-function segmentNom(value: string, max = 40): string {
+export function segmentNom(value: string, max = 40): string {
   return value
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")

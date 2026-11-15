@@ -3,6 +3,23 @@ import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
 
+/**
+ * Procédure de paiement (Lot C) : une facture fournisseur passe PAYEE uniquement quand une dépense
+ * de budget (solde du bon de commande) la règle — jamais à la main ; on ne l'annule pas tant
+ * qu'un paiement actif la règle. Renvoie le motif du refus, ou null.
+ */
+async function refusChangementStatut(id: string, actuel: StatutFactureFournisseur, nouveau: StatutFactureFournisseur): Promise<string | null> {
+  if (nouveau === actuel) return null;
+  if (nouveau === StatutFactureFournisseur.PAYEE) {
+    return "Une facture fournisseur passe « payée » par le paiement de son solde (dépense de budget sur le bon de commande), pas à la main.";
+  }
+  if (nouveau === StatutFactureFournisseur.ANNULEE) {
+    const paiements = await prisma.budgetDepense.count({ where: { factureFournisseurId: id, annuleeAt: null } });
+    if (paiements > 0) return "Cette facture a été réglée par une dépense : annulez d'abord la dépense.";
+  }
+  return null;
+}
+
 // PATCH /api/factures-fournisseurs/[id]
 // - Corps JSON { status } : changement rapide du statut (utilisé par le sélecteur inline des listes).
 // - Corps FormData : édition complète (référence, montant, date, fournisseur, statut, pièce jointe).
@@ -51,6 +68,10 @@ export async function PATCH(
           },
           { status: 403 },
         );
+      }
+      const refusStatut = await refusChangementStatut(id, existing.status, status);
+      if (refusStatut) {
+        return NextResponse.json({ message: refusStatut }, { status: 400 });
       }
 
       const updatedFacture = await prisma.factureFournisseur.update({
@@ -130,6 +151,10 @@ export async function PATCH(
       Object.values(StatutFactureFournisseur).find((s) => s === statusValue)
         ? (statusValue as StatutFactureFournisseur)
         : existing.status;
+    const refusStatut = await refusChangementStatut(id, existing.status, status);
+    if (refusStatut) {
+      return NextResponse.json({ message: refusStatut }, { status: 400 });
+    }
 
     if (reference !== existing.reference) {
       const duplicate = await prisma.factureFournisseur.findUnique({

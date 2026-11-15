@@ -26,6 +26,8 @@ import { FactureStatusBadge } from "@/components/FactureStatusBadge";
 import { CommandeStatutControl } from "@/components/fournisseurs/CommandeStatutControl";
 import { EditCommandeFournisseurModal } from "@/components/fournisseurs/EditCommandeFournisseurModal";
 import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
+import { CommandeLiasseCard, type CommandeSuivi } from "@/components/fournisseurs/CommandeLiasseCard";
+import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
 
 interface ProduitFournisseur {
     id: string;
@@ -98,6 +100,12 @@ interface CommandeDetail {
     lignes: LigneCommande[];
     proformas: ProformaAssociee[];
     createdAt: string;
+    // Lot C : ligne de budget, liasse, factures et paiements (voir CommandeLiasseCard).
+    fournisseurId: string;
+    ligneBudget: CommandeSuivi["ligneBudget"];
+    documents: CommandeSuivi["documents"];
+    factures: CommandeSuivi["factures"];
+    depenses: CommandeSuivi["depenses"];
 }
 
 const cleanText = (text: string) => {
@@ -611,6 +619,7 @@ export default function CommandeDetailPage() {
                                 <CommandeStatutControl
                                     statut={commande.statut}
                                     isAdmin={isAdmin}
+                                    bcSigne={etatLiasse(commande.documents ?? []).bcSigne}
                                     onChange={handleStatutChange}
                                     badgeClassName="text-sm px-3 py-1 bg-white/20 text-white hover:bg-white/30 border-0"
                                     triggerClassName="border-none bg-transparent! p-0 h-auto cursor-pointer w-auto"
@@ -633,6 +642,9 @@ export default function CommandeDetailPage() {
                     </div>
                 </div>
             </Card>
+
+            {/* Procédure de paiement : budget, liasse (BC signé, livraison, facture, rapport), paiements */}
+            <CommandeLiasseCard commande={commande} onChange={fetchCommande} />
 
             {/* Informations Prestataire */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -22,6 +22,112 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-16 (suite 3) — Correctif : build Docker (package-lock) et erreur de la cloche en local
+
+**Demande / Contexte**
+En local, `GET /api/notifications` répondait 500 (`prisma.notification` indéfini). En préparant le déploiement, constat que le build Docker du VPS aurait échoué.
+
+**Erreurs rencontrées & solutions**
+- `prisma.notification` indéfini : le serveur `next dev` lancé avant la migration du Lot C gardait l'ancien client Prisma en mémoire (le client régénéré contient bien les nouveaux modèles) → **redémarrer `next dev`**. Rien à corriger dans le code.
+- **Build Docker cassé** : `infra/Dockerfile` installe avec `npm ci` (et non pnpm) ; `@playwright/test` et `@clerk/testing`, ajoutés avec pnpm pour les tests de bout en bout, manquaient dans `package-lock.json` → `npm ci` aurait refusé de s'exécuter. `package-lock.json` régénéré avec `npm install --package-lock-only` (ne touche pas `node_modules`). La dernière `@clerk/testing` faisait monter `@clerk/backend` (utilisé en production) de 2.23.0 à 2.33.9 : **`@clerk/testing` épinglé en 1.13.10**, compatible avec les versions de production — le lock n'ajoute plus que les 6 paquets de test, aucune version existante ne change. `pnpm-lock.yaml` aligné (`pnpm install --lockfile-only`).
+
+**À tester / points d'attention**
+- À chaque ajout de dépendance avec pnpm, mettre aussi à jour `package-lock.json` (`npm install --package-lock-only`), sinon le build Docker échoue.
+- `pnpm install` en local installera `@clerk/testing` 1.13.10 (même API pour les tests Playwright).
+
+---
+
+## 2026-11-16 (suite 2) — Lot C (3/3) : état du soir par campagne, minuterie interne, recherche par mot-clé
+
+**Demande / Contexte**
+Procédure de paiement, sections 7 et 8 : chaque soir la DG reçoit l'état par campagne (prévu, payé par moyen, reste), la liste des justificatifs manquants et les avances non justifiées ; tout document classé doit se retrouver en quelques mots-clés. Choix confirmé : les envois sont déclenchés par l'application elle-même (pas de crontab).
+
+**Modifications apportées**
+- `lib/rapports/etatSoir.ts` : `listerJustificatifsManquants` (calcul unique, repris par la route existante), `construireEtatSoir` (budgets CAMPAGNE ouverts : prévu = accordé + dépassements, payé total et **par moyen**, payé du jour, reste ; justificatifs manquants ; avances dont la liasse est incomplète), `envoyerEtatSoir` → `notifier("ETAT_DU_SOIR")` (DG, comptables en copie ; rien si tout est vide). Route `POST /api/integration/rapports/etat-soir` (clé d'intégration, `?dryRun=1`). La liste seule des justificatifs (`…/justificatifs-manquants`) passe aussi par `notifier`.
+- `lib/taches/planificateur.ts`, démarré par `instrumentation.ts` **seulement si `SCHEDULER_ENABLED=true`** (jamais en local : base partagée avec la production) : toutes les 5 min, heure du Bénin — clôture des budgets mensuels chaque jour dès 6 h, état du soir à 19 h du lundi au vendredi ; verrou `TacheExecution` (clé « tâche:jour ») = une seule exécution par jour même avec plusieurs instances ; rattrapage le jour même après un redémarrage ; pas de nouvel essai automatique après un échec (consigné dans `TacheExecution.resultat`, renvoi possible par la route).
+- Recherche : `GET /api/recherche?q=` (plusieurs mots en ET, insensible à la casse, un nombre cherche aussi les montants) — budgets et leurs pièces (circuit budget, sinon ses propres budgets), journal de caisse (section finance), bons de commande, pièces de liasse, factures fournisseurs et prestataires (section fournisseurs), proformas (section proforma). Page `/recherche` (lien en tête de la barre latérale), aperçu direct des pièces.
+
+**Tests**
+- 8/8 : heure du Bénin, échéances (pas avant 19 h, pas le week-end, clôture le samedi matin, passage de minuit), verrou (2e exécution refusée — ligne de test supprimée), cohérence de l'état du soir sur les données réelles (lecture seule, aucun envoi).
+- Non-régression : budget 37/37 et 89/89, Lot A 15/15. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- **Déploiement** : ajouter `SCHEDULER_ENABLED=true` dans le `.env` du VPS uniquement ; une crontab éventuelle sur la clôture mensuelle peut rester (opération idempotente) ou être retirée.
+- `next build` non relancé (serveur de développement actif sur `.next`) : à faire avant de déployer (supprimer d'abord `.nextstandalone`).
+- Manuellement : Paramètres → Notifications (choisir le canal de « État du soir ») ; `POST /api/integration/rapports/etat-soir?dryRun=1` pour voir le contenu ; page Recherche avec un compte sans section Finance (le journal de caisse ne doit pas apparaître).
+
+---
+
+## 2026-11-16 (suite) — Lot C (2/3) : bons de commande, avances et soldes, factures fournisseurs ↔ caisse
+
+**Demande / Contexte**
+Procédure de paiement, section 4 : les bons de commande sont émis à partir du budget et signés par la DG ; l'avance est versée sur BC signé et reste « non justifiée » (rouge) tant que la liasse n'est pas complète (BC signé, bordereau ou attestation de service fait, facture, rapport) ; le solde n'est payé qu'avec la liasse complète. Choix confirmés : avance / solde = dépense de budget liée au BC ; liasse = les 4 pièces.
+
+**Modifications apportées**
+- `lib/commandeFournisseurLiasse.ts` (calculs purs, aussi côté écran) : `etatLiasse`, `payeSurCommande`, libellés des pièces et des natures, `TRANSITIONS_COMMANDE`. `lib/commandeFournisseurSuivi.ts` (serveur) : `controlerPaiementCommande` (BC de la ligne, validé ou livré, BC signé ; solde = liasse complète + facture du BC en attente ; montant ≤ reste du BC ; verrou sur le BC), `libererFactureApresAnnulation`, `refusLigneBudgetCommande`, `prochainNumeroCommande`.
+- Dépenses de budget (`app/api/demandes-budget/[id]/depenses`) : `commandeId`, `nature` (AVANCE / SOLDE), `factureFournisseurId` ; le solde passe la facture fournisseur **PAYEE** ; l'annulation de la dépense la remet **EN_ATTENTE**. Tous les contrôles existants restent (ligne accordée, plafond, solde de caisse, séparation des tâches).
+- Bons de commande : création / modification réservées à la section « Prestataires » (aucune garde avant) ; numéro **par année** dans une transaction (`BCF-AAAA-NNNN`, suit le plus grand numéro de l'année, nouvel essai si doublon) ; `ligneBudgetId` ; **statut contrôlé côté serveur** (avant : n'importe quelle valeur, dans n'importe quel sens) — BROUILLON → VALIDEE → LIVREE, ANNULEE sans paiement, aucun retour ; **VALIDEE réservé à la direction et seulement avec le scan du BC signé** (notification « BC validé » aux comptables). Nouvelle route `POST /api/fournisseurs/commandes/[commandeId]/documents` (pièces de la liasse, `public/Upload/CommandeFournisseur/<id>/`, nommées `date_campagne_document_montant`, jamais supprimées). La liste des BC reste lisible par tout utilisateur connecté (le formulaire de budget s'en sert).
+- Factures fournisseurs : impossible de les passer (ou de les créer) « payée » à la main — elles le deviennent par le solde ; pas d'annulation tant qu'un paiement actif les règle ; rattachement possible à un BC (`commandeId`, même prestataire). Choix « Payée » désactivé dans les écrans.
+- Interface : carte **« Budget, liasse et paiements »** sur la fiche du BC (`components/fournisseurs/CommandeLiasseCard.tsx` : ligne de budget à rattacher, 4 pièces cochées / manquantes avec « Joindre », factures du prestataire avec « Enregistrer la facture », payé / reste, avance non justifiée en rouge) ; liste de statuts limitée aux passages autorisés (« Validée » grisé sans droit ou sans scan) ; fenêtre « Enregistrer une dépense » : choix Dépense simple / Avance / Solde par BC, état de la liasse et reste du BC, facture à régler ; fiche budget : BC de chaque ligne (liasse x/4), nature des dépenses, « Avance non justifiée » en rouge.
+
+**Tests**
+- En base, transaction annulée : 19/19 (ligne retirée refusée, numérotation, avance refusée sur brouillon / sans BC signé / autre ligne / au-delà du BC, solde refusé sans liasse ou sans facture, accepté avec liasse complète, facture payée non réutilisable, annulation → facture à payer, transitions) — rien enregistré. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Les BC déjà VALIDEE sans scan signé ne peuvent recevoir aucun paiement tant que le scan n'est pas joint.
+- Le rattachement d'un BC à une ligne de budget se fait depuis la fiche du BC (pas encore dans le formulaire de création).
+
+---
+
+## 2026-11-16 — Lot C (1/3) : notifications dans l'application, canal choisi par événement
+
+**Demande / Contexte**
+Plutôt qu'un email à chaque événement, un système de notifications dans Proforma : pour chaque événement qui envoie aujourd'hui un email, l'admin choisit le canal — email, application ou les deux. Socle du Lot C (plan : notifications, puis avances / soldes fournisseurs, puis état du soir et recherche).
+
+**Modifications apportées**
+- Migration `20261116100000_lot_c_notifications_fournisseurs` (générée par `migrate diff`, appliquée, écart nul vérifié ; elle contient aussi les tables du reste du Lot C) : `Notification`, `NotificationPreference` (enum `CanalNotification` EMAIL / APP / LES_DEUX), `TacheExecution` ; `CommandeFournisseurDocument` (enum `TypeDocumentCommande`), `CommandeFournisseur.ligneBudgetId`, `BudgetDepense.commandeId / nature (NatureDepense) / factureFournisseurId`, `FactureFournisseur.commandeId`. `prisma format` a réaligné le schéma (sans changement de fond).
+- `lib/notifications/evenements.ts` : catalogue des 15 événements (budgets, pilotage, proformas, fournisseurs), canal par défaut **les deux** (les emails continuent de partir comme avant).
+- `lib/notifications/notifier.ts` : point d'entrée unique `notifier(evenement, {to, cc, subject, html, message, lien})` — notification pour chaque destinataire qui a un compte actif, email selon le canal ; une adresse sans compte (liste de diffusion) reçoit toujours l'email ; un canal en erreur n'empêche pas l'autre.
+- Toutes les notifications existantes passent par `notifier` (signatures et appelants inchangés) : 10 de budget (`lib/email/demandeBudget.ts`, via `notifierBudget`, lien vers la fiche), encaissement de proforma, validation de proforma — qui avait son propre transporteur nodemailer et échappait à `EMAIL_DISABLED` —, création de bon de commande ; nouvelle `sendCommandeFournisseurValideeNotification` (BC validé → comptables).
+- Routes : `GET /api/notifications`, `POST /api/notifications/lues`, `GET/PUT /api/notifications/preferences` (administrateurs).
+- Interface : **cloche** dans l'en-tête de la barre latérale (pastille des non lues, rafraîchie chaque minute et au retour sur l'onglet, 10 dernières, « Tout marquer comme lu ») ; page `/notifications` ; page **Paramètres > Notifications** (canal par événement, « Tout régler sur… »).
+
+**Tests**
+- En base (lignes de test supprimées ensuite, préférence remise en l'état) : 5/5 — « les deux » = notification pour le compte seulement (email insensible à la casse) + email à tous ; « application » = email seulement à l'adresse sans compte ; « email » = aucune notification. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Redémarrer `next dev` (nouveau client Prisma ; `prisma generate` a buté sur le moteur verrouillé).
+- L'envoi de la proforma au client (`/api/factures/[id]/send-email`) n'est pas une notification : il reste un envoi direct.
+
+---
+
+## 2026-11-15 (suite) — Tests de bout en bout Playwright (en pause) et interrupteur des emails
+
+**Demande / Contexte**
+Tester la solution de bout en bout en local avec le compte admin de test : l'admin crée les autres profils, leur donne des droits, puis chaque acteur joue sa part du circuit ; vérifier l'absence de régression. La base locale étant celle de la production, choix confirmés : données marquées « E2E-… » et supprimées à la fin, emails coupés, tests rangés dans le projet. Mis **en pause** à la demande de l'utilisateur (durée d'exécution), pour passer au Lot C.
+
+**Modifications apportées**
+- `lib/email/sendEmail.ts` : interrupteur `EMAIL_DISABLED=true` — aucun envoi, l'email est seulement tracé en console (sans effet en production où la variable est absente). Les deux envois qui n'utilisent pas `sendEmail` (validation de proforma, envoi de facture) ne sont pas couverts ; les tests ne les déclenchent pas.
+- Dépendances de développement : `@playwright/test` 1.56.1, `@clerk/testing` ; script `pnpm test:e2e` ; `.gitignore` (rapports, `e2e/.run/`).
+- `playwright.config.ts`, dossier `e2e/` (mode d'emploi dans `e2e/README.md`) : `global-setup.ts` (contrôles, proforma de test, jeton Clerk de test), `cleanup.ts` / `global-teardown.ts` (suppression de tout ce que l'exécution a créé, y compris comptes Clerk et fichiers ; reprise si une exécution a été interrompue), `procedure-paiement.spec.ts` (13 scénarios), `non-regression.spec.ts` (toutes les grandes pages pour l'admin). Mot de passe admin jamais écrit : passé par variable d'environnement.
+
+**Résultats de la 1re exécution (sur `next build` + `next start`)**
+- `next build` OK (compilé en 4,5 min, 33 pages) — `node_modules` intact (`.next/standalone` supprimé avant).
+- ✅ Non-régression : les 22 pages principales s'ouvrent sans erreur ni exception pour l'admin.
+- ✅ Scénarios 1 à 3 : création des rôles et des comptes par l'admin, caisse de test, refus **serveur** d'une dépense et d'un transfert supérieurs au solde.
+- ❌ Scénario 4 arrêté sur un sélecteur du test (bouton « Associer des proformas » non trouvé dans le formulaire de campagne) — à corriger dans le test, pas d'anomalie applicative constatée ; scénarios 5 à 13 non exécutés.
+- Nettoyage vérifié : caisse, 3 comptes (base + Clerk), 3 rôles, proforma et client de test supprimés.
+
+**Erreurs rencontrées & solutions**
+- Navigateur de Playwright non téléchargeable (bloqué à 0 %) → option `E2E_BROWSER_CHANNEL=chrome` (Chrome installé sur le poste).
+- `next dev` trop lent (≈ 1 min de compilation par page) → tests lancés sur la version compilée.
+
+**À tester / points d'attention**
+- Reprise : corriger le sélecteur du scénario 4, puis `EMAIL_DISABLED=true pnpm start` (après `pnpm build`) et `E2E_BROWSER_CHANNEL=chrome E2E_ADMIN_EMAIL=… E2E_ADMIN_PASSWORD=… E2E_EMAILS_DESACTIVES=true pnpm test:e2e`.
+- Changer le mot de passe du compte de test, partagé dans la conversation.
+
+---
+
 ## 2026-11-15 — Procédure de paiement (Lot A) : verrou du journal de caisse, moyen de paiement par ligne, budget signé, justificatifs à 24 h, fichiers protégés
 
 **Demande / Contexte**

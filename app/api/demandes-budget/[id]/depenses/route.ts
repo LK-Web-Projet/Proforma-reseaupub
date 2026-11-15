@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ActionBudget, ModePaiementDemande, Prisma, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
+import { ActionBudget, ModePaiementDemande, NatureDepense, Prisma, StatutDemandeBudget, StatutFactureFournisseur, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
 import { saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { BUDGET_EPSILON, cloturerBudgetsMensuelsEchus, getLigneDisponible, logBudget, recalculerStatutBudget, seuilsFranchis } from "@/lib/budgetSuivi";
 import { sendAlerteConsommationNotification } from "@/lib/email/demandeBudget";
+import { controlerPaiementCommande, PaiementCommandeError } from "@/lib/commandeFournisseurSuivi";
 
 /** Erreur métier → réponse 400 avec le message tel quel. */
 class BudgetDepenseError extends Error {}
@@ -23,6 +24,13 @@ const depenseSchema = z
     notes: z.string().optional(),
     sansJustificatif: z.boolean(),
     motifSansJustificatif: z.string().optional(),
+    // Paiement fournisseur (Lot C) : avance ou solde d'un bon de commande financé par la ligne.
+    commandeId: z.string().optional(),
+    nature: z.nativeEnum(NatureDepense).default(NatureDepense.NORMALE),
+    factureFournisseurId: z.string().optional(),
+  })
+  .refine((d) => d.nature === NatureDepense.NORMALE || !!d.commandeId, {
+    message: "Choisissez le bon de commande concerné par cette avance ou ce solde.",
   });
 
 /**
@@ -66,6 +74,9 @@ export async function POST(
       notes: (formData.get("notes") as string) || undefined,
       sansJustificatif: formData.get("sansJustificatif") === "true",
       motifSansJustificatif: ((formData.get("motifSansJustificatif") as string) || "").trim() || undefined,
+      commandeId: (formData.get("commandeId") as string) || undefined,
+      nature: (formData.get("nature") as string) || undefined,
+      factureFournisseurId: (formData.get("factureFournisseurId") as string) || undefined,
     });
     if (!validation.success) {
       return NextResponse.json({ error: validation.error.issues[0]?.message ?? "Données invalides." }, { status: 400 });
@@ -143,6 +154,18 @@ export async function POST(
           );
         }
 
+        // Avance / solde d'un bon de commande : BC de cette ligne, validé et signé, montant dans son
+        // reste ; solde seulement sur liasse complète, avec la facture fournisseur réglée.
+        const paiementCommande = data.commandeId
+          ? await controlerPaiementCommande(tx, {
+              commandeId: data.commandeId,
+              ligneId: ligne.id,
+              nature: data.nature,
+              montant: data.montant,
+              factureFournisseurId: data.factureFournisseurId,
+            })
+          : null;
+
         // Budget lié à une ou plusieurs proformas (CAMPAGNE, ou TIERS avec proforma) : la dépense
         // est imputée à l'une d'elles. Une seule → choisie d'office ; plusieurs → choix explicite.
         let invoiceId: string | null = null;
@@ -154,7 +177,9 @@ export async function POST(
           }
         }
 
-        const libelle = `Budget ${demande.numero} — ${ligne.designation} — ${data.nomReceveur}`;
+        const libelle = paiementCommande
+          ? `Budget ${demande.numero} — ${data.nature === NatureDepense.SOLDE ? "Solde" : "Avance"} BC ${paiementCommande.commande.numero} — ${data.nomReceveur}`
+          : `Budget ${demande.numero} — ${ligne.designation} — ${data.nomReceveur}`;
         const cashJournalEntry = invoiceId
           ? (
               await recordDepensePaiement(tx, {
@@ -189,11 +214,22 @@ export async function POST(
             cashRegisterId: data.cashRegisterId,
             cashJournalEntryId: cashJournalEntry.id,
             invoiceId,
+            commandeId: paiementCommande ? paiementCommande.commande.id : null,
+            nature: paiementCommande ? data.nature : NatureDepense.NORMALE,
+            factureFournisseurId: paiementCommande?.facture?.id ?? null,
             sansJustificatif: savedFiles.length === 0,
             motifSansJustificatif: savedFiles.length === 0 ? data.motifSansJustificatif : null,
             createdByEmail: caps.email,
           },
         });
+
+        // Le solde règle la facture fournisseur : elle passe PAYEE (jamais à la main).
+        if (paiementCommande?.facture) {
+          await tx.factureFournisseur.update({
+            where: { id: paiementCommande.facture.id },
+            data: { status: StatutFactureFournisseur.PAYEE },
+          });
+        }
 
         if (savedFiles.length > 0) {
           await tx.demandeBudgetAttachment.createMany({
@@ -207,7 +243,7 @@ export async function POST(
           auteurEmail: caps.email,
           auteurNom: caps.name,
           montant: data.montant,
-          details: `${ligne.designation} — ${data.nomReceveur} — caisse n° ${data.cashRegisterId}, écriture n° ${cashJournalEntry.id}${savedFiles.length === 0 ? ` — SANS JUSTIFICATIF (${data.motifSansJustificatif})` : ""}`,
+          details: `${ligne.designation}${paiementCommande ? ` — ${data.nature === NatureDepense.SOLDE ? "solde" : "avance"} du BC ${paiementCommande.commande.numero}` : ""} — ${data.nomReceveur} — caisse n° ${data.cashRegisterId}, écriture n° ${cashJournalEntry.id}${savedFiles.length === 0 ? ` — SANS JUSTIFICATIF (${data.motifSansJustificatif})` : ""}`,
         });
 
         // Toutes les lignes soldées → budget entièrement consommé (PAYEE), sinon EN_COURS.
@@ -228,7 +264,7 @@ export async function POST(
 
     return NextResponse.json(depense, { status: 201 });
   } catch (error) {
-    if (error instanceof BudgetDepenseError || error instanceof UploadRejectedError) {
+    if (error instanceof BudgetDepenseError || error instanceof UploadRejectedError || error instanceof PaiementCommandeError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     // "Solde insuffisant…" levé par recordCashDepense : erreur métier, pas une panne serveur.

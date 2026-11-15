@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
-import { sendEmail, escapeHtml } from "./sendEmail";
+import { escapeHtml } from "./sendEmail";
+import { notifier, texteBrut } from "@/lib/notifications/notifier";
 import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
 import { getBudgetRecipients } from "@/lib/budgetAuth";
 
@@ -96,13 +97,26 @@ export async function sendCommandeFournisseurCreeeNotification(commande: Command
   // "canValidateBudgetMensuel" (Paramètres > Rôles) — remplace l'ancienne liste BUDGET_ADMIN_EMAILS.
   const recipients = await getBudgetRecipients("canValidateBudgetMensuel");
   if (recipients.length === 0) return;
-  await sendEmail({
+  const intro = `Un nouveau bon de commande prestataire vient d'être créé (${escapeHtml(commande.fournisseur.entreprise)}). Imprimez-le pour signature : il sera validé une fois le scan signé joint.`;
+  await notifier("BC_CREE", {
     to: recipients,
-    subject: `Nouveau bon de commande prestataire ${commande.numero} à valider`,
-    html: buildBaseHtml({
-      title: "🛒 Nouveau bon de commande prestataire",
-      intro: `Un nouveau bon de commande prestataire vient d'être créé et attend votre validation.`,
-      commande,
-    }),
+    subject: `Nouveau bon de commande prestataire ${commande.numero} à signer`,
+    html: buildBaseHtml({ title: "🛒 Nouveau bon de commande prestataire", intro, commande }),
+    message: texteBrut(intro),
+    lien: `/fournisseur/${commande.fournisseurId}/commandes/${commande.id}`,
+  });
+}
+
+/** Bon de commande signé et validé par la DG → comptables (ils pourront payer avance et solde). */
+export async function sendCommandeFournisseurValideeNotification(commande: CommandeFournisseurForEmail) {
+  const recipients = await getBudgetRecipients("canPayBudget");
+  if (recipients.length === 0) return;
+  const intro = `Le bon de commande ${escapeHtml(commande.numero)} (${escapeHtml(commande.fournisseur.entreprise)}) est signé et validé : l'avance peut être payée depuis la ligne de budget associée.`;
+  await notifier("BC_VALIDE", {
+    to: recipients,
+    subject: `Bon de commande ${commande.numero} validé`,
+    html: buildBaseHtml({ title: "✅ Bon de commande validé", intro, commande }),
+    message: texteBrut(intro),
+    lien: `/fournisseur/${commande.fournisseurId}/commandes/${commande.id}`,
   });
 }

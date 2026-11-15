@@ -33,7 +33,8 @@ import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel, mod
 import { echeanceJustificatif, etatJustificatif } from '@/lib/justificatifs';
 import { generateBudgetPdf } from '@/lib/pdf/budgetPdf';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
-import { BudgetDepenseDialog, BudgetDepenseDialogLigne } from '@/components/budget/BudgetDepenseDialog';
+import { BudgetDepenseDialog, BudgetDepenseDialogLigne, type CommandeDeLigne } from '@/components/budget/BudgetDepenseDialog';
+import { etatLiasse, NATURE_DEPENSE_LABELS } from '@/lib/commandeFournisseurLiasse';
 import { BudgetJustificatifDialog } from '@/components/budget/BudgetJustificatifDialog';
 import { BudgetLigneCommentaires, BudgetCommentaire } from '@/components/budget/BudgetLigneCommentaires';
 import { BudgetDepassementDialog, BudgetDepassementDialogLigne } from '@/components/budget/BudgetDepassementDialog';
@@ -64,6 +65,8 @@ interface BudgetDepense {
   motifAnnulation: string | null;
   contreEcritureId: number | null;
   createdAt: string;
+  nature: 'NORMALE' | 'AVANCE' | 'SOLDE';
+  commande: { id: string; numero: string; fournisseurId: string; documents: { kind: string }[]; factures: { pieceJointe: string | null; status: string }[] } | null;
   cashRegister: { id: number; name: string };
   invoice: { id: string; numero: string } | null;
   attachments: { id: string; url: string; fileName: string }[];
@@ -113,6 +116,7 @@ interface DemandeBudgetDetail {
     montantAccorde: number | null;
     decideParEmail: string | null;
     motifDecision: string | null;
+    commandes: (CommandeDeLigne & { fournisseurId: string })[];
   }[];
   attachments: { id: string; kind: string; url: string; fileName: string; depenseId: string | null }[];
   bonCommande: { id: string; numero: string; fournisseur: { entreprise: string } } | null;
@@ -747,6 +751,24 @@ export default function DemandeBudgetDetailPage() {
                         {l.motifDecision}
                       </p>
                     )}
+                    {l.commandes.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {l.commandes.map((c) => {
+                          const liasse = etatLiasse(c.documents, c.factures);
+                          return (
+                            <Link key={c.id} href={`/fournisseur/${c.fournisseurId}/commandes/${c.id}`}>
+                              <Badge
+                                variant="outline"
+                                className={cn('h-5 px-1.5 text-[10px] font-normal hover:bg-muted', liasse.complete ? 'border-green-300 text-green-700' : 'border-amber-300 text-amber-800')}
+                                title={liasse.complete ? 'Liasse complète' : `Liasse incomplète : ${liasse.manquantes.join(', ')}`}
+                              >
+                                {c.numero} · {c.fournisseur.entreprise} · liasse {liasse.nbPieces}/4
+                              </Badge>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
                     <BudgetLigneCommentaires
                       demandeId={id}
                       ligneId={l.id}
@@ -814,7 +836,7 @@ export default function DemandeBudgetDetailPage() {
                                 ? 'Vous avez accordé cette ligne : une autre personne doit en enregistrer les dépenses'
                                 : l.reste <= 0 ? 'Budget de la ligne atteint — demandez un dépassement' : undefined
                             }
-                            onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste, modePaiement: l.modePaiement })}
+                            onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste, modePaiement: l.modePaiement, commandes: l.commandes })}
                           >
                             <Wallet className="h-3.5 w-3.5" /> Dépense
                           </Button>
@@ -926,6 +948,16 @@ export default function DemandeBudgetDetailPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {lignesParId.get(d.ligneId) ?? '-'}
+                      {d.commande && (
+                        <div className="mt-0.5 flex items-center gap-1 flex-wrap">
+                          <Link href={`/fournisseur/${d.commande.fournisseurId}/commandes/${d.commande.id}`} className="text-xs text-primary hover:underline">
+                            {NATURE_DEPENSE_LABELS[d.nature]} {d.commande.numero}
+                          </Link>
+                          {d.nature === 'AVANCE' && !d.annuleeAt && !etatLiasse(d.commande.documents, d.commande.factures).complete && (
+                            <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 border-red-300">Avance non justifiée</Badge>
+                          )}
+                        </div>
+                      )}
                       {d.invoice && (
                         <p className="text-xs">
                           <Link href={`/facture/${d.invoice.id}`} className="text-primary hover:underline">

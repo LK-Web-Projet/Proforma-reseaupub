@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { verifyIntegrationKey } from "@/lib/integrationAuth";
-import { echeanceJustificatif, etatJustificatif } from "@/lib/justificatifs";
-import { sendJustificatifsManquantsNotification, JustificatifManquant } from "@/lib/email/demandeBudget";
+import { sendJustificatifsManquantsNotification } from "@/lib/email/demandeBudget";
+import { listerJustificatifsManquants } from "@/lib/rapports/etatSoir";
 
 /**
- * POST /api/integration/rapports/justificatifs-manquants — état du soir (procédure de paiement,
- * section 7) : envoie à la DG (comptables en copie) la liste des dépenses de budget sans
- * justificatif, celles en retard (24 h ouvrées dépassées) en tête. Aucun email s'il n'en manque
- * aucun. À appeler chaque soir par la tâche planifiée du serveur (cron), avec
- * `Authorization: Bearer <INTEGRATION_API_KEY>` — même principe que la clôture mensuelle.
- * `?dryRun=1` renvoie la liste sans envoyer d'email (contrôle).
+ * POST /api/integration/rapports/justificatifs-manquants — envoie SEULE la liste des dépenses de
+ * budget sans justificatif (celles en retard d'abord) à la DG, comptables en copie. Cette liste fait
+ * aussi partie de l'état du soir (`/api/integration/rapports/etat-soir`), envoyé automatiquement par
+ * l'application à 19 h (lib/taches/planificateur.ts) : cette route reste pour un envoi ponctuel.
+ * `Authorization: Bearer <INTEGRATION_API_KEY>` ; `?dryRun=1` renvoie la liste sans rien envoyer.
  */
 export async function POST(request: NextRequest) {
   const authError = verifyIntegrationKey(request);
@@ -18,36 +16,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const dryRun = new URL(request.url).searchParams.get("dryRun") === "1";
-    const maintenant = new Date();
-    const depenses = await prisma.budgetDepense.findMany({
-      where: { annuleeAt: null, attachments: { none: {} } },
-      orderBy: { createdAt: "asc" },
-      include: {
-        demandeBudget: { select: { id: true, numero: true } },
-        ligne: { select: { designation: true } },
-        cashRegister: { select: { name: true } },
-      },
-    });
-
-    const items: JustificatifManquant[] = depenses
-      .map((d) => ({
-        demandeId: d.demandeBudget.id,
-        numero: d.demandeBudget.numero,
-        designation: d.ligne.designation,
-        nomReceveur: d.nomReceveur,
-        montant: Number(d.montant),
-        dateDepense: d.dateDepense,
-        echeance: echeanceJustificatif(d.createdAt),
-        enRetard: etatJustificatif({ createdAt: d.createdAt, nbJustificatifs: 0 }, maintenant) === "EN_RETARD",
-        caisse: d.cashRegister.name,
-        enregistrePar: d.createdByEmail,
-        motifSansJustificatif: d.motifSansJustificatif,
-      }))
-      // En retard d'abord, puis par échéance.
-      .sort((a, b) => Number(b.enRetard) - Number(a.enRetard) || a.echeance.getTime() - b.echeance.getTime());
-
+    const items = await listerJustificatifsManquants();
     const envoi = dryRun ? { envoye: false, destinataires: 0 } : await sendJustificatifsManquantsNotification(items);
-
     return NextResponse.json({
       nombre: items.length,
       enRetard: items.filter((i) => i.enRetard).length,

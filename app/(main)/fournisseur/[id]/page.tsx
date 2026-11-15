@@ -277,8 +277,8 @@ export default function FournisseurDetailsPage() {
                               <SelectItem value="EN_ATTENTE">
                                 <span className="flex items-center gap-2"><StatusDot status="EN_ATTENTE" animate={false} />En attente</span>
                               </SelectItem>
-                              <SelectItem value="PAYEE">
-                                <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />Payée</span>
+                              <SelectItem value="PAYEE" disabled>
+                                <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />Payée (par le solde du budget)</span>
                               </SelectItem>
                               <SelectItem value="ANNULEE">
                                 <span className="flex items-center gap-2"><StatusDot status="ANNULEE" animate={false} />Annulée</span>

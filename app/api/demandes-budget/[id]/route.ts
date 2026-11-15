@@ -14,7 +14,27 @@ export async function GET(
     const demande = await prisma.demandeBudget.findUnique({
       where: { id },
       include: {
-        lignes: { orderBy: { designation: "asc" } },
+        lignes: {
+          orderBy: { designation: "asc" },
+          // Bons de commande financés par la ligne (avances / solde, liasse) — Lot C.
+          include: {
+            commandes: {
+              where: { statut: { not: "ANNULEE" } },
+              orderBy: { dateCommande: "asc" },
+              select: {
+                id: true,
+                numero: true,
+                statut: true,
+                montantNet: true,
+                fournisseurId: true,
+                fournisseur: { select: { entreprise: true } },
+                documents: { select: { kind: true } },
+                factures: { select: { id: true, reference: true, montant: true, status: true, pieceJointe: true } },
+                depenses: { select: { montant: true, annuleeAt: true, nature: true } },
+              },
+            },
+          },
+        },
         attachments: true,
         bonCommande: { include: { fournisseur: true } },
         proformas: { include: { invoice: { include: { client: true } } } },
@@ -24,6 +44,7 @@ export async function GET(
             cashRegister: { select: { id: true, name: true } },
             invoice: { select: { id: true, numero: true } },
             attachments: true,
+            commande: { select: { id: true, numero: true, fournisseurId: true, documents: { select: { kind: true } }, factures: { select: { pieceJointe: true, status: true } } } },
           },
         },
         commentaires: { orderBy: { createdAt: "asc" } },

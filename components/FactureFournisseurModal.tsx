@@ -266,7 +266,8 @@ export function FactureFournisseurModal({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="EN_ATTENTE">En attente</SelectItem>
-                    <SelectItem value="PAYEE">Payée</SelectItem>
+                    {/* « Payée » : uniquement par le paiement du solde depuis le budget. */}
+                    <SelectItem value="PAYEE" disabled>Payée (par le solde du budget)</SelectItem>
                     <SelectItem value="ANNULEE">Annulée</SelectItem>
                   </SelectContent>
                 </Select>

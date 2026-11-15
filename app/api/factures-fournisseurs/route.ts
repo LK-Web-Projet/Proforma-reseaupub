@@ -99,6 +99,8 @@ export async function POST(req: NextRequest) {
     const date = formData.get("date") as string | null;
     const fournisseurId = formData.get("fournisseurId") as string | null;
     const statusValue = formData.get("status");
+    // Bon de commande réglé par cette facture (facultatif) : il doit être du même prestataire.
+    const commandeId = (formData.get("commandeId") as string | null) || null;
 
     const status =
       typeof statusValue === "string"
@@ -106,6 +108,22 @@ export async function POST(req: NextRequest) {
             (s) => s === statusValue,
           ) ?? StatutFactureFournisseur.EN_ATTENTE)
         : StatutFactureFournisseur.EN_ATTENTE;
+
+    // Procédure de paiement : une facture ne naît jamais « payée » ; elle le devient quand une
+    // dépense de budget (solde du bon de commande) la règle.
+    if (status === StatutFactureFournisseur.PAYEE) {
+      return NextResponse.json(
+        { message: "Une facture fournisseur passe « payée » par le paiement de son solde (dépense de budget), pas à la saisie." },
+        { status: 400 },
+      );
+    }
+
+    if (commandeId && fournisseurId) {
+      const commande = await prisma.commandeFournisseur.findUnique({ where: { id: commandeId }, select: { fournisseurId: true } });
+      if (!commande || commande.fournisseurId !== fournisseurId) {
+        return NextResponse.json({ message: "Ce bon de commande n'appartient pas à ce prestataire." }, { status: 400 });
+      }
+    }
 
     if (!reference || !montant || !date || !fournisseurId) {
       return NextResponse.json(
@@ -160,6 +178,7 @@ export async function POST(req: NextRequest) {
         status,
         pieceJointe: pieceJointeUrl,
         createdById,
+        commandeId,
       },
     });
 

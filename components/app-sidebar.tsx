@@ -29,6 +29,7 @@ import {
   PiggyBank,
   FilePlus,
   Eye,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -46,6 +47,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import type { AppPublicMetadata, PageKey } from "@/lib/permissions";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 // Menu facture.
 const dashboard = [
@@ -238,15 +240,20 @@ export function AppSidebar() {
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-sm">
             RP
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-sm font-bold truncate">Finance reseaupub</h1>
             <p className="text-xs text-gray-500 truncate">
               Proforma &amp; Finance
             </p>
           </div>
+          <NotificationBell />
         </div>
       </SidebarHeader>
       <SidebarContent className="gap-2">
+        {/* Recherche dans les documents classés (résultats filtrés selon les droits) */}
+        <SidebarMenu>
+          <NavLink item={{ title: "Recherche", url: "/recherche", icon: Search }} />
+        </SidebarMenu>
         {canSeePage("dashboard", true) && (
         <Collapsible open={isDashboardOpen} onOpenChange={setIsDashboardOpen}>
           <CollapsibleTrigger asChild>
