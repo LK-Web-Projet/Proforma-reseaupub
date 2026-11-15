@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -34,10 +34,17 @@ interface DemandeBudgetAddDocumentsDialogProps {
   onClose: () => void;
   onSuccess: () => void;
   demandeId: string;
+  /** Type pré-sélectionné à l'ouverture (ex. BUDGET_SIGNE depuis la carte de validation). */
+  defaultType?: DocumentUploadType;
 }
 
-export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, demandeId }: DemandeBudgetAddDocumentsDialogProps) {
-  const [documents, setDocuments] = useState<DocumentRow[]>([{ type: 'DEVIS', file: null }]);
+export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, demandeId, defaultType = 'DEVIS' }: DemandeBudgetAddDocumentsDialogProps) {
+  const [documents, setDocuments] = useState<DocumentRow[]>([{ type: defaultType, file: null }]);
+
+  // Chaque ouverture repart du type demandé.
+  useEffect(() => {
+    if (isOpen) setDocuments([{ type: defaultType, file: null }]);
+  }, [isOpen, defaultType]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const addDocument = () => setDocuments((prev) => [...prev, { type: 'DEVIS', file: null }]);

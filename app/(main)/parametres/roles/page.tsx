@@ -27,11 +27,12 @@ interface Role {
   canValidateBudgetMensuel: boolean;
   canValidateBudget: boolean;
   canPayBudget: boolean;
+  canSaisirCaisse: boolean;
   pages: PageKey[];
   nombreUtilisateurs: number;
 }
 
-type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget";
+type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget" | "canSaisirCaisse";
 
 // Droits du circuit budget : cochables sur n'importe quel rôle (aucun nom de rôle codé en dur).
 const BUDGET_FLAGS: { key: BudgetFlag; label: string; short: string; description: string }[] = [
@@ -53,6 +54,12 @@ const BUDGET_FLAGS: { key: BudgetFlag; label: string; short: string; description
     short: "Dépenses",
     description: "Comptable : enregistre les dépenses dans le journal de caisse, clôture les budgets, ouvre des commentaires.",
   },
+  {
+    key: "canSaisirCaisse",
+    label: "Saisir au journal de caisse (hors budget)",
+    short: "Caisse",
+    description: "Opérations manuelles, transferts entre caisses, création de caisses, dépenses imputées à une proforma. Sans ce droit, l'argent ne sort que par le circuit budget.",
+  },
 ];
 
 const emptyForm = {
@@ -62,6 +69,7 @@ const emptyForm = {
   canValidateBudgetMensuel: false,
   canValidateBudget: false,
   canPayBudget: false,
+  canSaisirCaisse: false,
 };
 
 export default function RolesPage() {
@@ -143,6 +151,7 @@ export default function RolesPage() {
       canValidateBudgetMensuel: role.canValidateBudgetMensuel,
       canValidateBudget: role.canValidateBudget,
       canPayBudget: role.canPayBudget,
+      canSaisirCaisse: role.canSaisirCaisse,
     });
     setIsModalOpen(true);
   };
@@ -327,7 +336,7 @@ export default function RolesPage() {
             </div>
 
             <div className="space-y-3">
-              <Label>Circuit budget</Label>
+              <Label>Circuit budget et caisse</Label>
               <div className="space-y-3 rounded-lg border p-3">
                 {BUDGET_FLAGS.map((f) => (
                   <div key={f.key} className="flex items-center justify-between gap-4">

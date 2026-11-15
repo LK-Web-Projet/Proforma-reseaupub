@@ -1,6 +1,6 @@
 import { OperationType, PaiementType, Prisma } from "@prisma/client";
 import { safeCreatedById } from "@/lib/authz";
-import { lockCashRegister, recordCashMovement } from "@/lib/cashJournal";
+import { recordCashMovement } from "@/lib/cashJournal";
 
 interface RecordCashDepenseInput {
   cashRegisterId: number;
@@ -21,22 +21,7 @@ export async function recordCashDepense(
   tx: Prisma.TransactionClient,
   { cashRegisterId, montant, libelle, date_operation, createdById }: RecordCashDepenseInput
 ) {
-  // Verrou AVANT la lecture du solde : le contrôle « solde insuffisant » reste juste en cas
-  // de dépenses simultanées sur la même caisse.
-  await lockCashRegister(tx, cashRegisterId);
-  const lastCashJournalEntry = await tx.cashJournal.findFirst({
-    where: { cashRegisterId },
-    orderBy: { id: "desc" },
-  });
-  const currentBalance = lastCashJournalEntry ? lastCashJournalEntry.solde : 0;
-
-  if (montant > currentBalance) {
-    const cashRegister = await tx.cashRegister.findUnique({ where: { id: cashRegisterId } });
-    throw new Error(
-      `Solde insuffisant dans la caisse "${cashRegister?.name}". Solde actuel: ${currentBalance.toLocaleString("fr-FR")} FCFA.`
-    );
-  }
-
+  // Le contrôle « solde insuffisant » est fait par recordCashMovement, sous verrou de la caisse.
   return recordCashMovement(tx, {
     cashRegisterId,
     type: OperationType.DEPENSE,

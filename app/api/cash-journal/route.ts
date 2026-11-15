@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient, OperationType } from '@prisma/client';
-import { auth } from '@clerk/nextjs/server';
-import { lockCashRegister, recordCashMovement } from '@/lib/cashJournal';
+import { assertSoldeSuffisant, isSoldeInsuffisantError, lockCashRegister, recordCashMovement } from '@/lib/cashJournal';
+import { requireCaisseUser } from '@/lib/budgetAuth';
 import { safeCreatedById } from '@/lib/authz';
 
 const prisma = new PrismaClient();
@@ -51,9 +51,13 @@ export async function GET(request: Request) {
   }
 }
 
+// POST — saisie directe au journal de caisse (recette, dépense, transfert), hors circuit budget :
+// réservée au droit « Saisir au journal de caisse » (Paramètres > Rôles).
 export async function POST(request: Request) {
+  const caps = await requireCaisseUser();
+  if (caps instanceof NextResponse) return caps;
+  const userId = caps.userId;
   try {
-    const { userId } = await auth();
     const body = await request.json();
     const { libelle, type, montant, date_operation, cashRegisterId, destinationCashRegisterId, isApportDeCaisse: isApportDeCaisseFromFrontend } = body;
 
@@ -77,6 +81,8 @@ export async function POST(request: Request) {
         for (const caisseId of [parsedCashRegisterId, parsedDestinationCashRegisterId].sort((a, b) => a - b)) {
           await lockCashRegister(tx, caisseId);
         }
+        // Un transfert sort de l'argent de la caisse source : même contrôle de solde qu'une dépense.
+        await assertSoldeSuffisant(tx, parsedCashRegisterId, parsedMontant);
 
         // Handle source register
         const lastSourceEntry = await tx.cashJournal.findFirst({
@@ -147,6 +153,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error: Error | unknown) {
+    if (isSoldeInsuffisantError(error)) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    }
     console.error(error);
     return NextResponse.json({ error: (error as Error).message || 'An error occurred while creating the cash journal entry.' }, { status: 500 });
   }

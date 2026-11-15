@@ -29,7 +29,9 @@ import { DemandeBudgetAddDocumentsDialog } from '@/components/DemandeBudgetAddDo
 import { DemandeBudgetStatusBadge, DemandeBudgetStatus } from '@/components/DemandeBudgetStatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
-import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel } from '@/lib/budgetTypes';
+import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel, modePaiementLabel, totauxParModePaiement } from '@/lib/budgetTypes';
+import { echeanceJustificatif, etatJustificatif } from '@/lib/justificatifs';
+import { generateBudgetPdf } from '@/lib/pdf/budgetPdf';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
 import { BudgetDepenseDialog, BudgetDepenseDialogLigne } from '@/components/budget/BudgetDepenseDialog';
 import { BudgetJustificatifDialog } from '@/components/budget/BudgetJustificatifDialog';
@@ -42,7 +44,8 @@ import { BudgetLigneDecisionDialog, BudgetLigneDecisionCible } from '@/component
 import { BudgetLigneCorrectionDialog, BudgetLigneCorrectionCible } from '@/components/budget/BudgetLigneCorrectionDialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2, Printer, FileSignature, Clock } from 'lucide-react';
+import type { DocumentUploadType } from '@/lib/demandeBudgetAttachmentTypes';
 
 interface BudgetDepense {
   id: string;
@@ -60,6 +63,7 @@ interface BudgetDepense {
   annuleeParEmail: string | null;
   motifAnnulation: string | null;
   contreEcritureId: number | null;
+  createdAt: string;
   cashRegister: { id: number; name: string };
   invoice: { id: string; numero: string } | null;
   attachments: { id: string; url: string; fileName: string }[];
@@ -104,6 +108,7 @@ interface DemandeBudgetDetail {
     designation: string;
     montant: number; // demandé
     categorie: string | null;
+    modePaiement: string | null;
     statutValidation: 'EN_ATTENTE' | 'ACCORDEE' | 'A_CORRIGER' | 'RETIREE';
     montantAccorde: number | null;
     decideParEmail: string | null;
@@ -117,14 +122,6 @@ interface DemandeBudgetDetail {
   depassements: BudgetDepassement[];
   historique: BudgetHistoriqueEntry[];
 }
-
-const MODE_PAIEMENT_LABELS: Record<string, string> = {
-  VIREMENT: 'Virement',
-  CHEQUE: 'Chèque',
-  ESPECES: 'Espèces',
-  MOBILE_MONEY: 'Mobile Money',
-  AUTRE: 'Autre',
-};
 
 const sameEmail = (a: string | null | undefined, b: string | null | undefined) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -147,6 +144,8 @@ export default function DemandeBudgetDetailPage() {
   const [correctionLigne, setCorrectionLigne] = useState<BudgetLigneCorrectionCible | null>(null);
   const [isClotureOpen, setIsClotureOpen] = useState(false);
   const [isAddDocsOpen, setIsAddDocsOpen] = useState(false);
+  const [addDocsType, setAddDocsType] = useState<DocumentUploadType>('DEVIS');
+  const [isPrinting, setIsPrinting] = useState(false);
   const [isRejetInfoOpen, setIsRejetInfoOpen] = useState(false);
 
   const params = useParams();
@@ -268,6 +267,63 @@ export default function DemandeBudgetDetailPage() {
     }
   };
 
+  const ouvrirAjoutDocuments = (type: DocumentUploadType) => {
+    setAddDocsType(type);
+    setIsAddDocsOpen(true);
+  };
+
+  // Impression du budget pour signature de la DG (procédure de paiement, section 4).
+  const handleImprimer = async () => {
+    if (!demande) return;
+    setIsPrinting(true);
+    try {
+      const entRes = await fetch('/api/entreprise');
+      const ent = entRes.ok ? await entRes.json() : null;
+      const pdf = await generateBudgetPdf(
+        {
+          numero: demande.numero,
+          typeLabel: typeBudgetLabel(demande.type),
+          periode: demande.type === 'MENSUEL' && demande.periodeMois ? format(new Date(demande.periodeMois), 'MMMM yyyy', { locale: fr }) : null,
+          createdAt: new Date(demande.createdAt),
+          demandeur: demande.requesterName || demande.requesterEmail,
+          departement: demande.departement,
+          pourLeCompteDe: demande.pourLeCompteDe,
+          contexteMotivation: demande.contexteMotivation,
+          proformas: demande.proformas.map((p) => ({ numero: p.invoice.numero, client: p.invoice.client.nom, objet: p.invoice.objet })),
+          lignes: demande.lignes.map((l) => ({
+            designation: l.designation,
+            categorie: categorieLabel(l.categorie),
+            modePaiement: modePaiementLabel(l.modePaiement || demande.modePaiement),
+            demande: Number(l.montant),
+            accorde: l.statutValidation === 'ACCORDEE' ? Number(l.montantAccorde ?? l.montant) : null,
+            retiree: l.statutValidation === 'RETIREE',
+          })),
+          totauxParMode: totauxParModePaiement(demande.lignes, demande.modePaiement),
+          preparePar: demande.type === 'CAMPAGNE' ? 'Chef de projet' : 'Demandeur',
+        },
+        {
+          nom: ent?.nom ?? 'Reseaupub',
+          adresse: ent?.adresse ?? '',
+          telephone: ent?.telephone ?? '',
+          emailFinance: ent?.emailFinance ?? '',
+          ifu: ent?.ifu ?? '',
+        }
+      );
+      const blob = new Blob([pdf as unknown as BlobPart], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${demande.numero}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      toast.error("Impossible de générer le PDF du budget.");
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   // Suivi par ligne, même calcul que lib/budgetSuivi.ts (jamais stocké) :
   // plafond = montant accordé + dépassements approuvés ; consommé = dépenses non annulées.
   // Une ligne en attente, à corriger ou retirée n'a pas de plafond (0).
@@ -330,7 +386,8 @@ export default function DemandeBudgetDetailPage() {
   const estDemandeur = sameEmail(role.email, demande.requesterEmail);
   const enValidation = demande.statut === 'SOUMISE' || demande.statut === 'VALIDATION_PARTIELLE';
   const budgetOuvert = demande.statut === 'VALIDEE' || demande.statut === 'EN_COURS' || demande.statut === 'VALIDATION_PARTIELLE';
-  const peutAjouterDocuments = budgetOuvert && (role.isImplique || estDemandeur);
+  // Documents : aussi pendant la validation (scan du budget signé par la DG, devis complémentaires…).
+  const peutAjouterDocuments = (budgetOuvert || enValidation) && (role.isImplique || estDemandeur);
 
   // Même matrice que lib/budgetAuth.ts (refusValidation) — le serveur reste juge en dernier ressort.
   const requiertAdmin = demande.type === 'MENSUEL' || Number(demande.montantTotal) > role.plafond;
@@ -359,6 +416,12 @@ export default function DemandeBudgetDetailPage() {
   const totalAccorde = suiviLignes.reduce((s, l) => s + l.prevu, 0);
   const totalDepassements = suiviLignes.reduce((s, l) => s + l.depassementApprouve, 0);
   const nbSansJustificatif = demande.depenses.filter((d) => !d.annuleeAt && d.attachments.length === 0).length;
+  // Justificatif attendu sous 24 h ouvrées : au-delà, la dépense passe en rouge (lib/justificatifs.ts).
+  const maintenant = new Date();
+  const etatJustif = (d: BudgetDepense) =>
+    etatJustificatif({ createdAt: d.createdAt, annuleeAt: d.annuleeAt, nbJustificatifs: d.attachments.length }, maintenant);
+  const nbJustificatifsEnRetard = demande.depenses.filter((d) => etatJustif(d) === 'EN_RETARD').length;
+  const totauxParMode = totauxParModePaiement(demande.lignes, demande.modePaiement);
 
   // Séparation des tâches : qui a validé le budget n'en enregistre pas les dépenses.
   const estValideur = sameEmail(role.email, demande.validatedByEmail);
@@ -370,6 +433,9 @@ export default function DemandeBudgetDetailPage() {
   const nbDepassementsEnAttente = demande.depassements.filter((d) => d.statut === 'EN_ATTENTE').length;
   const lignesParId = new Map(demande.lignes.map((l) => [l.id, l.designation]));
   const documentsDemande = demande.attachments.filter((a) => !a.depenseId);
+  // Budget de campagne : le scan du budget signé par la DG est exigé avant toute ligne accordée.
+  const budgetSigneManquant = demande.type === 'CAMPAGNE' && !documentsDemande.some((a) => a.kind === 'BUDGET_SIGNE');
+  const blocageSignature = enValidation && budgetSigneManquant;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -391,6 +457,9 @@ export default function DemandeBudgetDetailPage() {
               {demande.type === 'MENSUEL' ? 'Reconduire au mois suivant' : 'Dupliquer'}
             </Button>
           )}
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} disabled={isPrinting} title="Imprimer le budget pour signature">
+            <Printer className="h-4 w-4" /> {isPrinting ? 'Génération...' : 'Imprimer'}
+          </Button>
           <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} />
         </div>
       </div>
@@ -463,6 +532,28 @@ export default function DemandeBudgetDetailPage() {
         </Card>
       )}
 
+      {blocageSignature && (role.isImplique || estDemandeur) && (
+        <Card className="border-t-4 border-t-indigo-500 shadow-sm">
+          <CardContent className="pt-6 flex flex-col sm:flex-row sm:items-center gap-4">
+            <FileSignature className="h-6 w-6 text-indigo-600 shrink-0" />
+            <div className="text-sm flex-1">
+              <p className="font-medium text-indigo-900">Budget signé par la DG requis</p>
+              <p className="text-muted-foreground">
+                Imprimez le budget, faites-le signer par la Direction générale, puis joignez le scan signé. Les lignes ne peuvent être accordées qu&apos;ensuite.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} disabled={isPrinting}>
+                <Printer className="h-4 w-4" /> Imprimer
+              </Button>
+              <Button size="sm" className="gap-2" onClick={() => ouvrirAjoutDocuments('BUDGET_SIGNE')}>
+                <Paperclip className="h-4 w-4" /> Joindre le budget signé
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {enValidation && role.isImplique && (
         <Card className="border-t-4 border-t-green-500 shadow-sm">
           <CardHeader className="pb-3">
@@ -481,8 +572,12 @@ export default function DemandeBudgetDetailPage() {
               <div className="flex gap-3">
                 <Button
                   onClick={handleValider}
-                  disabled={isSubmitting || nbLignesEnAttente === 0 || nbLignesACorriger > 0}
-                  title={nbLignesACorriger > 0 ? 'Des lignes attendent une correction du demandeur' : undefined}
+                  disabled={isSubmitting || nbLignesEnAttente === 0 || nbLignesACorriger > 0 || blocageSignature}
+                  title={
+                    blocageSignature
+                      ? "Joignez d'abord le scan du budget signé par la DG"
+                      : nbLignesACorriger > 0 ? 'Des lignes attendent une correction du demandeur' : undefined
+                  }
                   className="gap-2 bg-green-600 hover:bg-green-700"
                 >
                   <CheckCircle2 className="h-4 w-4" /> Tout valider
@@ -534,8 +629,9 @@ export default function DemandeBudgetDetailPage() {
                 <p className="text-xs text-muted-foreground">Vous avez validé ce budget : ses dépenses sont enregistrées par une autre personne.</p>
               )}
               {nbSansJustificatif > 0 && (
-                <p className="text-xs text-amber-700 flex items-center gap-1">
+                <p className={cn('text-xs flex items-center gap-1', nbJustificatifsEnRetard > 0 ? 'text-red-600 font-medium' : 'text-amber-700')}>
                   <FileWarning className="h-3.5 w-3.5" /> {nbSansJustificatif} dépense(s) sans justificatif
+                  {nbJustificatifsEnRetard > 0 ? `, dont ${nbJustificatifsEnRetard} en retard` : ''}
                 </p>
               )}
             </div>
@@ -558,7 +654,7 @@ export default function DemandeBudgetDetailPage() {
           <CardContent className="space-y-2 text-sm">
             <p><span className="text-muted-foreground">Département :</span> {demande.departement || '-'}</p>
             <p><span className="text-muted-foreground">Pour le compte de :</span> {demande.pourLeCompteDe || '-'}</p>
-            <p><span className="text-muted-foreground">Mode de paiement :</span> {demande.modePaiement}</p>
+            <p><span className="text-muted-foreground">Moyen de paiement principal :</span> {modePaiementLabel(demande.modePaiement)}</p>
             <p><span className="text-muted-foreground">Type de dépense :</span> {demande.typeDepense}</p>
             <p><span className="text-muted-foreground">Date limite souhaitée :</span> {demande.dateLimiteSouhaitee ? format(new Date(demande.dateLimiteSouhaitee), 'dd/MM/yyyy') : '-'}</p>
             {clients.length > 0 && <p><span className="text-muted-foreground">Client(s) :</span> {clients.join(', ')}</p>}
@@ -636,6 +732,9 @@ export default function DemandeBudgetDetailPage() {
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground">
                         {categorieLabel(l.categorie)}
                       </Badge>
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground" title="Moyen de paiement prévu">
+                        {modePaiementLabel(l.modePaiement || demande.modePaiement)}
+                      </Badge>
                       {l.commentaires.length > 0 && (
                         <Badge variant="secondary" className="h-5 px-1.5 gap-1 text-[10px]" title="Ligne commentée">
                           <MessageSquare className="h-3 w-3" /> {l.commentaires.length}
@@ -677,10 +776,16 @@ export default function DemandeBudgetDetailPage() {
                       <div className="flex flex-col items-end gap-1">
                         {peutDeciderLignes && l.statutValidation === 'EN_ATTENTE' && (
                           <>
-                            <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" disabled={isSubmitting} onClick={() => handleAccorderLigne(l.id)}>
+                            <Button
+                              size="sm"
+                              className="gap-1 bg-green-600 hover:bg-green-700"
+                              disabled={isSubmitting || blocageSignature}
+                              title={blocageSignature ? "Joignez d'abord le scan du budget signé par la DG" : undefined}
+                              onClick={() => handleAccorderLigne(l.id)}
+                            >
                               <Check className="h-3.5 w-3.5" /> Accorder
                             </Button>
-                            <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs" onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'AJUSTER' })}>
+                            <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs" disabled={blocageSignature} onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'AJUSTER' })}>
                               <Scale className="h-3 w-3" /> Ajuster
                             </Button>
                             <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs text-amber-700" onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'CORRIGER' })}>
@@ -690,7 +795,7 @@ export default function DemandeBudgetDetailPage() {
                         )}
                         {peutCorrigerLignes && l.statutValidation === 'A_CORRIGER' && (
                           <>
-                            <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'MODIFIER' })}>
+                            <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, modePaiement: l.modePaiement || demande.modePaiement, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'MODIFIER' })}>
                               <Pencil className="h-3.5 w-3.5" /> Modifier la ligne
                             </Button>
                             <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs text-red-600" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'RETIRER' })}>
@@ -709,7 +814,7 @@ export default function DemandeBudgetDetailPage() {
                                 ? 'Vous avez accordé cette ligne : une autre personne doit en enregistrer les dépenses'
                                 : l.reste <= 0 ? 'Budget de la ligne atteint — demandez un dépassement' : undefined
                             }
-                            onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste })}
+                            onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste, modePaiement: l.modePaiement })}
                           >
                             <Wallet className="h-3.5 w-3.5" /> Dépense
                           </Button>
@@ -735,7 +840,27 @@ export default function DemandeBudgetDetailPage() {
           </Table>
           </div>
           <Separator />
-          <div className="flex justify-end p-4 pr-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-end gap-4 p-4 pr-6">
+            {totauxParMode.length > 0 && (
+              <div className="text-sm min-w-[260px]">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Prévu par moyen de paiement</p>
+                <table className="w-full">
+                  <tbody>
+                    {totauxParMode.map((t) => (
+                      <tr key={t.mode}>
+                        <td className="pr-4 py-0.5">{t.label}</td>
+                        <td className="text-right py-0.5 whitespace-nowrap">{formatMontant(t.demande)}</td>
+                        {nbLignesAccordees > 0 && (
+                          <td className="text-right py-0.5 pl-3 whitespace-nowrap text-muted-foreground" title="Accordé">
+                            {formatMontant(t.accorde)}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <div className="bg-indigo-700 text-white rounded-lg px-6 py-3 text-right min-w-[220px]">
               <p className="text-indigo-100 text-xs uppercase tracking-wider mb-1">Total</p>
               <p className="text-2xl font-bold">{formatMontant(Number(demande.montantTotal))}</p>
@@ -771,12 +896,19 @@ export default function DemandeBudgetDetailPage() {
                   <TableHead>Receveur</TableHead>
                   <TableHead>Caisse</TableHead>
                   <TableHead className="text-right">Montant</TableHead>
-                  <TableHead>Justificatif</TableHead>
+                  <TableHead>Justificatif reçu</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {demande.depenses.map((d) => (
-                  <TableRow key={d.id} className={cn('align-top', d.annuleeAt && 'bg-red-50/40 text-muted-foreground')}>
+                  <TableRow
+                    key={d.id}
+                    className={cn(
+                      'align-top',
+                      d.annuleeAt && 'bg-red-50/40 text-muted-foreground',
+                      etatJustif(d) === 'EN_RETARD' && 'bg-red-50 border-l-4 border-l-red-500'
+                    )}
+                  >
                     <TableCell className="pl-6 whitespace-nowrap">
                       {format(new Date(d.dateDepense), 'dd/MM/yyyy')}
                       {d.annuleeAt && (
@@ -805,7 +937,7 @@ export default function DemandeBudgetDetailPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {d.nomReceveur}
-                      <p className="text-xs text-muted-foreground">{MODE_PAIEMENT_LABELS[d.modePaiement] ?? d.modePaiement}</p>
+                      <p className="text-xs text-muted-foreground">{modePaiementLabel(d.modePaiement)}</p>
                     </TableCell>
                     <TableCell className="text-sm">
                       {d.cashRegister.name}
@@ -837,7 +969,7 @@ export default function DemandeBudgetDetailPage() {
                       {d.attachments.length > 0 ? (
                         <div className="space-y-1">
                           <Badge variant="outline" className="gap-1 bg-green-50 text-green-700 border-green-200">
-                            <FileCheck2 className="h-3 w-3" /> Justifiée
+                            <FileCheck2 className="h-3 w-3" /> Oui
                           </Badge>
                           {d.attachments.map((a) => (
                             <div key={a.id} className="flex items-center gap-1">
@@ -848,9 +980,22 @@ export default function DemandeBudgetDetailPage() {
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          <Badge variant="outline" className="gap-1 bg-amber-50 text-amber-700 border-amber-200">
-                            <FileWarning className="h-3 w-3" /> Sans justificatif
-                          </Badge>
+                          {etatJustif(d) === 'EN_RETARD' ? (
+                            <Badge variant="outline" className="gap-1 bg-red-100 text-red-700 border-red-300">
+                              <FileWarning className="h-3 w-3" /> Non — en retard
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="gap-1 bg-amber-50 text-amber-700 border-amber-200">
+                              <FileWarning className="h-3 w-3" /> Non
+                            </Badge>
+                          )}
+                          {!d.annuleeAt && (
+                            <p className={cn('text-xs flex items-center gap-1', etatJustif(d) === 'EN_RETARD' ? 'text-red-600' : 'text-muted-foreground')}>
+                              <Clock className="h-3 w-3" />
+                              {etatJustif(d) === 'EN_RETARD' ? 'Attendu depuis le ' : 'Attendu avant le '}
+                              {format(echeanceJustificatif(d.createdAt), 'dd/MM HH:mm')}
+                            </p>
+                          )}
                           {d.motifSansJustificatif && (
                             <p className="text-xs text-muted-foreground">Motif : {d.motifSansJustificatif}</p>
                           )}
@@ -877,7 +1022,7 @@ export default function DemandeBudgetDetailPage() {
             Documents
           </CardTitle>
           {peutAjouterDocuments && (
-            <Button variant="outline" size="sm" onClick={() => setIsAddDocsOpen(true)} className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => ouvrirAjoutDocuments('DEVIS')} className="gap-2">
               <Plus className="h-4 w-4" /> Ajouter des documents
             </Button>
           )}
@@ -1001,6 +1146,7 @@ export default function DemandeBudgetDetailPage() {
         onClose={() => setIsAddDocsOpen(false)}
         onSuccess={fetchDemande}
         demandeId={id}
+        defaultType={addDocsType}
       />
 
       <Dialog open={isRejetInfoOpen} onOpenChange={setIsRejetInfoOpen}>

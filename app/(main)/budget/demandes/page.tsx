@@ -31,6 +31,7 @@ interface DemandeBudget {
   montantConsomme: number;
   montantPlafond: number;
   nbDepensesSansJustificatif: number;
+  nbJustificatifsEnRetard: number;
   nbDepassementsEnAttente: number;
   nbLignesACorriger: number;
   createdAt: string;
@@ -139,7 +140,8 @@ export default function DemandesBudgetListPage() {
     const soumises = demandes.filter((d) => d.statut === 'SOUMISE').reduce((sum, d) => sum + Number(d.montantTotal), 0);
     const consomme = demandes.reduce((sum, d) => sum + Number(d.montantConsomme), 0);
     const sansJustificatif = demandes.reduce((sum, d) => sum + d.nbDepensesSansJustificatif, 0);
-    return { total, soumises, consomme, sansJustificatif, count: demandes.length };
+    const justificatifsEnRetard = demandes.reduce((sum, d) => sum + (d.nbJustificatifsEnRetard ?? 0), 0);
+    return { total, soumises, consomme, sansJustificatif, justificatifsEnRetard, count: demandes.length };
   }, [demandes]);
 
   return (
@@ -190,6 +192,9 @@ export default function DemandesBudgetListPage() {
             <div>
               <p className="text-sm text-muted-foreground">Dépenses sans justificatif</p>
               <p className="text-xl font-bold">{summary.sansJustificatif}</p>
+              {summary.justificatifsEnRetard > 0 && (
+                <p className="text-xs font-medium text-red-600">dont {summary.justificatifsEnRetard} en retard (+ de 24 h ouvrées)</p>
+              )}
             </div>
             <div className="p-3 rounded-xl bg-amber-100 text-amber-700"><FileWarning className="w-5 h-5" /></div>
           </CardContent>
@@ -332,8 +337,14 @@ export default function DemandesBudgetListPage() {
                       <div className="space-y-1">
                         <BudgetProgressBar consomme={demande.montantConsomme} prevu={demande.montantPlafond} />
                         {demande.nbDepensesSansJustificatif > 0 && (
-                          <p className="text-xs text-amber-700 flex items-center gap-1">
+                          <p
+                            className={cn(
+                              'text-xs flex items-center gap-1',
+                              demande.nbJustificatifsEnRetard > 0 ? 'text-red-600 font-medium' : 'text-amber-700'
+                            )}
+                          >
                             <FileWarning className="h-3 w-3" /> {demande.nbDepensesSansJustificatif} sans justificatif
+                            {demande.nbJustificatifsEnRetard > 0 ? ` (${demande.nbJustificatifsEnRetard} en retard)` : ''}
                           </p>
                         )}
                         {demande.nbDepassementsEnAttente > 0 && (

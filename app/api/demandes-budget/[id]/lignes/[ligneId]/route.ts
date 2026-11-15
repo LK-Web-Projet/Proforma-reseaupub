@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ActionBudget, CategorieDepense, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
+import { ActionBudget, CategorieDepense, ModePaiementDemande, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
@@ -14,6 +14,7 @@ const schema = z.discriminatedUnion("action", [
     designation: z.string().trim().min(1, "La désignation est requise."),
     categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie." }),
     montant: z.number().positive("Le montant doit être supérieur à 0."),
+    modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
     reponse: z.string().trim().max(1000).optional(),
   }),
   z.object({ action: z.literal("RETIRER"), reponse: z.string().trim().max(1000).optional() }),
@@ -68,6 +69,7 @@ export async function PATCH(
             designation: data.designation,
             categorie: data.categorie,
             montant: data.montant,
+            ...(data.modePaiement ? { modePaiement: data.modePaiement } : {}),
             statutValidation: StatutLigneBudget.EN_ATTENTE,
             montantAccorde: null,
           },

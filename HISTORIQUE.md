@@ -22,6 +22,40 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-15 — Procédure de paiement (Lot A) : verrou du journal de caisse, moyen de paiement par ligne, budget signé, justificatifs à 24 h, fichiers protégés
+
+**Demande / Contexte**
+La direction a diffusé la « Procédure de paiement RESEAUPUB – de A à Z » (v3, 12/11/2026). L'analyse d'écart (plan : Lots A à E) a montré que le circuit budget couvrait déjà l'essentiel, mais que des sorties d'argent restaient possibles hors de tout contrôle. Le Lot A ferme ces failles et applique les réglages de la section 10 qui ne dépendent d'aucun arbitrage de la DG.
+
+**Modifications apportées**
+- Migration `20261115100000_procedure_paiement_lot_a` (générée par `migrate diff`, appliquée, écart nul vérifié) : `Role.canSaisirCaisse` ; `DemandeBudgetLigne.modePaiement` ; valeur `CARTE` dans `ModePaiementDemande` ; valeur `BUDGET_SIGNE` dans `TypeAttachmentDemande`. Reprise : chaque ligne existante prend le moyen de sa demande ; le droit de caisse est coché sur les rôles qui avaient déjà accès au journal (section Finance), à l'administration (`canManageUsers`) et au comptable (`canPayBudget`) — résultat en base : **Admin** et **Comptable** l'ont, **ASSISTANT** non.
+- **Verrou du journal de caisse** (règle d'or n° 2 : aucun argent ne sort sans validation de la DG) : nouveau droit « Saisir au journal de caisse (hors budget) » dans Paramètres > Rôles ; garde `requireCaisseUser()` (`lib/budgetAuth.ts`) sur `POST /api/cash-journal` (recettes, dépenses, transferts), `POST /api/cash-registers`, `PATCH /api/cash-registers/[id]`, `POST /api/cash-journal/recalculate` et les **dépenses** sur proforma (`POST /api/factures/[id]/paiements` type DEPENSE ; les encaissements clients restent ouverts). Ces routes n'avaient jusque-là aucun contrôle de droit. Côté écran, les boutons de saisie sont masqués sans le droit (journal de caisse, fiche proforma), avec la mention « Consultation seule ».
+- **Solde contrôlé côté serveur** : `recordCashMovement` (`lib/cashJournal.ts`) refuse toute DEPENSE non couverte par le solde, sous verrou de la caisse — donc aussi la saisie manuelle et l'API d'intégration Camptrack sans proforma, qui ne vérifiaient rien. Les transferts vérifient la caisse source (`assertSoldeSuffisant`). Erreur « Solde insuffisant… » renvoyée en 400 (et non 500).
+- **Moyen de paiement prévu par ligne** (section 4, point 1) : sélecteur par ligne dans le formulaire (« Principal (…) » par défaut), total par moyen sous le total, sur la fiche (demandé / accordé), dans l'impression et dans le rapport « Suivi budgétaire » (tableau et onglet Excel « Par moyen », colonne dans le détail). La dépense pré-sélectionne le moyen de la ligne ; la correction de ligne permet d'en changer. Libellés communs dans `lib/budgetTypes.ts` (`MODE_PAIEMENT_OPTIONS`, `modePaiementLabel`, `totauxParModePaiement`). Ajout de **Carte bancaire**.
+- **Budget de campagne signé par la DG** (section 4, points 2-3) : bouton **Imprimer** sur la fiche (PDF `lib/pdf/budgetPdf.ts` : lignes, moyens, total par moyen, cadres de signature Préparé par / Vérifié comptable / Approuvé Direction générale) ; nouveau type de document « Budget signé (DG) » ; un budget **CAMPAGNE** ne peut avoir aucune ligne accordée (Tout valider, Accorder, Ajuster) tant que ce scan n'est pas joint (`refusBudgetSigneManquant`, `lib/budgetSuivi.ts`). Les documents peuvent désormais être ajoutés pendant la validation.
+- **Justificatifs à 24 h ouvrées** (section 7) : `lib/justificatifs.ts` (délai lundi-vendredi, heure du Bénin) ; colonne « Justificatif reçu : Oui / Non », échéance affichée, dépense **en rouge** une fois le délai dépassé ; compteur « dont N en retard » sur la fiche et dans la liste des budgets. **État du soir** : `POST /api/integration/rapports/justificatifs-manquants` (clé d'intégration) envoie à la DG (comptables en copie) la liste des dépenses sans justificatif, les retards en tête ; rien n'est envoyé s'il n'en manque aucun ; `?dryRun=1` pour contrôler sans envoyer.
+- **Nommage des pièces** (section 7) : les pièces de budget sont nommées `date_campagne_document_montant` (ex. `2026-11-12_BIIC-DB-2026-0012_Preuve-paiement_350000F.pdf`, client de la proforma + numéro du budget) — `lib/uploadDemandeBudget.ts`.
+- **Fichiers protégés** : `middleware.ts` couvre désormais `/Upload/*` — un fichier déposé (justificatif, état, bon…) n'est plus servi qu'à un utilisateur connecté (vérifié : 307 vers la connexion sans session ; le logo public reste accessible).
+
+**Erreurs rencontrées & solutions**
+- Fichiers en fins de ligne Windows (CRLF) : remplacements faits par un petit script qui les conserve.
+- `prisma generate` : EPERM (moteur verrouillé par `next dev`) — types bien générés ; redémarrer `next dev`.
+- Une commande de test lancée avec `cat >` sans entrée a bloqué le terminal → arrêtée, relancée correctement.
+
+**Tests**
+- Nouveau scénario en base, transaction annulée : 15/15 (dépense manuelle > solde refusée, dépense = solde acceptée, caisse vide refusée pour `recordCashDepense` et les transferts, recette toujours possible, solde cohérent ; CAMPAGNE sans scan refusée, un devis ne suffit pas, scan signé → accepté ; PONCTUEL non concerné, enum CARTE ; moyen par ligne ; total par moyen ; nommage) — rien enregistré.
+- Non-régression : 37/37 (base) et 89/89 (sans base). `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Redémarrer `next dev` (nouveau moteur Prisma).
+- **Paramètres > Rôles** : vérifier le droit « Saisir au journal de caisse » — cocher le rôle de la caissière (Mme Dolorès) s'il n'est ni Admin ni Comptable ; décocher Admin si la DG ne doit pas saisir elle-même.
+- **Caisses à solde négatif** : toute sortie y est maintenant refusée jusqu'à un approvisionnement (y compris les paiements Camptrack envoyés sans proforma, qui reçoivent un 400 et n'enregistrent rien côté Camptrack).
+- **Crontab du serveur** : ajouter l'état du soir, par ex. `0 19 * * 1-5 curl -s -X POST -H "Authorization: Bearer $INTEGRATION_API_KEY" https://<domaine>/api/integration/rapports/justificatifs-manquants` (à côté de la clôture mensuelle).
+- Budget CAMPAGNE : Imprimer → signer → « Joindre le budget signé » → les boutons Accorder / Tout valider se débloquent.
+- Liens vers des fichiers dans des e-mails existants : ils demandent désormais une connexion.
+
+---
+
 ## 2026-11-14 (suite 3) — Budgets : validation ligne par ligne, correction ou retrait par le demandeur
 
 **Demande / Contexte**

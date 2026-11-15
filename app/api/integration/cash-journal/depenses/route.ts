@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyIntegrationKey } from "@/lib/integrationAuth";
-import { recordCashMovement } from "@/lib/cashJournal";
+import { isSoldeInsuffisantError, recordCashMovement } from "@/lib/cashJournal";
 import { recordDepensePaiement } from "@/lib/paiements";
 import { OperationType } from "@prisma/client";
 import { z } from "zod";
@@ -96,6 +96,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ cashJournalEntry }, { status: 201 });
   } catch (error) {
+    if (isSoldeInsuffisantError(error)) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    }
     console.error("Erreur API intégration - création dépense caisse:", error);
     const errorMessage = error instanceof Error ? error.message : "Erreur interne du serveur";
     return NextResponse.json({ error: errorMessage }, { status: 500 });

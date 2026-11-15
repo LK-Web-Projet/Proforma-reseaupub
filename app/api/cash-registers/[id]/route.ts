@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
+import { requireCaisseUser } from '@/lib/budgetAuth';
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Masquer / réafficher une caisse : réservé au droit « Saisir au journal de caisse ».
+  const caps = await requireCaisseUser();
+  if (caps instanceof NextResponse) return caps;
   try {
     const { view } = await request.json();
     const resolvedParams = await params;

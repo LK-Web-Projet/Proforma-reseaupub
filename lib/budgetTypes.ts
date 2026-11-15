@@ -66,3 +66,50 @@ export const CATEGORIE_DEPENSE_LABELS: Record<CategorieDepenseValue, string> = {
 export function categorieLabel(value: string | null | undefined): string {
   return value ? CATEGORIE_DEPENSE_LABELS[value as CategorieDepenseValue] ?? value : 'Non catégorisé';
 }
+
+// Moyens de paiement (enum ModePaiementDemande). L'ordre suit la procédure de paiement :
+// espèces (petite caisse), MoMo (personnes), chèque / virement (entreprises), carte (achats en ligne).
+export const MODE_PAIEMENT_VALUES = ['ESPECES', 'MOBILE_MONEY', 'CHEQUE', 'VIREMENT', 'CARTE', 'AUTRE'] as const;
+export type ModePaiementValue = (typeof MODE_PAIEMENT_VALUES)[number];
+
+export const MODE_PAIEMENT_LABELS: Record<ModePaiementValue, string> = {
+  ESPECES: 'Espèces',
+  MOBILE_MONEY: 'Mobile Money',
+  CHEQUE: 'Chèque',
+  VIREMENT: 'Virement bancaire',
+  CARTE: 'Carte bancaire',
+  AUTRE: 'Autre',
+};
+
+export const MODE_PAIEMENT_OPTIONS = MODE_PAIEMENT_VALUES.map((value) => ({ value, label: MODE_PAIEMENT_LABELS[value] }));
+
+export function modePaiementLabel(value: string | null | undefined): string {
+  if (!value) return '—';
+  return MODE_PAIEMENT_LABELS[value as ModePaiementValue] ?? value;
+}
+
+/**
+ * Total prévu par moyen de paiement (procédure, section 4 : « le total prévu par moyen de
+ * paiement est connu dès le départ »). Une ligne sans moyen prend celui de la demande ; les
+ * lignes retirées ne comptent pas. `accorde` = montant accordé (0 tant que la ligne ne l'est pas).
+ */
+export function totauxParModePaiement(
+  lignes: { montant: number | string; modePaiement?: string | null; statutValidation?: string; montantAccorde?: number | string | null }[],
+  modeParDefaut: string
+): { mode: string; label: string; demande: number; accorde: number }[] {
+  const totaux = new Map<string, { demande: number; accorde: number }>();
+  for (const l of lignes) {
+    if (l.statutValidation === 'RETIREE') continue;
+    const mode = l.modePaiement || modeParDefaut;
+    const t = totaux.get(mode) ?? { demande: 0, accorde: 0 };
+    t.demande += Number(l.montant);
+    if (l.statutValidation === 'ACCORDEE') t.accorde += Number(l.montantAccorde ?? l.montant);
+    totaux.set(mode, t);
+  }
+  const connus: readonly string[] = MODE_PAIEMENT_VALUES;
+  const ordre = [
+    ...connus.filter((m) => totaux.has(m)),
+    ...Array.from(totaux.keys()).filter((m) => !connus.includes(m)),
+  ];
+  return ordre.map((mode) => ({ mode, label: modePaiementLabel(mode), ...totaux.get(mode)! }));
+}

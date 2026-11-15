@@ -176,6 +176,15 @@ export default function FactureDetailPage() {
   const [campagnes, setCampagnes] = useState<Campagne[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
+  // Droit « Saisir au journal de caisse » : une dépense sur proforma est une sortie hors budget.
+  const [peutSaisirCaisse, setPeutSaisirCaisse] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/demandes-budget/me-role')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setPeutSaisirCaisse(!!data?.canSaisirCaisse))
+      .catch(() => setPeutSaisirCaisse(false));
+  }, []);
 
   const fetchFacture = useCallback(async () => {
     if (!id) return;
@@ -690,9 +699,11 @@ export default function FactureDetailPage() {
                                 <PlusCircle className="w-4 h-4 mr-2" /> Paiement
                             </Button>
                         )}
-                        <Button size="sm" variant="outline" onClick={() => { setOperationType("DEPENSE"); setIsPaymentDialogOpen(true); }}>
-                            <PlusCircle className="w-4 h-4 mr-2" /> Dépense
-                        </Button>
+                        {peutSaisirCaisse && (
+                            <Button size="sm" variant="outline" onClick={() => { setOperationType("DEPENSE"); setIsPaymentDialogOpen(true); }}>
+                                <PlusCircle className="w-4 h-4 mr-2" /> Dépense
+                            </Button>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">

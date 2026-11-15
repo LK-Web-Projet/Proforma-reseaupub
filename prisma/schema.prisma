@@ -16,6 +16,10 @@ model Role {
   canValidateBudgetMensuel Boolean @default(false) // budgets mensuels + budgets au-dessus du plafond délégué
   canValidateBudget        Boolean @default(false) // budgets hors mensuels, jusqu'au plafond délégué
   canPayBudget             Boolean @default(false) // enregistrer les dépenses (comptable)
+  // Saisie directe au journal de caisse (hors budget) : opérations manuelles, transferts,
+  // création de caisses, dépenses imputées à une proforma. Sans ce droit, aucun argent ne sort
+  // autrement que par le circuit budget (procédure de paiement, règle d'or n° 2).
+  canSaisirCaisse          Boolean @default(false)
   createdAt      DateTime   @default(now())
   pages          RolePage[]
   users          User[]
@@ -490,6 +494,7 @@ enum ModePaiementDemande {
   CHEQUE
   ESPECES
   MOBILE_MONEY
+  CARTE
   AUTRE
 }
 
@@ -498,6 +503,7 @@ enum TypeAttachmentDemande {
   FACTURE
   BON_COMMANDE
   PREUVE_PAIEMENT
+  BUDGET_SIGNE // scan du budget signé par la DG — exigé avant la validation d'un budget de campagne
   AUTRE
 }
 
@@ -560,6 +566,9 @@ model DemandeBudgetLigne {
   // Catégorie normalisée, pour comparer les budgets d'un mois à l'autre (null = non catégorisé,
   // lignes antérieures au Lot 3). Libellés dans lib/budgetTypes.ts.
   categorie       CategorieDepense?
+  // Moyen de paiement prévu pour la ligne (espèces, MoMo, chèque, virement, carte) — sert au
+  // total prévu par moyen de paiement. Null = lignes antérieures (reprises du mode de la demande).
+  modePaiement    ModePaiementDemande?
   demandeBudget   DemandeBudget @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   depenses        BudgetDepense[]
   commentaires    BudgetCommentaire[]

@@ -101,5 +101,9 @@ export const config = {
     "/((?!_next|.*\\..*).*)",
     // Toutes les API
     "/(api|trpc)(.*)",
+    // Fichiers déposés (public/Upload : états de paiement, justificatifs, RIB, bons…). Le premier
+    // motif exclut tout chemin avec un point, donc les fichiers : sans cette ligne ils seraient
+    // servis à n'importe qui connaissant l'URL. Ici, connexion obligatoire (redirection sign-in).
+    "/Upload/(.*)",
   ],
 };

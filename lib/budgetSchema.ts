@@ -18,6 +18,8 @@ const ligneSchema = z.object({
   designation: z.string().min(1),
   montant: z.number().min(0),
   categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie pour chaque ligne." }),
+  // Moyen de paiement prévu pour la ligne ; absent = celui de la demande (voir lignesAvecMode).
+  modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
 });
 
 /**
@@ -59,6 +61,11 @@ export const demandeBudgetSchema = z
   });
 
 export type DemandeBudgetInput = z.infer<typeof demandeBudgetSchema>;
+
+/** Lignes prêtes à créer : chaque ligne porte son moyen de paiement (celui de la demande par défaut). */
+export function lignesAvecMode(data: DemandeBudgetInput) {
+  return data.lignes.map((l) => ({ ...l, modePaiement: l.modePaiement ?? data.modePaiement }));
+}
 
 /** Lit les champs du FormData envoyé par components/DemandeBudgetForm.tsx. */
 export function parseDemandeBudgetFormData(formData: FormData) {

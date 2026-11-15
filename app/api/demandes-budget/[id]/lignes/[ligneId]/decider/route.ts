@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ActionBudget, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
-import { BUDGET_EPSILON, logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
+import { BUDGET_EPSILON, logBudget, majStatutApresDecision, refusBudgetSigneManquant } from "@/lib/budgetSuivi";
 import { sendDemandeValideeNotification, sendLigneACorrigerNotification } from "@/lib/email/demandeBudget";
 
 class DecisionError extends Error {}
@@ -51,6 +51,12 @@ export async function POST(
       }
       const refus = refusValidation(caps, demande);
       if (refus) throw new DecisionError(refus);
+      // Accorder engage la dépense : le budget de campagne doit d'abord être signé par la DG.
+      // (Demander une correction reste possible sans le scan.)
+      if (decision === "ACCORDER") {
+        const refusSigne = await refusBudgetSigneManquant(tx, demande);
+        if (refusSigne) throw new DecisionError(refusSigne);
+      }
 
       const ligne = demande.lignes.find((l) => l.id === ligneId);
       if (!ligne) throw new DecisionError("Cette ligne n'appartient pas à ce budget.");

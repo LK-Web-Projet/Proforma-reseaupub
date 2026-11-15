@@ -291,3 +291,98 @@ export async function sendDemandeRejeteeNotification(demande: DemandeBudgetForEm
     }),
   });
 }
+
+export interface JustificatifManquant {
+  demandeId: string;
+  numero: string;
+  designation: string;
+  nomReceveur: string;
+  montant: number;
+  dateDepense: Date;
+  echeance: Date;
+  enRetard: boolean;
+  caisse: string;
+  enregistrePar: string;
+  motifSansJustificatif: string | null;
+}
+
+/**
+ * État du soir (procédure de paiement, section 7) : liste des dépenses de budget sans
+ * justificatif, les dépenses en retard (24 h ouvrées dépassées) en rouge et en tête.
+ * Destinataires : la DG (droit « valider les budgets mensuels »), comptables en copie.
+ */
+export async function sendJustificatifsManquantsNotification(items: JustificatifManquant[]) {
+  if (items.length === 0) return { envoye: false, destinataires: 0 };
+  const [dg, comptables] = await Promise.all([
+    getBudgetRecipients("canValidateBudgetMensuel"),
+    getBudgetRecipients("canPayBudget"),
+  ]);
+  if (dg.length === 0) return { envoye: false, destinataires: 0 };
+  const cc = comptables.filter((e) => !dg.includes(e));
+
+  const enRetard = items.filter((i) => i.enRetard);
+  const dateFr = (d: Date) => new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeZone: "Africa/Porto-Novo" }).format(d);
+  const dateHeureFr = (d: Date) =>
+    new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Africa/Porto-Novo" }).format(d);
+
+  const lignes = items
+    .map(
+      (i, idx) => `
+        <tr style="background:${i.enRetard ? "#fef2f2" : idx % 2 === 0 ? "#ffffff" : "#f8fafc"};">
+          <td style="padding:8px 10px;border-bottom:1px solid #eef0f3;font-size:12px;white-space:nowrap;">
+            <a href="${getAppUrl()}/budget/demandes/${i.demandeId}" style="color:#4f46e5;text-decoration:none;font-weight:700;">${escapeHtml(i.numero)}</a>
+          </td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eef0f3;font-size:12px;color:#1f2937;">
+            ${escapeHtml(i.designation)}<br/><span style="color:#64748b;">${escapeHtml(i.nomReceveur)} · ${escapeHtml(i.caisse)}</span>
+            ${i.motifSansJustificatif ? `<br/><span style="color:#64748b;font-style:italic;">Motif déclaré : ${escapeHtml(i.motifSansJustificatif)}</span>` : ""}
+          </td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eef0f3;font-size:12px;text-align:right;white-space:nowrap;">${nf(i.montant)} XOF</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #eef0f3;font-size:12px;white-space:nowrap;color:${i.enRetard ? "#b91c1c" : "#334155"};font-weight:${i.enRetard ? 700 : 400};">
+            ${i.enRetard ? "En retard" : "Attendu"}<br/><span style="font-weight:400;">${i.enRetard ? "depuis" : "avant"} le ${dateHeureFr(i.echeance)}</span>
+          </td>
+        </tr>`
+    )
+    .join("");
+
+  const total = items.reduce((s, i) => s + i.montant, 0);
+  const html = `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f8;padding:32px 0;">
+    <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+      <div style="background:#0f172a;padding:24px 28px;">
+        <p style="margin:0;color:#94a3b8;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;">État du soir &middot; Réseaupub</p>
+        <h1 style="margin:8px 0 0;color:#ffffff;font-size:20px;">Justificatifs manquants — ${dateFr(new Date())}</h1>
+      </div>
+      <div style="padding:24px 28px;">
+        <p style="margin:0 0 18px;color:#334155;font-size:14px;line-height:1.5;">
+          <strong>${items.length}</strong> dépense(s) de budget n'ont pas encore de justificatif, pour <strong>${nf(total)} XOF</strong>.
+          ${enRetard.length > 0 ? `<br/><span style="color:#b91c1c;font-weight:700;">${enRetard.length} sont en retard</span> (justificatif attendu sous 24 h ouvrées).` : ""}
+        </p>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #eef0f3;">
+          <thead>
+            <tr style="background:#0f172a;">
+              <th style="padding:8px 10px;text-align:left;color:#ffffff;font-size:11px;text-transform:uppercase;">Budget</th>
+              <th style="padding:8px 10px;text-align:left;color:#ffffff;font-size:11px;text-transform:uppercase;">Dépense</th>
+              <th style="padding:8px 10px;text-align:right;color:#ffffff;font-size:11px;text-transform:uppercase;">Montant</th>
+              <th style="padding:8px 10px;text-align:left;color:#ffffff;font-size:11px;text-transform:uppercase;">Justificatif</th>
+            </tr>
+          </thead>
+          <tbody>${lignes}</tbody>
+        </table>
+        <div style="margin-top:22px;text-align:center;">
+          <a href="${getAppUrl()}/budget/demandes" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;">Ouvrir les budgets</a>
+        </div>
+      </div>
+      <div style="padding:14px 28px;background:#f8fafc;border-top:1px solid #eef0f3;">
+        <p style="margin:0;color:#94a3b8;font-size:11px;text-align:center;">Envoi automatique chaque soir &mdash; Réseaupub</p>
+      </div>
+    </div>
+  </div>`;
+
+  await sendEmail({
+    to: dg,
+    cc: cc.length > 0 ? cc : undefined,
+    subject: `Justificatifs manquants : ${items.length} dépense(s)${enRetard.length > 0 ? `, dont ${enRetard.length} en retard` : ""}`,
+    html,
+  });
+  return { envoye: true, destinataires: dg.length + cc.length };
+}

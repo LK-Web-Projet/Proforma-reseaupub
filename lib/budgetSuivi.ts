@@ -95,6 +95,24 @@ export async function recalculerStatutBudget(db: Db, demandeBudgetId: string, op
   return statut;
 }
 
+/**
+ * Budget de campagne : il est imprimé, signé en papier par la DG, puis validé sur la plateforme
+ * avec le scan signé en pièce jointe (procédure de paiement, section 4). Renvoie le motif de refus
+ * si ce scan manque, sinon null. Les autres types de budget ne sont pas concernés.
+ */
+export async function refusBudgetSigneManquant(
+  db: Db,
+  demande: { id: string; type: string }
+): Promise<string | null> {
+  if (demande.type !== "CAMPAGNE") return null;
+  const nb = await db.demandeBudgetAttachment.count({
+    where: { demandeBudgetId: demande.id, kind: "BUDGET_SIGNE", depenseId: null },
+  });
+  return nb > 0
+    ? null
+    : "Budget de campagne : imprimez-le, faites-le signer par la DG, puis joignez le scan signé (document « Budget signé ») avant de le valider.";
+}
+
 export type ResultatDecision = { statut: StatutDemandeBudget; devenuValide: boolean; devenuRejete: boolean };
 
 /**

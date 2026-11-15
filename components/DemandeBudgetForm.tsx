@@ -30,6 +30,8 @@ import {
   TypeBudgetValue,
   CATEGORIE_DEPENSE_VALUES,
   CATEGORIE_DEPENSE_LABELS,
+  MODE_PAIEMENT_OPTIONS,
+  totauxParModePaiement,
 } from '@/lib/budgetTypes';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -43,6 +45,8 @@ interface Ligne {
   designation: string;
   montant: string;
   categorie: string;
+  // Moyen de paiement prévu ; '' = celui de la demande (« moyen principal »).
+  modePaiement: string;
   // Reconduction : prévu / plafond / réalisé de la même ligne sur le budget d'origine (lecture seule).
   precedent?: { prevu: number; plafond: number; realise: number };
 }
@@ -65,13 +69,8 @@ interface DocumentRow {
   file: File | null;
 }
 
-const MODE_PAIEMENT_OPTIONS = [
-  { value: 'VIREMENT', label: 'Virement bancaire' },
-  { value: 'CHEQUE', label: 'Chèque' },
-  { value: 'ESPECES', label: 'Espèces' },
-  { value: 'MOBILE_MONEY', label: 'Mobile Money' },
-  { value: 'AUTRE', label: 'Autre' },
-];
+// Valeur du sélecteur « moyen de la ligne » qui signifie « comme la demande » (Radix refuse '').
+const MODE_LIGNE_DEFAUT = '__DEFAUT__';
 
 const TYPE_DEPENSE_OPTIONS = [
   'Achat de matériel',
@@ -100,7 +99,7 @@ function moisMensuelMinimum(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-const emptyLigne: Ligne = { designation: '', montant: '', categorie: '' };
+const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: '' };
 
 const emptyForm = {
   departement: '',
@@ -132,6 +131,7 @@ export interface DemandeBudgetInitialData {
     designation: string;
     montant: number;
     categorie?: string | null;
+    modePaiement?: string | null;
     precedent?: { prevu: number; plafond: number; realise: number };
   }[];
   existingAttachments: ExistingAttachment[];
@@ -203,6 +203,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         designation: l.designation,
         montant: String(l.montant),
         categorie: l.categorie ?? '',
+        // Une ligne au même moyen que la demande suit le moyen principal s'il change.
+        modePaiement: l.modePaiement && l.modePaiement !== initialData.modePaiement ? l.modePaiement : '',
         precedent: l.precedent,
       }))
     );
@@ -237,7 +239,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
   const addLigne = () => setLignes((prev) => [...prev, { ...emptyLigne }]);
   const removeLigne = (index: number) => setLignes((prev) => prev.filter((_, i) => i !== index));
-  const updateLigne = (index: number, field: 'designation' | 'montant' | 'categorie', value: string) => {
+  const updateLigne = (index: number, field: 'designation' | 'montant' | 'categorie' | 'modePaiement', value: string) => {
     setLignes((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -263,6 +265,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   };
 
   const total = lignes.reduce((sum, l) => sum + (Number(l.montant) || 0), 0);
+  const totauxParMode = totauxParModePaiement(
+    lignes.map((l) => ({ montant: Number(l.montant) || 0, modePaiement: l.modePaiement })),
+    form.modePaiement
+  ).filter((t) => t.demande > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -343,7 +349,14 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       data.append('proformaIds', JSON.stringify(beneficiaireType === 'CAMPAGNE_CLIENT' ? proformaIds : []));
       data.append(
         'lignes',
-        JSON.stringify(lignesValides.map((l) => ({ designation: l.designation, montant: Number(l.montant), categorie: l.categorie })))
+        JSON.stringify(
+          lignesValides.map((l) => ({
+            designation: l.designation,
+            montant: Number(l.montant),
+            categorie: l.categorie,
+            modePaiement: l.modePaiement || form.modePaiement,
+          }))
+        )
       );
       documents.forEach((doc) => {
         if (doc.file) data.append(`documents_${doc.type}`, doc.file);
@@ -485,9 +498,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[42%]">Désignation</TableHead>
-                <TableHead className="w-[28%] min-w-[170px]">Catégorie *</TableHead>
-                <TableHead className="w-[22%] min-w-[130px]">Montant (XOF)</TableHead>
+                <TableHead className="w-[32%]">Désignation</TableHead>
+                <TableHead className="w-[22%] min-w-[160px]">Catégorie *</TableHead>
+                <TableHead className="w-[18%] min-w-[150px]">Moyen de paiement</TableHead>
+                <TableHead className="w-[20%] min-w-[130px]">Montant (XOF)</TableHead>
                 <TableHead className="w-[8%]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -507,6 +521,22 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                       <SelectContent>
                         {CATEGORIE_DEPENSE_VALUES.map((c) => (
                           <SelectItem key={c} value={c}>{CATEGORIE_DEPENSE_LABELS[c]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={ligne.modePaiement || MODE_LIGNE_DEFAUT}
+                      onValueChange={(v) => updateLigne(index, 'modePaiement', v === MODE_LIGNE_DEFAUT ? '' : v)}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={MODE_LIGNE_DEFAUT}>
+                          Principal ({MODE_PAIEMENT_OPTIONS.find((o) => o.value === form.modePaiement)?.label ?? form.modePaiement})
+                        </SelectItem>
+                        {MODE_PAIEMENT_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -548,12 +578,23 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             </TableBody>
           </Table>
         </div>
-        <div className="flex justify-end text-lg font-bold">Total : {formatMontant(total)}</div>
+        <div className="flex flex-col items-end gap-1">
+          <div className="text-lg font-bold">Total : {formatMontant(total)}</div>
+          {totauxParMode.length > 1 && (
+            <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {totauxParMode.map((t) => (
+                <span key={t.mode}>
+                  {t.label} : <span className="font-medium text-foreground">{formatMontant(t.demande)}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label>Mode de paiement souhaité *</label>
+          <label>Moyen de paiement principal *</label>
           <Select value={form.modePaiement} onValueChange={(v) => setForm((p) => ({ ...p, modePaiement: v }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>

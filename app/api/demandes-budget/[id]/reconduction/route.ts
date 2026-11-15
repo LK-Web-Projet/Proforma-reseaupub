@@ -65,6 +65,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           designation: l.designation,
           montant: accorde,
           categorie: l.categorie,
+          modePaiement: l.modePaiement ?? source.modePaiement,
           precedent: { prevu: accorde, plafond: accorde + depassement, realise },
         };
       }),

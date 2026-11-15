@@ -11,7 +11,9 @@ import { getEntrepriseConfig } from "@/lib/entreprise";
  * - canValidateMensuel : valide les budgets mensuels et tout budget au-dessus du plafond délégué
  *   (rôle "Admin" en pratique) ; seul à pouvoir ouvrir un commentaire de ligne avec le comptable ;
  * - canValidate : valide les budgets non mensuels jusqu'au plafond (rôle "Assistant-Direction") ;
- * - canPay : enregistre les dépenses dans le journal de caisse (rôle "Comptable").
+ * - canPay : enregistre les dépenses dans le journal de caisse (rôle "Comptable") ;
+ * - canSaisirCaisse : saisie directe au journal de caisse, hors budget (opérations manuelles,
+ *   transferts, caisses, dépenses imputées à une proforma).
  * Relu en base à chaque appel : décocher une case prend effet immédiatement.
  */
 export interface BudgetCapabilities {
@@ -21,6 +23,7 @@ export interface BudgetCapabilities {
   canValidateMensuel: boolean;
   canValidate: boolean;
   canPay: boolean;
+  canSaisirCaisse: boolean;
   plafond: number;
 }
 
@@ -51,6 +54,7 @@ export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null
     canValidateMensuel: !!role?.canValidateBudgetMensuel,
     canValidate: !!role?.canValidateBudget,
     canPay: !!role?.canPayBudget,
+    canSaisirCaisse: !!role?.canSaisirCaisse,
     plafond: Number(config.plafondValidationDeleguee),
   };
 }
@@ -115,7 +119,25 @@ export async function requireBudgetUser(): Promise<BudgetCapabilities | NextResp
   return caps;
 }
 
-type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget";
+/**
+ * Garde des routes du journal de caisse (saisie hors budget) : réservée aux rôles portant le
+ * droit « Saisir au journal de caisse ». Renvoie les droits, ou une réponse 401/403.
+ */
+export async function requireCaisseUser(): Promise<BudgetCapabilities | NextResponse> {
+  const caps = await getBudgetCapabilities();
+  if (!caps) {
+    return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+  }
+  if (!caps.canSaisirCaisse) {
+    return NextResponse.json(
+      { error: "Vous n'avez pas le droit de saisir au journal de caisse. Les dépenses passent par le circuit budget." },
+      { status: 403 }
+    );
+  }
+  return caps;
+}
+
+type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget" | "canSaisirCaisse";
 
 /** Emails des utilisateurs actifs dont le rôle porte le droit demandé (destinataires des notifications). */
 export async function getBudgetRecipients(flag: BudgetFlag): Promise<string[]> {

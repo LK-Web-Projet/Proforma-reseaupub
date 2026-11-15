@@ -85,8 +85,12 @@ export async function POST(
 
     // Fichiers écrits avant la transaction (le disque n'est pas transactionnel) : en cas d'échec
     // de la transaction, seuls des fichiers orphelins restent, jamais une dépense sans sa pièce.
-    const savedFiles = await saveDemandeBudgetFiles(id, preuves);
     const dateDepense = new Date(data.dateDepense);
+    const savedFiles = await saveDemandeBudgetFiles(id, preuves, {
+      date: dateDepense,
+      montant: data.montant,
+      kind: "PREUVE_PAIEMENT",
+    });
 
     const { depense, demande, ligne, avant } = await prisma.$transaction(
       async (tx) => {

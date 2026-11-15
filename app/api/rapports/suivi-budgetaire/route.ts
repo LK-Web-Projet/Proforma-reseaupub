@@ -14,6 +14,7 @@ export interface SuiviBudgetaireLigne {
   departement: string;
   designation: string;
   categorie: string | null;
+  modePaiement: string; // moyen de paiement prévu sur la ligne (celui de la demande à défaut)
   demande: number; // montant demandé
   prevu: number; // montant accordé (= prévu du budget)
   depassements: number; // dépassements approuvés
@@ -97,6 +98,7 @@ export async function GET(request: NextRequest) {
           departement: d.departement || "Sans service",
           designation: l.designation,
           categorie: l.categorie,
+          modePaiement: l.modePaiement ?? d.modePaiement,
           demande: Number(l.montant),
           prevu,
           depassements,

@@ -7,13 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS } from '@/lib/budgetTypes';
+import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS, MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
 import { toast } from 'sonner';
 
 export interface BudgetLigneCorrectionCible {
   id: string;
   designation: string;
   categorie: string | null;
+  modePaiement?: string | null;
   montant: number;
   motifDecision: string | null;
   mode: 'MODIFIER' | 'RETIRER';
@@ -36,6 +37,7 @@ export function BudgetLigneCorrectionDialog({
 }) {
   const [designation, setDesignation] = useState('');
   const [categorie, setCategorie] = useState('');
+  const [modePaiement, setModePaiement] = useState('');
   const [montant, setMontant] = useState('');
   const [reponse, setReponse] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,6 +46,7 @@ export function BudgetLigneCorrectionDialog({
     if (!ligne) return;
     setDesignation(ligne.designation);
     setCategorie(ligne.categorie ?? '');
+    setModePaiement(ligne.modePaiement ?? '');
     setMontant(String(ligne.montant));
     setReponse('');
   }, [ligne]);
@@ -57,7 +60,14 @@ export function BudgetLigneCorrectionDialog({
       if (!designation.trim()) return void toast.error('La désignation est requise.');
       if (!categorie) return void toast.error('Choisissez une catégorie.');
       if (!m || m <= 0) return void toast.error('Indiquez un montant valide.');
-      body = { action: 'MODIFIER', designation: designation.trim(), categorie, montant: m, reponse: reponse.trim() || undefined };
+      body = {
+        action: 'MODIFIER',
+        designation: designation.trim(),
+        categorie,
+        montant: m,
+        modePaiement: modePaiement || undefined,
+        reponse: reponse.trim() || undefined,
+      };
     } else {
       body = { action: 'RETIRER', reponse: reponse.trim() || undefined };
     }
@@ -118,6 +128,17 @@ export function BudgetLigneCorrectionDialog({
                     <Label htmlFor="corr-montant">Montant (XOF) *</Label>
                     <Input id="corr-montant" type="number" min={0} step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Moyen de paiement prévu</Label>
+                  <Select value={modePaiement} onValueChange={setModePaiement}>
+                    <SelectTrigger><SelectValue placeholder="Moyen de paiement" /></SelectTrigger>
+                    <SelectContent>
+                      {MODE_PAIEMENT_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </>
             ) : (

@@ -10,6 +10,7 @@ import { recordDepensePaiement } from "@/lib/paiements";
 import { lockCashRegister } from "@/lib/cashJournal";
 import { safeCreatedById } from "@/lib/authz";
 import { sendProformaPaiementNotification } from "@/lib/email/proformaPaiement";
+import { requireCaisseUser } from "@/lib/budgetAuth";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
@@ -65,6 +66,13 @@ export async function POST(
 
     const { montant, methode, cashRegisterId, type, ...rest } = validation.data;
     const montantDecimal = parseFloat(montant.toFixed(2));
+
+    // Une dépense imputée à une proforma est une sortie de caisse hors budget : même droit que la
+    // saisie directe au journal (les encaissements clients restent ouverts comme avant).
+    if (type === "DEPENSE") {
+      const caisseCaps = await requireCaisseUser();
+      if (caisseCaps instanceof NextResponse) return caisseCaps;
+    }
 
     const finalCashRegisterId =
       methode === "Espèces" && type === "PAIEMENT" ? 1 : cashRegisterId;

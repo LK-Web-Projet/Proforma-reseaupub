@@ -3,9 +3,10 @@ import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, TypeBudge
 import prisma from "@/lib/prisma";
 import { logBudget, budgetMensuelExistant, cloturerBudgetsMensuelsEchus, montantAccordeLigne } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
-import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
+import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
+import { etatJustificatif } from "@/lib/justificatifs";
 
 // GET /api/demandes-budget - Liste des demandes de budget
 export async function GET(request: NextRequest) {
@@ -69,11 +70,12 @@ export async function GET(request: NextRequest) {
         lignes: true,
         bonCommande: { select: { id: true, numero: true } },
         proformas: { include: { invoice: { include: { client: true } } } },
-        depenses: { where: { annuleeAt: null }, select: { montant: true, _count: { select: { attachments: true } } } },
+        depenses: { where: { annuleeAt: null }, select: { montant: true, createdAt: true, _count: { select: { attachments: true } } } },
         depassements: { where: { statut: { in: [StatutDepassement.APPROUVE, StatutDepassement.EN_ATTENTE] } }, select: { montant: true, statut: true } },
       },
     });
 
+    const maintenant = new Date();
     return NextResponse.json(
       demandes.map(({ depenses, depassements, ...d }) => ({
         ...d,
@@ -84,6 +86,10 @@ export async function GET(request: NextRequest) {
           depassements.filter((x) => x.statut === StatutDepassement.APPROUVE).reduce((s, x) => s + Number(x.montant), 0),
         montantConsomme: depenses.reduce((s, dep) => s + Number(dep.montant), 0),
         nbDepensesSansJustificatif: depenses.filter((dep) => dep._count.attachments === 0).length,
+        // Sans justificatif ET délai de 24 h ouvrées dépassé (affichées en rouge).
+        nbJustificatifsEnRetard: depenses.filter(
+          (dep) => etatJustificatif({ createdAt: dep.createdAt, nbJustificatifs: dep._count.attachments }, maintenant) === "EN_RETARD"
+        ).length,
         nbDepassementsEnAttente: depassements.filter((x) => x.statut === StatutDepassement.EN_ATTENTE).length,
         nbLignesACorriger: d.lignes.filter((l) => l.statutValidation === "A_CORRIGER").length,
       }))
@@ -152,7 +158,7 @@ export async function POST(request: NextRequest) {
         pourLeCompteDe: data.pourLeCompteDe,
         dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : undefined,
         bonCommandeId: data.bonCommandeId || undefined,
-        lignes: { create: data.lignes },
+        lignes: { create: lignesAvecMode(data) },
         proformas: { create: data.proformaIds.map((invoiceId) => ({ invoiceId })) },
       },
       include: { lignes: true },
@@ -164,7 +170,10 @@ export async function POST(request: NextRequest) {
     }
     if (!demande) throw new Error("Impossible d'attribuer un numéro à la demande.");
 
-    const attachmentRows = await saveTypedDemandeBudgetAttachments(demande.id, formData);
+    const attachmentRows = await saveTypedDemandeBudgetAttachments(demande.id, formData, {
+      date: new Date(),
+      montant: Number(demande.montantTotal),
+    });
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }

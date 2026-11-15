@@ -23,10 +23,34 @@ interface RecordCashMovementInput {
   createdById?: string | null;
 }
 
+/** Message (et préfixe reconnu par les routes, pour répondre 400) d'une sortie non couverte par le solde. */
+export function messageSoldeInsuffisant(nomCaisse: string | null | undefined, solde: number): string {
+  return `Solde insuffisant dans la caisse "${nomCaisse ?? "?"}". Solde actuel: ${solde.toLocaleString("fr-FR")} FCFA.`;
+}
+
+export function isSoldeInsuffisantError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("Solde insuffisant");
+}
+
+/**
+ * Refuse une sortie de caisse que le dernier solde du journal ne couvre pas. À appeler APRÈS
+ * lockCashRegister, dans la même transaction (sinon deux sorties simultanées passent toutes deux).
+ */
+export async function assertSoldeSuffisant(tx: Prisma.TransactionClient, cashRegisterId: number, montant: number) {
+  const last = await tx.cashJournal.findFirst({ where: { cashRegisterId }, orderBy: { id: "desc" } });
+  const solde = last ? last.solde : 0;
+  if (montant > solde) {
+    const caisse = await tx.cashRegister.findUnique({ where: { id: cashRegisterId }, select: { name: true } });
+    throw new Error(messageSoldeInsuffisant(caisse?.name, solde));
+  }
+}
+
 /**
  * Enregistre un mouvement de caisse (RECETTE ou DEPENSE, hors TRANSFERT) : calcule le nouveau
  * solde de la caisse à partir de la dernière entrée du journal, crée l'entrée CashJournal
  * correspondante, et met à jour CashRegister.balance en conséquence.
+ * Une DEPENSE est refusée si le solde de la caisse ne la couvre pas (contrôle serveur, quel que
+ * soit le chemin : saisie manuelle, intégration Camptrack, budget, proforma).
  * Doit être appelé à l'intérieur d'une transaction Prisma pour rester atomique.
  */
 export async function recordCashMovement(
@@ -34,6 +58,9 @@ export async function recordCashMovement(
   { cashRegisterId, type, montant, libelle, date_operation, isApportDeCaisse, createdById }: RecordCashMovementInput
 ) {
   await lockCashRegister(tx, cashRegisterId);
+  if (type === OperationType.DEPENSE) {
+    await assertSoldeSuffisant(tx, cashRegisterId, montant);
+  }
   const lastEntry = await tx.cashJournal.findFirst({
     where: { cashRegisterId },
     orderBy: { id: "desc" },

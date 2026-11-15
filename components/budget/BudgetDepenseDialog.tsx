@@ -9,17 +9,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
 
 // 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts).
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-const MODE_PAIEMENT_OPTIONS = [
-  { value: 'ESPECES', label: 'Espèces' },
-  { value: 'VIREMENT', label: 'Virement bancaire' },
-  { value: 'CHEQUE', label: 'Chèque' },
-  { value: 'MOBILE_MONEY', label: 'Mobile Money' },
-  { value: 'AUTRE', label: 'Autre' },
-];
 
 const formatMontant = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(value);
@@ -34,6 +28,8 @@ export interface BudgetDepenseDialogLigne {
   id: string;
   designation: string;
   reste: number;
+  // Moyen de paiement prévu sur la ligne (pré-sélectionné ; null = celui de la demande).
+  modePaiement?: string | null;
 }
 
 interface BudgetDepenseDialogProps {
@@ -76,7 +72,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
     setMontant(ligne.reste > 0 ? String(ligne.reste) : '');
     setDateDepense(new Date().toISOString().split('T')[0]);
     setNomReceveur('');
-    setModePaiement(defaultModePaiement);
+    setModePaiement(ligne?.modePaiement || defaultModePaiement);
     setInvoiceId(proformas.length === 1 ? proformas[0].id : '');
     setNotes('');
     setPreuves([]);

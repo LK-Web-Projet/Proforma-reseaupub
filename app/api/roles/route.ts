@@ -22,6 +22,7 @@ export async function GET() {
         canValidateBudgetMensuel: r.canValidateBudgetMensuel,
         canValidateBudget: r.canValidateBudget,
         canPayBudget: r.canPayBudget,
+        canSaisirCaisse: r.canSaisirCaisse,
         pages: r.pages.map((p) => p.page),
         nombreUtilisateurs: r._count.users,
       }))
@@ -39,6 +40,7 @@ const roleSchema = z.object({
   canValidateBudgetMensuel: z.boolean().default(false),
   canValidateBudget: z.boolean().default(false),
   canPayBudget: z.boolean().default(false),
+  canSaisirCaisse: z.boolean().default(false),
 });
 
 // POST /api/roles - Créer un nouveau rôle
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error.format() }, { status: 400 });
     }
 
-    const { nom, pages, canManageUsers, canValidateBudgetMensuel, canValidateBudget, canPayBudget } = validation.data;
+    const { nom, pages, canManageUsers, canValidateBudgetMensuel, canValidateBudget, canPayBudget, canSaisirCaisse } = validation.data;
 
     const role = await prisma.role.create({
       data: {
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
         canValidateBudgetMensuel,
         canValidateBudget,
         canPayBudget,
+        canSaisirCaisse,
         pages: { create: pages.map((page) => ({ page })) },
       },
       include: { pages: true },

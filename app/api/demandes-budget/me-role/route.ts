@@ -9,7 +9,7 @@ export async function GET() {
   if (!caps) {
     return NextResponse.json({
       email: null, isAdmin: false, isComptable: false,
-      canValidateMensuel: false, canValidate: false, canPay: false, isImplique: false, plafond: 0,
+      canValidateMensuel: false, canValidate: false, canPay: false, canSaisirCaisse: false, isImplique: false, plafond: 0,
     });
   }
   return NextResponse.json({
@@ -19,6 +19,7 @@ export async function GET() {
     canValidateMensuel: caps.canValidateMensuel,
     canValidate: caps.canValidate,
     canPay: caps.canPay,
+    canSaisirCaisse: caps.canSaisirCaisse,
     isImplique: isImpliqueBudget(caps),
     plafond: caps.plafond,
   });

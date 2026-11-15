@@ -21,6 +21,7 @@ import {
   CATEGORIE_DEPENSE_VALUES,
   CATEGORIE_DEPENSE_LABELS,
   categorieLabel,
+  modePaiementLabel,
 } from '@/lib/budgetTypes';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Download, Wallet, TrendingDown, TrendingUp, Percent } from 'lucide-react';
@@ -34,6 +35,7 @@ interface Ligne {
   departement: string;
   designation: string;
   categorie: string | null;
+  modePaiement: string;
   demande: number;
   prevu: number;
   depassements: number;
@@ -189,6 +191,12 @@ export default function SuiviBudgetairePage() {
     [lignesFiltrees]
   );
 
+  // Procédure de paiement (section 4) : total prévu / réalisé par moyen de paiement.
+  const parModePaiement = useMemo(
+    () => grouper(lignesFiltrees, (l) => l.modePaiement, (m) => modePaiementLabel(m)),
+    [lignesFiltrees]
+  );
+
   const totaux = useMemo(
     () =>
       lignesFiltrees.reduce(
@@ -218,6 +226,7 @@ export default function SuiviBudgetairePage() {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(versFeuille(parMois, 'Mois')), 'Par mois');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(versFeuille(parService, 'Service')), 'Par service');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(versFeuille(parCategorie, 'Catégorie')), 'Par catégorie');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(versFeuille(parModePaiement, 'Moyen de paiement')), 'Par moyen');
     XLSX.utils.book_append_sheet(
       workbook,
       XLSX.utils.json_to_sheet(
@@ -228,6 +237,7 @@ export default function SuiviBudgetairePage() {
           Service: l.departement,
           Ligne: l.designation,
           Catégorie: categorieLabel(l.categorie),
+          'Moyen de paiement': modePaiementLabel(l.modePaiement),
           'Demandé (FCFA)': l.demande,
           'Accordé (FCFA)': l.prevu,
           'Dépassements (FCFA)': l.depassements,
@@ -372,6 +382,7 @@ export default function SuiviBudgetairePage() {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <GroupeTable titre="Par service" groupes={parService} />
             <GroupeTable titre="Par catégorie" groupes={parCategorie} />
+            <GroupeTable titre="Par moyen de paiement" groupes={parModePaiement} />
           </div>
 
           <Card>

@@ -3,7 +3,7 @@ import { ActionBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logBudget, budgetMensuelExistant } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
-import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage } from "@/lib/budgetSchema";
+import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
 
@@ -84,14 +84,14 @@ export async function POST(
           pourLeCompteDe: data.pourLeCompteDe,
           dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : null,
           bonCommandeId: data.bonCommandeId || null,
-          lignes: { create: data.lignes },
+          lignes: { create: lignesAvecMode(data) },
           proformas: { create: data.proformaIds.map((invoiceId) => ({ invoiceId })) },
         },
         include: { lignes: true },
       });
     });
 
-    const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData);
+    const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData, { date: new Date(), montant: montantTotal });
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }

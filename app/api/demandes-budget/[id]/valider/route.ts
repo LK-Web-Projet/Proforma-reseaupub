@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ActionBudget, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
+import { logBudget, majStatutApresDecision, refusBudgetSigneManquant } from "@/lib/budgetSuivi";
 import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
 import { sendDemandeValideeNotification } from "@/lib/email/demandeBudget";
 
@@ -34,6 +34,10 @@ export async function POST(
     const refus = refusValidation(caps, existing);
     if (refus) {
       return NextResponse.json({ error: refus }, { status: 403 });
+    }
+    const refusSigne = await refusBudgetSigneManquant(prisma, existing);
+    if (refusSigne) {
+      return NextResponse.json({ error: refusSigne }, { status: 400 });
     }
 
     const { demande, resultat } = await prisma.$transaction(async (tx) => {

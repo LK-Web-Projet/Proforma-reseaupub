@@ -6,8 +6,9 @@ import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAu
 import { saveTypedDemandeBudgetAttachments, saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 
 // POST /api/demandes-budget/[id]/documents
-// - Sans `depenseId` : ajoute des documents complémentaires à une demande validée ou en cours
-//   (auteur de la demande ou rôle du circuit budget).
+// - Sans `depenseId` : ajoute des documents complémentaires à une demande en validation, validée
+//   ou en cours (auteur de la demande ou rôle du circuit budget) — notamment le scan du budget
+//   signé par la DG, exigé avant de valider un budget de campagne.
 // - Avec `depenseId` : ajoute après coup le justificatif d'une dépense enregistrée « sans
 //   justificatif » (comptable uniquement) — la dépense repasse alors en « justifiée ».
 export async function POST(
@@ -39,7 +40,11 @@ export async function POST(
       if (preuves.length === 0) {
         return NextResponse.json({ error: "Aucun justificatif fourni." }, { status: 400 });
       }
-      const saved = await saveDemandeBudgetFiles(id, preuves);
+      const saved = await saveDemandeBudgetFiles(id, preuves, {
+        date: depense.dateDepense,
+        montant: Number(depense.montant),
+        kind: "PREUVE_PAIEMENT",
+      });
       await prisma.$transaction([
         prisma.demandeBudgetAttachment.createMany({
           data: saved.map((f) => ({ demandeBudgetId: id, depenseId, kind: "PREUVE_PAIEMENT" as const, ...f })),
@@ -62,11 +67,15 @@ export async function POST(
     if (!isAutorise) {
       return NextResponse.json({ error: "Vous n'êtes pas autorisé à modifier cette demande." }, { status: 403 });
     }
-    if (demande.statut !== "VALIDEE" && demande.statut !== "EN_COURS" && demande.statut !== "VALIDATION_PARTIELLE") {
-      return NextResponse.json({ error: "Des documents ne peuvent être ajoutés que sur une demande validée ou en cours." }, { status: 400 });
+    const statutsOuverts: string[] = ["SOUMISE", "VALIDATION_PARTIELLE", "VALIDEE", "EN_COURS"];
+    if (!statutsOuverts.includes(demande.statut)) {
+      return NextResponse.json({ error: "Des documents ne peuvent être ajoutés que sur une demande en validation, validée ou en cours." }, { status: 400 });
     }
 
-    const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData);
+    const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData, {
+      date: new Date(),
+      montant: Number(demande.montantTotal),
+    });
     if (attachmentRows.length === 0) {
       return NextResponse.json({ error: "Aucun document fourni." }, { status: 400 });
     }

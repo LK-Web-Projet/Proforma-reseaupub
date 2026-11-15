@@ -22,7 +22,7 @@ interface DemandeBudgetRaw {
   dateLimiteSouhaitee: string | null;
   bonCommande: { id: string } | null;
   proformas: { invoice: { id: string } }[];
-  lignes: { designation: string; montant: number; categorie: string | null }[];
+  lignes: { designation: string; montant: number; categorie: string | null; modePaiement: string | null }[];
   attachments: { id: string; kind: string; url: string; fileName: string }[];
 }
 
