@@ -121,7 +121,9 @@ Les prestataires sont payés **par lots**, un lot par campagne : un état de pai
 - Un lot envoyé deux fois, par exemple après une coupure réseau, **n'est jamais payé deux fois**.
 - Les paiements Camptrack sont **justifiés dans Camptrack**, qui conserve les états signés et l'historique MTN. Ils n'apparaissent pas dans les justificatifs manquants.
 
-**Période de transition** : tant que Camptrack n'envoie pas la ligne de budget, ses paiements arrivent comme avant. Sur une campagne avec budget, ils sont marqués **« à rattacher »** : un bandeau orange s'affiche sur la fiche budget, et ils figurent dans l'état du soir. Le comptable clique sur *Rattacher* et choisit la ligne. La caisse n'est pas touchée une seconde fois.
+- Le détail de chaque lot (prestataire, numéro MoMo, type, montant) se consulte aussi depuis l'écriture du **journal de caisse**.
+
+**Période de transition** : tant que Camptrack n'envoie pas la ligne de budget, ses paiements, un par un ou par lot, arrivent comme avant. Sur une campagne avec budget, ils sont marqués **« à rattacher »** : un bandeau orange s'affiche sur la fiche budget, et ils figurent dans l'état du soir. Le comptable clique sur *Rattacher* et choisit la ligne. La caisse n'est pas touchée une seconde fois.
 
 ---
 

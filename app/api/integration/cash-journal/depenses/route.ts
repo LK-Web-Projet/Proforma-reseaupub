@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       // Contrat inchangé pour Camptrack (appel « historique », sans ligne de budget). Si la campagne
       // a un budget, la dépense est enregistrée comme avant ET marquée « à rattacher » : le comptable
       // la rattache ensuite à une ligne depuis la fiche du budget (plafond contrôlé, sans nouveau
-      // mouvement de caisse). Le nouvel appel par lot (…/lots-paiement) exige, lui, la ligne.
+      // mouvement de caisse). Le lot (…/depenses-groupees) accepte, lui, la ligne de budget.
       const { paiement, cashJournalEntry } = await prisma.$transaction(async (tx) => {
         const r = await recordDepensePaiement(tx, {
           invoiceId: proformaId!,

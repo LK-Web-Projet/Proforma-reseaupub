@@ -32,6 +32,13 @@ interface CashJournalEntry {
     fileName: string;
   }[];
   createdAt: string;
+  lotPaiement?: {
+    reference: string;
+    referenceOperateur: string | null;
+    campagneNom: string | null;
+    nbBeneficiaires: number;
+    detail: { numero?: number; beneficiaire: string; numeroMomo?: string; typePaiement?: string; reference?: string; montant: number }[];
+  } | null;
 }
 
 interface CashRegister {
@@ -439,6 +446,24 @@ export default function CashJournalPage() {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
+                      {entry.lotPaiement && (
+                        <details className="mt-1 text-xs max-w-[340px]">
+                          <summary className="cursor-pointer text-primary">
+                            Lot {entry.lotPaiement.reference} — {entry.lotPaiement.nbBeneficiaires} prestataire(s)
+                            {entry.lotPaiement.referenceOperateur ? ` · réf. ${entry.lotPaiement.referenceOperateur}` : ''}
+                          </summary>
+                          <ul className="mt-1 space-y-0.5 max-h-48 overflow-y-auto">
+                            {entry.lotPaiement.detail.map((l, i) => (
+                              <li key={l.reference ?? i} className="flex justify-between gap-2">
+                                <span className="truncate">
+                                  {l.beneficiaire}{l.numeroMomo ? ` · ${l.numeroMomo}` : ''}{l.typePaiement ? ` · ${l.typePaiement.toLowerCase()}` : ''}
+                                </span>
+                                <span className="whitespace-nowrap">{Number(l.montant).toLocaleString('fr-FR')}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {entry.type === "RECETTE"

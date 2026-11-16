@@ -22,6 +22,40 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-17 (suite 3) — Lots CampTrack : alignement sur le contrat déjà codé dans CampTrack
+
+**Demande / Contexte**
+Vérification de l'intégration des lots de paiement CampTrack. Le développeur de CampTrack avait déjà codé l'envoi par lot (branche `feature/paiements_groupes`, non fusionnée) avec son propre contrat (`POST /api/integration/cash-journal/depenses-groupees`, document `docs/INTEGRATION_FINANCE_PAIEMENTS_GROUPES.md` côté CampTrack), différent de celui prévu ici (`/lots-paiement` : adresse, noms de champs, 409 sur doublon, forme de la réponse). Décision : Proforma s'aligne sur le contrat de CampTrack ; le développeur n'ajoute que les champs liés au budget.
+
+**Modifications apportées**
+- Nouvelle route `app/api/integration/cash-journal/depenses-groupees` : accepte le JSON de CampTrack **tel quel** (`montant`, `campagne`, `lignes[]` avec numéro MoMo, type, idPaiement…) et répond comme il l'attend (`cashJournalEntry`, `lignes[{numero, id}]`, `409` si la référence existe, `404` caisse introuvable) ; ajouts facultatifs `ligneBudgetId`, `comptableEmail` (requis avec la ligne), `modePaiement`, `datePaiement`. Avec ligne → dépense de budget via `enregistrerDepense` ; campagne avec budget sans ligne (transition) → enregistré et marqué « à rattacher » ; campagne sans budget → dépense sur la proforma ; sans proforma → sortie de caisse. Réponse enrichie de `budgetDepenseId` et `aRattacher`.
+- Route `/lots-paiement` **supprimée** (jamais utilisée) : une seule route pour les lots.
+- Migration `20261117300000_lot_paiement_contrat_camptrack` (appliquée) : `LotPaiement.proformaId` et `comptableEmail` facultatifs, `campagneId`, `campagneNom`, `libelle`.
+- Rattachement d'une dépense CampTrack : le lot correspondant est lié à la dépense de budget créée.
+- Détail du lot visible sur l'écriture du **journal de caisse** (demande du document CampTrack) et sur la fiche budget (numéro MoMo, type).
+- `docs/integration/camptrack-paiements-lots.md` réécrit pour le développeur CampTrack : ce qui est prêt, les 3 champs à ajouter, l'appel des lignes de budget, l'écran, les messages d'erreur, la transition, les tests.
+
+**Tests**
+- Avec le JSON exact du document CampTrack (vraies écritures, nettoyées) : 16/16 — JSON tel quel → 201 et « à rattacher », doublon → 409, ligne + comptable → dépense de budget, comptable manquant → 400, séparation des tâches → 400, plafond → 400, total incohérent → 400, caisse introuvable → 404, solde insuffisant → 400, sans budget, sans proforma, appel unitaire inchangé, reste des lignes. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Transmettre `docs/integration/camptrack-paiements-lots.md` au développeur CampTrack.
+
+---
+
+## 2026-11-17 (suite 2) — Registre de la dette technique
+
+**Demande / Contexte**
+Conserver l'analyse franche de la solidité du code (risques pour les futures fonctionnalités) afin de la traiter lors de prochains correctifs.
+
+**Modifications apportées**
+- Nouveau fichier `docs/dette-technique.md` : ce qui est solide (à préserver), puis 15 points classés par priorité — tests automatisés absents du projet, développement sur la base de production, routes sans contrôle de droits, fusion de `feature/budgets`, montants de caisse en `Float`, double gestionnaire de paquets (pnpm / npm), écrans trop volumineux, calculs de suivi dupliqués, annulation des dépenses hors budget, double calcul du statut « payée » des factures, champs redondants, fichiers sur disque, `Paiement.methode` en texte libre, client Prisma isolé, envoi d'email hors `sendEmail` — et les rappels à suivre pour toute nouvelle fonctionnalité.
+
+**À tester / points d'attention**
+- Consulter ce fichier avant chaque nouveau chantier ; cocher les points traités et les consigner ici.
+
+---
+
 ## 2026-11-17 (suite) — Factures de prestataires internes / externes réglées sur une ligne de budget
 
 **Demande / Contexte**

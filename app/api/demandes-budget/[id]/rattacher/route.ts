@@ -75,6 +75,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       });
       await tx.paiement.update({ where: { id: paiement.id }, data: { aRattacherBudget: false } });
+      // Lot CampTrack reçu sans ligne de budget : il est désormais lié à cette dépense de budget.
+      await tx.lotPaiement.updateMany({
+        where: { cashJournalEntryId: paiement.cashJournalEntry.id, budgetDepenseId: null },
+        data: { budgetDepenseId: created.id },
+      });
       await logBudget(tx, {
         demandeBudgetId: demande.id,
         action: ActionBudget.DEPENSE,

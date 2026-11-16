@@ -41,6 +41,8 @@ export async function GET(request: Request) {
       include: {
         cashRegister: { select: { name: true } },
         attachments: true,
+        // Lot de paiement des prestataires reçu de CampTrack : détail consultable depuis l'écriture.
+        lotPaiement: { select: { reference: true, referenceOperateur: true, campagneNom: true, nbBeneficiaires: true, detail: true } },
       },
     });
 

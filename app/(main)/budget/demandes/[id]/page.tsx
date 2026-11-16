@@ -69,7 +69,13 @@ interface BudgetDepense {
   nature: 'NORMALE' | 'AVANCE' | 'SOLDE';
   source: 'MANUEL' | 'PROFORMA' | 'CAMPTRACK';
   referenceExterne: string | null;
-  lotPaiement: { reference: string; referenceOperateur: string | null; nbBeneficiaires: number; detail: { beneficiaire: string; numero?: string; montant: number }[] } | null;
+  lotPaiement: {
+    reference: string;
+    referenceOperateur: string | null;
+    nbBeneficiaires: number;
+    // Lignes telles qu'envoyées par CampTrack (numéro de ligne, bénéficiaire, numéro MoMo, type…).
+    detail: { numero?: number | string; beneficiaire: string; numeroMomo?: string; typePaiement?: string; reference?: string; montant: number }[];
+  } | null;
   commande: { id: string; numero: string; fournisseurId: string; documents: { kind: string }[]; factures: { pieceJointe: string | null; status: string }[] } | null;
   cashRegister: { id: number; name: string };
   invoice: { id: string; numero: string } | null;
@@ -1001,7 +1007,11 @@ export default function DemandeBudgetDetailPage() {
                           <ul className="mt-1 space-y-0.5 max-h-40 overflow-y-auto">
                             {d.lotPaiement.detail.map((b, i) => (
                               <li key={i} className="flex justify-between gap-2">
-                                <span className="truncate">{b.beneficiaire}{b.numero ? ` (${b.numero})` : ''}</span>
+                                <span className="truncate">
+                                  {b.beneficiaire}
+                                  {b.numeroMomo ? ` · ${b.numeroMomo}` : ''}
+                                  {b.typePaiement ? ` · ${b.typePaiement.toLowerCase()}` : ''}
+                                </span>
                                 <span className="whitespace-nowrap">{formatMontant(Number(b.montant))}</span>
                               </li>
                             ))}

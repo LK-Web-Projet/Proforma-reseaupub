@@ -822,12 +822,15 @@ model LotPaiement {
   id                 String         @id @default(uuid())
   reference          String         @unique
   referenceOperateur String?
-  proformaId         String
+  proformaId         String? // absent si la campagne Camptrack n'a pas de proforma
+  campagneId         String? // identifiant et nom de la campagne dans Camptrack
+  campagneNom        String?
+  libelle            String?
   nbBeneficiaires    Int
   montant            Decimal        @db.Decimal(12, 2)
   modePaiement       String
-  detail             Json
-  comptableEmail     String
+  detail             Json // lignes du lot telles qu'envoyées par Camptrack (une par prestataire)
+  comptableEmail     String?
   cashJournalEntryId Int            @unique
   budgetDepenseId    String?        @unique
   createdAt          DateTime       @default(now())
