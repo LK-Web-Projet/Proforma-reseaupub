@@ -36,7 +36,7 @@ S'assurer que la chaîne de dépense unifiée, les lots CampTrack et la nuance d
 **Régressions trouvées et corrigées**
 - **138 anciennes factures fournisseurs EN_ATTENTE**, créées sans bon ni ligne de budget, ne pouvaient plus être marquées « payée ». Correctif dans `app/api/factures-fournisseurs/[id]/route.ts` et les pages `fournisseur/factures` et `fournisseur/[id]` :
   - le passage manuel à PAYEE reste refusé pour une facture liée à un bon, à une ligne ou à des dépenses ;
-  - il est autorisé pour une facture non liée, avec le droit « Valider les budgets mensuels » (régularisation DG), libellé « Payée (régularisation) ».
+  - une facture non liée (le cas de toutes les factures existantes) se marque « payée » à la main **comme avant, par tout le monde**. Une première version réservait ce passage à la DG : c’était un changement par rapport à l’existant, il a été retiré à la demande de l’utilisateur.
 - **Planificateur en production** : `instrumentation.ts` → `etatSoir` → `budgetAuth` importait `@clerk/nextjs`, ce qui échoue au démarrage en production. `getBudgetRecipients` est déplacé dans le nouveau module `lib/budgetDestinataires.ts`, sans Clerk. `budgetAuth` le réexporte, et rien ne change pour les autres appelants. Constat : le planificateur démarre maintenant avec le build de production.
 
 **Autres modifications**
@@ -54,6 +54,7 @@ S'assurer que la chaîne de dépense unifiée, les lots CampTrack et la nuance d
 - Coupures ponctuelles de Supabase (P1001) pendant les tests et au démarrage, avec la synchronisation des rôles en échec : relance. Ce n'est pas lié au code.
 
 **À tester / points d'attention**
+- Le rôle ASSISTANT (1 utilisateur actif) n’a pas le droit « Saisir au journal de caisse ». Avant la branche, aucun droit n’était demandé : cette personne pouvait saisir une dépense sur une proforma et écrire au journal de caisse, et elle ne le peut plus. Pour retrouver l’ancien fonctionnement, cocher ce droit sur le rôle (Paramètres → Rôles).
 - Un build avec `NEXT_DIST_DIR` fait réécrire `tsconfig.json` par Next.js, qui y ajoute `<dossier>/types`. Il faut restaurer `tsconfig.json` après coup (`git restore tsconfig.json`) et ne pas le committer.
 - Le rôle « Comptable » n'a aucun utilisateur. Les 5 admins ont tous les droits, la séparation des tâches s'applique donc entre eux. Il faut attribuer les rôles réels avant la mise en service.
 

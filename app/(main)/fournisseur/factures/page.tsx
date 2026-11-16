@@ -94,16 +94,6 @@ export default function FacturesListPage() {
     fetchFournisseurs();
   }, [fetchFournisseurs]);
 
-  // Régularisation (marquer « payée » à la main une facture liée à rien, ex. antérieure à la
-  // procédure) : réservée à la direction — le serveur le vérifie aussi.
-  const [peutRegulariser, setPeutRegulariser] = useState(false);
-  useEffect(() => {
-    fetch('/api/demandes-budget/me-role')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setPeutRegulariser(!!data?.canValidateMensuel))
-      .catch(() => setPeutRegulariser(false));
-  }, []);
-
   const handleFournisseurCreated = (newFournisseur: Fournisseur) => {
     setFournisseurs((prev) => [...prev, newFournisseur]);
   };
@@ -399,10 +389,10 @@ export default function FacturesListPage() {
                           <SelectItem value="EN_ATTENTE">
                             <span className="flex items-center gap-2"><StatusDot status="EN_ATTENTE" animate={false} />En attente</span>
                           </SelectItem>
-                          {/* « Payée » : par le paiement depuis le budget ; à la main seulement en régularisation
-                              (direction, facture liée à aucun bon ni aucune ligne de budget). */}
-                          <SelectItem value="PAYEE" disabled={!(peutRegulariser && !facture.commandeId && !facture.ligneBudgetId)}>
-                            <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{peutRegulariser && !facture.commandeId && !facture.ligneBudgetId ? 'Payée (régularisation)' : 'Payée (par le budget)'}</span>
+                          {/* « Payée » à la main comme avant, sauf pour une facture rattachée à un bon de commande
+                              ou à une ligne de budget : celle-là passe « payée » par son paiement sur le budget. */}
+                          <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId}>
+                            <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{facture.commandeId || facture.ligneBudgetId ? 'Payée (par le budget)' : 'Payée'}</span>
                           </SelectItem>
                           <SelectItem value="ANNULEE">
                             <span className="flex items-center gap-2"><StatusDot status="ANNULEE" animate={false} />Annulée</span>

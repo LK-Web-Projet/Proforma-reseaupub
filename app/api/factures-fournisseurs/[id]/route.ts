@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
-import { getBudgetCapabilities } from "@/lib/budgetAuth";
 
 /**
  * Procédure de paiement : une facture rattachée à un bon de commande ou à une ligne de budget passe
@@ -23,10 +22,7 @@ async function refusChangementStatut(id: string, actuel: StatutFactureFournisseu
     if (liee) {
       return "Cette facture est rattachée à un bon de commande ou à une ligne de budget : elle passe « payée » par son paiement (dépense sur le budget), pas à la main.";
     }
-    const caps = await getBudgetCapabilities();
-    if (!caps?.canValidateMensuel) {
-      return "Seule la direction peut régulariser une facture (la marquer payée à la main). Sinon, réglez-la par une dépense sur le budget.";
-    }
+    // Facture liée à rien (cas des factures existantes) : « payée » à la main, comme avant.
     return null;
   }
   if (nouveau === StatutFactureFournisseur.ANNULEE) {

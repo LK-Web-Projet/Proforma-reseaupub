@@ -78,15 +78,6 @@ export default function FournisseurDetailsPage() {
     fetchFournisseurDetails();
   }, [fetchFournisseurDetails]);
 
-  // Régularisation d'une facture liée à rien (ex. antérieure à la procédure) : direction seulement.
-  const [peutRegulariser, setPeutRegulariser] = useState(false);
-  useEffect(() => {
-    fetch('/api/demandes-budget/me-role')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setPeutRegulariser(!!data?.canValidateMensuel))
-      .catch(() => setPeutRegulariser(false));
-  }, []);
-
   const handleStatusChange = async (factureId: string, newStatus: StatutFactureFournisseur) => {
     try {
       const response = await fetch(`/api/factures-fournisseurs/${factureId}`, {
@@ -286,8 +277,8 @@ export default function FournisseurDetailsPage() {
                               <SelectItem value="EN_ATTENTE">
                                 <span className="flex items-center gap-2"><StatusDot status="EN_ATTENTE" animate={false} />En attente</span>
                               </SelectItem>
-                              <SelectItem value="PAYEE" disabled={!(peutRegulariser && !facture.commandeId && !facture.ligneBudgetId)}>
-                                <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{peutRegulariser && !facture.commandeId && !facture.ligneBudgetId ? 'Payée (régularisation)' : 'Payée (par le budget)'}</span>
+                              <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId}>
+                                <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{facture.commandeId || facture.ligneBudgetId ? 'Payée (par le budget)' : 'Payée'}</span>
                               </SelectItem>
                               <SelectItem value="ANNULEE">
                                 <span className="flex items-center gap-2"><StatusDot status="ANNULEE" animate={false} />Annulée</span>
