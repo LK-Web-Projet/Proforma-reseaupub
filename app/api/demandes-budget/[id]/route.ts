@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAuth";
+import { facturesPrestatairesPayables } from "@/lib/commandeFournisseurSuivi";
 
 export async function GET(
   _request: NextRequest,
@@ -26,11 +27,15 @@ export async function GET(
                 numero: true,
                 statut: true,
                 montantNet: true,
+                totalHT: true,
                 fournisseurId: true,
                 fournisseur: { select: { entreprise: true } },
                 documents: { select: { kind: true } },
                 factures: { select: { id: true, reference: true, montant: true, status: true, pieceJointe: true } },
                 depenses: { select: { montant: true, annuleeAt: true, nature: true } },
+                // Lignes de produit et imputations (payé / reste par ligne de produit).
+                lignes: { select: { id: true, designation: true, prixTotal: true }, orderBy: { id: "asc" } },
+                imputations: { select: { ligneCommandeId: true, montant: true, annuleeAt: true } },
               },
             },
           },
@@ -45,6 +50,7 @@ export async function GET(
             invoice: { select: { id: true, numero: true } },
             attachments: true,
             commande: { select: { id: true, numero: true, fournisseurId: true, documents: { select: { kind: true } }, factures: { select: { pieceJointe: true, status: true } } } },
+            lotPaiement: { select: { reference: true, referenceOperateur: true, nbBeneficiaires: true, detail: true } },
           },
         },
         commentaires: { orderBy: { createdAt: "asc" } },
@@ -63,7 +69,17 @@ export async function GET(
       return NextResponse.json({ error: "Accès refusé à cette demande." }, { status: 403 });
     }
 
-    return NextResponse.json(demande);
+    // Dépenses reçues de Camptrack (ancien appel, sans ligne) sur une proforma de ce budget : à rattacher.
+    const depensesARattacher = await prisma.paiement.findMany({
+      where: { aRattacherBudget: true, invoiceId: { in: demande.proformas.map((p) => p.invoiceId) } },
+      orderBy: { datePaiement: "asc" },
+      select: { id: true, montant: true, datePaiement: true, reference: true, invoice: { select: { numero: true } }, cashJournalEntry: { select: { id: true, libelle: true, cashRegister: { select: { name: true } } } } },
+    });
+
+    // Factures de prestataires internes / externes payables sur les lignes de ce budget.
+    const facturesPrestataires = await facturesPrestatairesPayables(prisma, demande.lignes.map((l) => l.id));
+
+    return NextResponse.json({ ...demande, depensesARattacher, facturesPrestataires });
   } catch (error) {
     console.error(`Erreur lors de la récupération de la demande ${id}:`, error);
     return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 });

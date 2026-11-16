@@ -16,6 +16,7 @@ export const STATUT_LABELS: Record<StatutCommandeFournisseur, string> = {
     BROUILLON: "Brouillon",
     VALIDEE: "Validée",
     LIVREE: "Livrée",
+    PAYEE: "Payée",
     ANNULEE: "Annulée",
 };
 
@@ -23,6 +24,7 @@ export const STATUT_BADGE_VARIANT: Record<StatutCommandeFournisseur, "brouillon"
     BROUILLON: "brouillon",
     VALIDEE: "success",
     LIVREE: "success",
+    PAYEE: "success",
     ANNULEE: "annuler",
 };
 

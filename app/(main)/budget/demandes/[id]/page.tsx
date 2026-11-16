@@ -33,8 +33,9 @@ import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel, mod
 import { echeanceJustificatif, etatJustificatif } from '@/lib/justificatifs';
 import { generateBudgetPdf } from '@/lib/pdf/budgetPdf';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
-import { BudgetDepenseDialog, BudgetDepenseDialogLigne, type CommandeDeLigne } from '@/components/budget/BudgetDepenseDialog';
+import { BudgetDepenseDialog, BudgetDepenseDialogLigne, type CommandeDeLigne, type FacturePrestataire } from '@/components/budget/BudgetDepenseDialog';
 import { etatLiasse, NATURE_DEPENSE_LABELS } from '@/lib/commandeFournisseurLiasse';
+import { BudgetRattacherCard, type DepenseARattacher } from '@/components/budget/BudgetRattacherCard';
 import { BudgetJustificatifDialog } from '@/components/budget/BudgetJustificatifDialog';
 import { BudgetLigneCommentaires, BudgetCommentaire } from '@/components/budget/BudgetLigneCommentaires';
 import { BudgetDepassementDialog, BudgetDepassementDialogLigne } from '@/components/budget/BudgetDepassementDialog';
@@ -66,6 +67,9 @@ interface BudgetDepense {
   contreEcritureId: number | null;
   createdAt: string;
   nature: 'NORMALE' | 'AVANCE' | 'SOLDE';
+  source: 'MANUEL' | 'PROFORMA' | 'CAMPTRACK';
+  referenceExterne: string | null;
+  lotPaiement: { reference: string; referenceOperateur: string | null; nbBeneficiaires: number; detail: { beneficiaire: string; numero?: string; montant: number }[] } | null;
   commande: { id: string; numero: string; fournisseurId: string; documents: { kind: string }[]; factures: { pieceJointe: string | null; status: string }[] } | null;
   cashRegister: { id: number; name: string };
   invoice: { id: string; numero: string } | null;
@@ -125,6 +129,8 @@ interface DemandeBudgetDetail {
   commentaires: BudgetCommentaire[];
   depassements: BudgetDepassement[];
   historique: BudgetHistoriqueEntry[];
+  depensesARattacher: DepenseARattacher[];
+  facturesPrestataires: FacturePrestataire[];
 }
 
 const sameEmail = (a: string | null | undefined, b: string | null | undefined) =>
@@ -419,11 +425,11 @@ export default function DemandeBudgetDetailPage() {
   const totalPlafond = suiviLignes.reduce((s, l) => s + l.plafond, 0);
   const totalAccorde = suiviLignes.reduce((s, l) => s + l.prevu, 0);
   const totalDepassements = suiviLignes.reduce((s, l) => s + l.depassementApprouve, 0);
-  const nbSansJustificatif = demande.depenses.filter((d) => !d.annuleeAt && d.attachments.length === 0).length;
+  const nbSansJustificatif = demande.depenses.filter((d) => !d.annuleeAt && d.attachments.length === 0 && d.source !== 'CAMPTRACK').length;
   // Justificatif attendu sous 24 h ouvrées : au-delà, la dépense passe en rouge (lib/justificatifs.ts).
   const maintenant = new Date();
   const etatJustif = (d: BudgetDepense) =>
-    etatJustificatif({ createdAt: d.createdAt, annuleeAt: d.annuleeAt, nbJustificatifs: d.attachments.length }, maintenant);
+    etatJustificatif({ createdAt: d.createdAt, annuleeAt: d.annuleeAt, nbJustificatifs: d.attachments.length, source: d.source }, maintenant);
   const nbJustificatifsEnRetard = demande.depenses.filter((d) => etatJustif(d) === 'EN_RETARD').length;
   const totauxParMode = totauxParModePaiement(demande.lignes, demande.modePaiement);
 
@@ -836,7 +842,14 @@ export default function DemandeBudgetDetailPage() {
                                 ? 'Vous avez accordé cette ligne : une autre personne doit en enregistrer les dépenses'
                                 : l.reste <= 0 ? 'Budget de la ligne atteint — demandez un dépassement' : undefined
                             }
-                            onClick={() => setDepenseLigne({ id: l.id, designation: l.designation, reste: l.reste, modePaiement: l.modePaiement, commandes: l.commandes })}
+                            onClick={() => setDepenseLigne({
+                              id: l.id,
+                              designation: l.designation,
+                              reste: l.reste,
+                              modePaiement: l.modePaiement,
+                              commandes: l.commandes,
+                              facturesPrestataires: (demande.facturesPrestataires ?? []).filter((f) => !f.ligneBudgetId || f.ligneBudgetId === l.id),
+                            })}
                           >
                             <Wallet className="h-3.5 w-3.5" /> Dépense
                           </Button>
@@ -890,6 +903,14 @@ export default function DemandeBudgetDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <BudgetRattacherCard
+        demandeId={id}
+        depenses={demande.depensesARattacher ?? []}
+        lignes={suiviLignes.filter((l) => l.statutValidation === 'ACCORDEE').map((l) => ({ id: l.id, designation: l.designation, reste: l.reste }))}
+        peutRattacher={role.canPay && budgetOuvert}
+        onSuccess={fetchDemande}
+      />
 
       <BudgetDepassementsCard
         demandeId={id}
@@ -966,6 +987,27 @@ export default function DemandeBudgetDetailPage() {
                         </p>
                       )}
                       {d.notes && <p className="text-xs text-muted-foreground">{d.notes}</p>}
+                      {d.source !== 'MANUEL' && (
+                        <Badge variant="outline" className="mt-0.5 h-5 px-1.5 text-[10px] font-normal">
+                          {d.source === 'CAMPTRACK' ? 'Camptrack' : 'Saisie depuis la proforma'}
+                        </Badge>
+                      )}
+                      {d.lotPaiement && (
+                        <details className="mt-1 text-xs">
+                          <summary className="cursor-pointer text-primary">
+                            Lot {d.lotPaiement.reference} — {d.lotPaiement.nbBeneficiaires} bénéficiaire(s)
+                            {d.lotPaiement.referenceOperateur ? ` · réf. opérateur ${d.lotPaiement.referenceOperateur}` : ''}
+                          </summary>
+                          <ul className="mt-1 space-y-0.5 max-h-40 overflow-y-auto">
+                            {d.lotPaiement.detail.map((b, i) => (
+                              <li key={i} className="flex justify-between gap-2">
+                                <span className="truncate">{b.beneficiaire}{b.numero ? ` (${b.numero})` : ''}</span>
+                                <span className="whitespace-nowrap">{formatMontant(Number(b.montant))}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">
                       {d.nomReceveur}
@@ -998,7 +1040,11 @@ export default function DemandeBudgetDetailPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {d.attachments.length > 0 ? (
+                      {d.attachments.length === 0 && d.source === 'CAMPTRACK' ? (
+                        <Badge variant="outline" className="gap-1 bg-green-50 text-green-700 border-green-200" title="États signés et historique des transferts tenus dans Camptrack">
+                          <FileCheck2 className="h-3 w-3" /> Oui (Camptrack)
+                        </Badge>
+                      ) : d.attachments.length > 0 ? (
                         <div className="space-y-1">
                           <Badge variant="outline" className="gap-1 bg-green-50 text-green-700 border-green-200">
                             <FileCheck2 className="h-3 w-3" /> Oui

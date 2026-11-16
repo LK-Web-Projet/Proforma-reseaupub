@@ -30,6 +30,7 @@ import {
   FilePlus,
   Eye,
   Search,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -451,6 +452,9 @@ export function AppSidebar() {
         </Collapsible>
       </SidebarContent>
       <SidebarFooter>
+        <SidebarMenu>
+          <NavLink item={{ title: "Aide", url: "/aide", icon: BookOpen }} />
+        </SidebarMenu>
         {canSeePage("parametres", false) && (
           <SidebarMenu>
             <NavLink item={{ title: "Paramètres", url: "/parametres", icon: Settings }} />

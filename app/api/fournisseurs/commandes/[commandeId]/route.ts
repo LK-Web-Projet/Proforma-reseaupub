@@ -44,6 +44,20 @@ const commandeInclude = {
     },
     documents: { orderBy: { createdAt: "asc" as const } },
     factures: { orderBy: { date: "asc" as const } },
+    // Imputations des paiements (budget, proforma ou Camptrack) : payé par ligne de produit.
+    imputations: {
+      orderBy: { createdAt: "asc" as const },
+      select: {
+        id: true,
+        ligneCommandeId: true,
+        montant: true,
+        nature: true,
+        annuleeAt: true,
+        cashJournalEntryId: true,
+        factureFournisseurId: true,
+        cashJournalEntry: { select: { date_operation: true, libelle: true, budgetDepense: { select: { demandeBudgetId: true } }, paiement: { select: { invoiceId: true } } } },
+      },
+    },
     depenses: {
         orderBy: { createdAt: "asc" as const },
         select: {
@@ -127,7 +141,8 @@ export async function PATCH(
 
         const actuelle = await prisma.commandeFournisseur.findUnique({
             where: { id: commandeId },
-            include: { documents: { select: { kind: true } }, depenses: { where: { annuleeAt: null }, select: { id: true } } },
+            // Paiements actifs = imputations non annulées (budget, proforma ou Camptrack).
+            include: { documents: { select: { kind: true } }, imputations: { where: { annuleeAt: null }, select: { id: true } } },
         });
         if (!actuelle) {
             return NextResponse.json({ error: "Bon de commande introuvable" }, { status: 404 });
@@ -136,7 +151,7 @@ export async function PATCH(
         const data: { statut?: StatutCommandeFournisseur; ligneBudgetId?: string | null } = {};
 
         if (ligneBudgetId !== undefined && ligneBudgetId !== actuelle.ligneBudgetId) {
-            if (actuelle.depenses.length > 0) {
+            if (actuelle.imputations.length > 0) {
                 return NextResponse.json({ error: "Des paiements ont déjà été faits sur ce bon : sa ligne de budget ne peut plus changer." }, { status: 400 });
             }
             const refusLigne = await refusLigneBudgetCommande(prisma, ligneBudgetId);
@@ -159,7 +174,7 @@ export async function PATCH(
                     return NextResponse.json({ error: "Joignez d'abord le scan du bon de commande signé par la DG." }, { status: 400 });
                 }
             }
-            if (nouveauStatut === StatutCommandeFournisseur.ANNULEE && actuelle.depenses.length > 0) {
+            if (nouveauStatut === StatutCommandeFournisseur.ANNULEE && actuelle.imputations.length > 0) {
                 return NextResponse.json({ error: "Ce bon a déjà des paiements : annulez d'abord les dépenses concernées." }, { status: 400 });
             }
             data.statut = nouveauStatut;

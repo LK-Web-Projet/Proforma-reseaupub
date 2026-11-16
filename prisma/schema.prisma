@@ -187,6 +187,9 @@ model Paiement {
   cashJournalEntry   CashJournal? @relation(fields: [cashJournalEntryId], references: [id])
   invoice            Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   createdBy          User?        @relation("PaiementCreatedBy", fields: [createdById], references: [id])
+  // Dépense reçue de Camptrack (ancien appel, sans ligne de budget) sur une proforma qui a un
+  // budget : à rattacher à une ligne de budget par le comptable (crée alors la BudgetDepense).
+  aRattacherBudget   Boolean      @default(false)
 
   @@map("paiements")
 }
@@ -219,6 +222,8 @@ model CashJournal {
   budgetDepense        BudgetDepense?          @relation("BudgetDepenseEcriture")
   // Renseigné si cette écriture (RECETTE) est la contre-écriture d'une dépense de budget annulée.
   budgetDepenseAnnulee BudgetDepense?          @relation("BudgetDepenseContreEcriture")
+  imputationsCommande  ImputationCommande[]
+  lotPaiement          LotPaiement?
 }
 
 model CashJournalAttachment {
@@ -296,6 +301,11 @@ model FactureFournisseur {
   commandeId    String?
   commande      CommandeFournisseur?     @relation(fields: [commandeId], references: [id])
   depenses      BudgetDepense[]
+  // Prestataire interne / externe (pas de bon de commande obligatoire) : la facture peut être
+  // rattachée directement à une ligne de budget (ex. budget mensuel de la comptabilité pour la paie)
+  // et réglée par des dépenses sur cette ligne ; elle passe PAYEE quand elle est entièrement réglée.
+  ligneBudgetId String?
+  ligneBudget   DemandeBudgetLigne?      @relation(fields: [ligneBudgetId], references: [id])
 }
 
 model ProduitFournisseur {
@@ -348,6 +358,7 @@ model CommandeFournisseur {
   documents      CommandeFournisseurDocument[]
   factures       FactureFournisseur[]
   depenses       BudgetDepense[]
+  imputations    ImputationCommande[]
 }
 
 // Pièces de la « liasse » d'un bon de commande (procédure, section 4) : BC signé par la DG,
@@ -383,18 +394,19 @@ model CommandeFournisseurProforma {
 }
 
 model LigneCommandeFournisseur {
-  id                   String              @id @default(uuid())
+  id                   String               @id @default(uuid())
   commandeId           String
   produitFournisseurId String
   designation          String
-  quantite             Decimal             @db.Decimal(10, 2)
-  largeur              Decimal?            @db.Decimal(10, 2)
-  hauteur              Decimal?            @db.Decimal(10, 2)
-  surface              Decimal?            @db.Decimal(10, 2)
-  prixUnitaire         Decimal             @db.Decimal(10, 2)
-  prixTotal            Decimal             @db.Decimal(10, 2)
-  commande             CommandeFournisseur @relation(fields: [commandeId], references: [id], onDelete: Cascade)
-  produitFournisseur   ProduitFournisseur  @relation(fields: [produitFournisseurId], references: [id])
+  quantite             Decimal              @db.Decimal(10, 2)
+  largeur              Decimal?             @db.Decimal(10, 2)
+  hauteur              Decimal?             @db.Decimal(10, 2)
+  surface              Decimal?             @db.Decimal(10, 2)
+  prixUnitaire         Decimal              @db.Decimal(10, 2)
+  prixTotal            Decimal              @db.Decimal(10, 2)
+  commande             CommandeFournisseur  @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  produitFournisseur   ProduitFournisseur   @relation(fields: [produitFournisseurId], references: [id])
+  imputations          ImputationCommande[]
 }
 
 enum PaiementType {
@@ -454,6 +466,7 @@ enum StatutCommandeFournisseur {
   BROUILLON
   VALIDEE
   LIVREE
+  PAYEE // posé automatiquement quand le bon est entièrement payé (jamais à la main)
   ANNULEE
 }
 
@@ -587,28 +600,29 @@ model DemandeBudget {
 }
 
 model DemandeBudgetLigne {
-  id               String                @id @default(uuid())
-  demandeBudgetId  String
-  designation      String
-  montant          Decimal               @db.Decimal(12, 2) // montant demandé
-  statutValidation StatutLigneBudget     @default(EN_ATTENTE)
+  id                   String                @id @default(uuid())
+  demandeBudgetId      String
+  designation          String
+  montant              Decimal               @db.Decimal(12, 2) // montant demandé
+  statutValidation     StatutLigneBudget     @default(EN_ATTENTE)
   // Montant accordé par le valideur (≤ demandé) ; null = montant demandé. Seules les lignes
   // ACCORDEE ont un plafond de dépense (voir montantAccordeLigne, lib/budgetSuivi.ts).
-  montantAccorde   Decimal?              @db.Decimal(12, 2)
-  decideParEmail   String?
-  decideAt         DateTime?
-  motifDecision    String? // motif d'ajustement ou de correction demandée
+  montantAccorde       Decimal?              @db.Decimal(12, 2)
+  decideParEmail       String?
+  decideAt             DateTime?
+  motifDecision        String? // motif d'ajustement ou de correction demandée
   // Catégorie normalisée, pour comparer les budgets d'un mois à l'autre (null = non catégorisé,
   // lignes antérieures au Lot 3). Libellés dans lib/budgetTypes.ts.
-  categorie        CategorieDepense?
+  categorie            CategorieDepense?
   // Moyen de paiement prévu pour la ligne (espèces, MoMo, chèque, virement, carte) — sert au
   // total prévu par moyen de paiement. Null = lignes antérieures (reprises du mode de la demande).
-  modePaiement     ModePaiementDemande?
-  demandeBudget    DemandeBudget         @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
-  depenses         BudgetDepense[]
-  commentaires     BudgetCommentaire[]
-  depassements     BudgetDepassement[]
-  commandes        CommandeFournisseur[]
+  modePaiement         ModePaiementDemande?
+  demandeBudget        DemandeBudget         @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
+  depenses             BudgetDepense[]
+  commentaires         BudgetCommentaire[]
+  depassements         BudgetDepassement[]
+  commandes            CommandeFournisseur[]
+  facturesPrestataires FactureFournisseur[]
 }
 
 // Une dépense réelle imputée à une ligne de budget. Toujours adossée à UNE écriture
@@ -650,6 +664,10 @@ model BudgetDepense {
   commande             CommandeFournisseur?      @relation(fields: [commandeId], references: [id])
   factureFournisseur   FactureFournisseur?       @relation(fields: [factureFournisseurId], references: [id])
   attachments          DemandeBudgetAttachment[]
+  // Origine de la dépense et référence externe (transaction / lot Camptrack).
+  source               SourceDepense             @default(MANUEL)
+  referenceExterne     String?
+  lotPaiement          LotPaiement?
 }
 
 // Demande d'augmentation du plafond d'une ligne épuisée (ou insuffisante). Approuvée par un
@@ -767,4 +785,52 @@ model TacheExecution {
   cle        String   @id
   executeeAt DateTime @default(now())
   resultat   String?
+}
+
+enum SourceDepense {
+  MANUEL // saisie depuis la fiche budget
+  PROFORMA // saisie depuis la fiche proforma
+  CAMPTRACK // reçue de Camptrack (paiement des prestataires)
+}
+
+// Imputation d'un paiement sur une ligne de produit d'un bon de commande — source UNIQUE du payé
+// d'un bon et de chacune de ses lignes, quelle que soit l'origine (budget, proforma, Camptrack).
+// Un paiement « tout le bon » est réparti au prorata des lignes ; une ligne par imputation.
+// Rattachée à l'écriture de caisse du paiement (cashJournalEntryId) ; annulée avec la dépense.
+model ImputationCommande {
+  id                   String                   @id @default(uuid())
+  commandeId           String
+  ligneCommandeId      String
+  cashJournalEntryId   Int
+  montant              Decimal                  @db.Decimal(12, 2)
+  nature               NatureDepense
+  factureFournisseurId String?
+  annuleeAt            DateTime?
+  createdAt            DateTime                 @default(now())
+  commande             CommandeFournisseur      @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  ligneCommande        LigneCommandeFournisseur @relation(fields: [ligneCommandeId], references: [id], onDelete: Cascade)
+  cashJournalEntry     CashJournal              @relation(fields: [cashJournalEntryId], references: [id])
+
+  @@index([commandeId])
+  @@index([cashJournalEntryId])
+}
+
+// Lot de paiement des prestataires reçu de Camptrack (un lot = une proforma) : une seule sortie de
+// caisse pour le total, le détail des bénéficiaires conservé ici. `reference` unique : un même lot
+// renvoyé (nouvel essai réseau) n'est jamais payé deux fois.
+model LotPaiement {
+  id                 String         @id @default(uuid())
+  reference          String         @unique
+  referenceOperateur String?
+  proformaId         String
+  nbBeneficiaires    Int
+  montant            Decimal        @db.Decimal(12, 2)
+  modePaiement       String
+  detail             Json
+  comptableEmail     String
+  cashJournalEntryId Int            @unique
+  budgetDepenseId    String?        @unique
+  createdAt          DateTime       @default(now())
+  cashJournalEntry   CashJournal    @relation(fields: [cashJournalEntryId], references: [id])
+  budgetDepense      BudgetDepense? @relation(fields: [budgetDepenseId], references: [id])
 }

@@ -7,7 +7,7 @@ import { recordCashMovement } from "@/lib/cashJournal";
 import { safeCreatedById } from "@/lib/authz";
 import { logBudget, recalculerStatutBudget } from "@/lib/budgetSuivi";
 import { sendDepenseAnnuleeNotification } from "@/lib/email/demandeBudget";
-import { libererFactureApresAnnulation } from "@/lib/commandeFournisseurSuivi";
+import { annulerImputations, recalculerStatutFacture } from "@/lib/commandeFournisseurSuivi";
 
 class AnnulationError extends Error {}
 
@@ -87,8 +87,11 @@ export async function POST(
           where: { id: depense.id },
           data: { annuleeAt: now, annuleeParEmail: caps.email, motifAnnulation: motif, contreEcritureId: contreEcriture.id },
         });
-        // Solde d'un bon de commande annulé : la facture fournisseur redevient à payer.
-        await libererFactureApresAnnulation(tx, depense.factureFournisseurId);
+        // Paiement sur bon de commande annulé : imputations annulées, la facture redevient à payer
+        // et le bon retrouve son statut (« Payée » → livrée / validée).
+        await annulerImputations(tx, depense.cashJournalEntryId);
+        // Facture de prestataire réglée directement (sans bon) : de nouveau à payer.
+        if (depense.factureFournisseurId && !depense.commandeId) await recalculerStatutFacture(tx, depense.factureFournisseurId);
 
         await logBudget(tx, {
           demandeBudgetId: id,

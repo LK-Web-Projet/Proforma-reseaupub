@@ -22,6 +22,53 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-17 (suite) — Factures de prestataires internes / externes réglées sur une ligne de budget
+
+**Demande / Contexte**
+Nuance sur la règle « une facture répond à un bon de commande » : elle ne vaut que pour les prestataires de type **Fournisseur**. Les prestataires **internes** et **externes** peuvent être associés directement à un budget — par exemple le budget mensuel de la comptabilité pour la paie des employés.
+
+**Modifications apportées**
+- Migration `20261117200000_facture_prestataire_ligne_budget` (appliquée) : `FactureFournisseur.ligneBudgetId` (facultatif).
+- `lib/typeFournisseur.ts` : `exigeBonDeCommande(type)` — vrai seulement pour « Fournisseur » (un prestataire sans type compte comme interne).
+- Création de facture (`/api/factures-fournisseurs`) : bon obligatoire pour un Fournisseur ; pour un prestataire interne / externe, bon facultatif **ou** ligne de budget (jamais les deux). Fenêtre de facture : libellé « Bon de commande * / (facultatif) » selon le type, choix « Ligne de budget (facultatif) » parmi les lignes accordées des budgets ouverts.
+- Paiement : `controlerPaiementFacture` / `recalculerStatutFacture` (`lib/commandeFournisseurSuivi.ts`), branchés dans `enregistrerDepense` : une dépense sur une ligne de budget peut régler une facture de prestataire interne / externe (en attente, sans bon, rattachée à cette ligne ou à aucune, montant ≤ reste) ; **paiement partiel possible**, facture **PAYEE** une fois entièrement réglée, de nouveau « à payer » si une dépense est annulée. Fenêtre de dépense (fiche budget et fiche proforma) : option « Facture … — prestataire (reste …) » ; liste fournie par `facturesPrestatairesPayables`.
+- Guide des équipes : sous-partie « Prestataires internes et externes » et message d'erreur correspondant.
+
+**Tests**
+- Transaction annulée : 11/11 (règle par type, factures payables par ligne, acompte puis solde → PAYEE, dépassement refusé, facture payée non repayable, annulation → à payer, autre ligne refusée, facture de Fournisseur sans bon refusée, prestataire sans type traité en interne). Non-régression : chaîne de dépense 18/18, Lot C 19/19, budget 37/37. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Vérifier le **type** de chaque prestataire (fiche prestataire) : un ancien prestataire sans type est traité comme « interne » (bon de commande facultatif).
+
+---
+
+## 2026-11-17 — Une seule chaîne de dépense (budget ↔ bon de commande ↔ facture ↔ caisse ↔ proforma), lots Camptrack, guide des équipes
+
+**Demande / Contexte**
+Toute sortie d'argent doit être une seule opération, qu'elle parte de la fiche budget, de la fiche proforma ou de Camptrack, et tout mettre à jour d'un coup (caisse, ligne de budget, marge de la proforma, ligne de produit du bon de commande, facture). Décisions : les campagnes sans budget gardent la dépense directe sur la proforma ; avec budget, la ligne est obligatoire (y compris pour Camptrack) ; Camptrack paie **par lots** (un lot par proforma) et n'est **pas modifié ici** — l'appel actuel doit continuer de marcher, des instructions sont écrites pour son développeur ; un guide des processus consultable et téléchargeable dans Proforma.
+
+**Modifications apportées**
+- Migration `20261117100000_chaine_depense_imputations_lots` (appliquée, écart nul) : `ImputationCommande` (source unique du payé d'un bon et de chaque ligne de produit ; reprise au prorata des dépenses déjà liées à un bon), statut `PAYEE` des bons (automatique), `BudgetDepense.source` (MANUEL / PROFORMA / CAMPTRACK) et `referenceExterne`, `Paiement.aRattacherBudget`, `LotPaiement`.
+- `lib/depenses/enregistrerDepense.ts` : **fonction unique** de toute sortie d'argent — avec ligne de budget (`controlerLigneBudget` : budget ouvert, séparation des tâches, dates, ligne accordée, plafond) ou, seulement si la proforma n'a aucun budget, sortie directe ; bon de commande (`controlerPaiementCommande` revu : ligne de produit ou « tout le bon » réparti au prorata du reste, bon lié à la ligne de budget ou à la proforma) ; écriture de caisse + dépense sur la proforma ; imputations ; facture PAYEE au solde ; bon PAYEE quand il est soldé (`majStatutCommande`) ; historique et statut du budget. Utilisée par `/api/demandes-budget/[id]/depenses`, `/api/factures/[id]/paiements` (DEPENSE) et les lots Camptrack. Annulation : `annulerImputations` (facture à payer, bon revenu à Livrée / Validée).
+- Fiche proforma : le bouton **Dépense** propose la ligne de budget si la campagne en a un (`ChoixLigneBudgetDialog`, puis la même fenêtre que la fiche budget), sinon la sortie directe avec bon de commande facultatif ; route `GET /api/factures/[id]/lignes-depense`.
+- Fenêtre de dépense : choix de la **ligne de produit** du bon (ou tout le bon). Fiche du bon : **payé / reste par ligne de produit**, paiements de toute origine. Factures fournisseurs : **bon de commande obligatoire** à la création (écran et serveur). Liste des bons : filtre « Payée ».
+- **Camptrack (transition)** : `POST /api/integration/cash-journal/depenses` garde son contrat ; sur une campagne avec budget, le paiement est marqué « à rattacher » → carte orange sur la fiche budget, bouton **Rattacher** (`/api/demandes-budget/[id]/rattacher` : crée la dépense de budget sur l'écriture existante, plafond contrôlé, caisse non retouchée), et section dans l'état du soir.
+- **Camptrack (lots)** : `GET /api/integration/budgets/lignes?proformaId=` et `POST /api/integration/cash-journal/lots-paiement` (résumé du lot, total = somme des lignes, ligne de budget obligatoire si budget, **idempotent** par `reference`, lot justifié dans Camptrack). Sur la fiche budget, le détail du lot s'ouvre depuis la dépense. Instructions pour le développeur : `docs/integration/camptrack-paiements-lots.md`.
+- Dépenses Camptrack considérées **justifiées dans Camptrack** (hors justificatifs manquants, « Oui (Camptrack) »).
+- **Guide des équipes** : `public/docs/procedure-paiement-plateforme.md`, affiché sur la page **Aide** (`/aide`, lien dans la barre latérale : sommaire, Imprimer / PDF, téléchargement Markdown) ; `/docs/*` réservé aux utilisateurs connectés (middleware). Dépendance `marked` ajoutée (package-lock.json et pnpm-lock.yaml synchronisés, aucune autre version changée).
+
+**Tests**
+- Service, transaction annulée : 18/18 (prorata 60 000 / 30 000, ligne de produit et son reste, refus sans ligne sur une campagne avec budget, sortie directe sans budget, BC d'un budget refusé hors budget, solde → facture et bon payés, bon payé non repayable, annulation → facture à payer et bon « Livrée », séparation des tâches, plafond, budget non validé, Camptrack justifié).
+- Routes Camptrack, vraies écritures **nettoyées** : 15/15 (ancien appel inchangé avec et sans budget, marqué à rattacher ; lignes de budget ; lot : total incohérent, ligne obligatoire, plafond, succès, renvoi idempotent, sans budget, hors justificatifs manquants).
+- Non-régression : budget 37/37 et 89/89, Lot A 15/15, Lot C 19/19 (adapté aux imputations) et 8/8. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Transmettre `docs/integration/camptrack-paiements-lots.md` au développeur de Camptrack ; d'ici là, rattacher les paiements Camptrack depuis les fiches budget.
+- Relire le guide (`public/docs/procedure-paiement-plateforme.md`) avant de le partager en ligne.
+- Les anciennes factures fournisseurs sans bon de commande restent telles quelles ; toute nouvelle facture exige un bon.
+
+---
+
 ## 2026-11-16 (suite 3) — Correctif : build Docker (package-lock) et erreur de la cloche en local
 
 **Demande / Contexte**

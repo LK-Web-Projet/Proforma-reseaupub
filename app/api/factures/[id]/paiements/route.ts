@@ -6,7 +6,10 @@ import { mkdirSync, existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 import { auth } from "@clerk/nextjs/server";
-import { recordDepensePaiement } from "@/lib/paiements";
+import { ModePaiementDemande, NatureDepense, SourceDepense } from "@prisma/client";
+import { DepenseError, enregistrerDepense } from "@/lib/depenses/enregistrerDepense";
+import { PaiementCommandeError } from "@/lib/commandeFournisseurSuivi";
+import { isSoldeInsuffisantError } from "@/lib/cashJournal";
 import { lockCashRegister } from "@/lib/cashJournal";
 import { safeCreatedById } from "@/lib/authz";
 import { sendProformaPaiementNotification } from "@/lib/email/proformaPaiement";
@@ -27,7 +30,22 @@ const paiementSchema = z.object({
   ),
   cashRegisterId: z.number().optional(),
   type: z.enum(["PAIEMENT", "DEPENSE"]).default("PAIEMENT"),
+  // Dépense d'une campagne SANS budget : bon de commande facultatif (avance / solde, ligne de
+  // produit ou tout le bon). Une campagne avec budget passe par /api/demandes-budget/[id]/depenses.
+  commandeId: z.string().optional(),
+  nature: z.nativeEnum(NatureDepense).optional(),
+  ligneCommandeId: z.string().optional(),
+  factureFournisseurId: z.string().optional(),
+  nomReceveur: z.string().optional(),
 });
+
+// Méthode saisie sur la fiche proforma → moyen de paiement normalisé.
+const MODE_DEPUIS_METHODE: Record<string, ModePaiementDemande> = {
+  "Espèces": ModePaiementDemande.ESPECES,
+  "Virement": ModePaiementDemande.VIREMENT,
+  "Chèque": ModePaiementDemande.CHEQUE,
+  "MobileMoney": ModePaiementDemande.MOBILE_MONEY,
+};
 
 export async function POST(
   request: NextRequest,
@@ -64,14 +82,16 @@ export async function POST(
       );
     }
 
-    const { montant, methode, cashRegisterId, type, ...rest } = validation.data;
+    const { montant, methode, cashRegisterId, type, commandeId, nature, ligneCommandeId, factureFournisseurId, nomReceveur, ...rest } = validation.data;
     const montantDecimal = parseFloat(montant.toFixed(2));
 
     // Une dépense imputée à une proforma est une sortie de caisse hors budget : même droit que la
     // saisie directe au journal (les encaissements clients restent ouverts comme avant).
+    let auteur = { email: "inconnu", name: null as string | null };
     if (type === "DEPENSE") {
       const caisseCaps = await requireCaisseUser();
       if (caisseCaps instanceof NextResponse) return caisseCaps;
+      auteur = { email: caisseCaps.email, name: caisseCaps.name };
     }
 
     const finalCashRegisterId =
@@ -147,16 +167,25 @@ export async function POST(
       const createdById = await safeCreatedById(tx, userId);
 
       if (type === "DEPENSE") {
-        const { cashJournalEntry } = await recordDepensePaiement(tx, {
-          invoiceId,
-          cashRegisterId: finalCashRegisterId,
+        // Même opération que partout ailleurs (lib/depenses/enregistrerDepense.ts) : refusée si la
+        // campagne a un budget (la dépense doit alors porter sur une ligne), bon de commande géré.
+        const { cashJournalEntry } = await enregistrerDepense(tx, {
+          source: SourceDepense.PROFORMA,
+          auteur: { userId: createdById, ...auteur },
           montant: montantDecimal,
+          dateDepense: dateOperation,
+          cashRegisterId: finalCashRegisterId,
+          nomReceveur: nomReceveur?.trim() || rest.reference || "—",
+          modePaiement: MODE_DEPUIS_METHODE[methode ?? ""] ?? ModePaiementDemande.AUTRE,
+          notes: rest.notes,
+          invoiceId,
+          commandeId,
+          nature: commandeId ? nature : NatureDepense.NORMALE,
+          ligneCommandeId,
+          factureFournisseurId,
           libelle,
-          date_operation: dateOperation,
           methode,
           reference: rest.reference,
-          notes: rest.notes,
-          createdById,
         });
 
         const updatedInvoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
@@ -295,6 +324,9 @@ export async function POST(
 
     return NextResponse.json(result.updatedInvoice, { status: 201 });
   } catch (error) {
+    if (error instanceof DepenseError || error instanceof PaiementCommandeError || isSoldeInsuffisantError(error)) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    }
     console.error("Erreur lors de l'ajout du paiement:", error);
     const errorMessage =
       error instanceof Error

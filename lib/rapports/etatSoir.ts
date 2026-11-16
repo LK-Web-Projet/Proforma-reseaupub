@@ -20,7 +20,8 @@ const jourBenin = (d: Date) => new Intl.DateTimeFormat("fr-CA", { timeZone: FUSE
 
 export async function listerJustificatifsManquants(maintenant = new Date()): Promise<JustificatifManquant[]> {
   const depenses = await prisma.budgetDepense.findMany({
-    where: { annuleeAt: null, attachments: { none: {} } },
+    // Les dépenses reçues de Camptrack sont justifiées dans Camptrack (états signés, historique MTN).
+    where: { annuleeAt: null, source: { not: "CAMPTRACK" }, attachments: { none: {} } },
     orderBy: { createdAt: "asc" },
     include: {
       demandeBudget: { select: { id: true, numero: true } },
@@ -68,11 +69,21 @@ export interface AvanceNonJustifiee {
   manquantes: string[];
 }
 
+export interface DepenseARattacherEtat {
+  invoiceId: string;
+  numeroProforma: string;
+  libelle: string;
+  montant: number;
+  date: Date;
+}
+
 export interface EtatSoir {
   jour: string;
   campagnes: CampagneEtat[];
   justificatifs: JustificatifManquant[];
   avancesNonJustifiees: AvanceNonJustifiee[];
+  /** Paiements reçus de Camptrack sans ligne de budget, sur une campagne qui a un budget. */
+  aRattacher: DepenseARattacherEtat[];
 }
 
 export async function construireEtatSoir(maintenant = new Date()): Promise<EtatSoir> {
@@ -146,7 +157,20 @@ export async function construireEtatSoir(maintenant = new Date()): Promise<EtatS
     }];
   });
 
-  return { jour, campagnes, justificatifs: await listerJustificatifsManquants(maintenant), avancesNonJustifiees };
+  const paiementsARattacher = await prisma.paiement.findMany({
+    where: { aRattacherBudget: true },
+    orderBy: { datePaiement: "asc" },
+    select: { invoiceId: true, montant: true, datePaiement: true, reference: true, invoice: { select: { numero: true } }, cashJournalEntry: { select: { libelle: true } } },
+  });
+  const aRattacher = paiementsARattacher.map((p) => ({
+    invoiceId: p.invoiceId,
+    numeroProforma: p.invoice.numero,
+    libelle: p.cashJournalEntry?.libelle ?? p.reference ?? "Dépense Camptrack",
+    montant: Number(p.montant),
+    date: p.datePaiement,
+  }));
+
+  return { jour, campagnes, justificatifs: await listerJustificatifsManquants(maintenant), avancesNonJustifiees, aRattacher };
 }
 
 const nf = (n: number) => `${new Intl.NumberFormat("fr-FR").format(Math.round(n))} F`;
@@ -192,6 +216,15 @@ function construireHtml(etat: EtatSoir): string {
         .join("")}</tbody></table>`
     : `<p style="color:#15803d;font-size:13px;">Aucune avance non justifiée.</p>`;
 
+  const aRattacher = etat.aRattacher.length
+    ? `<table style="width:100%;border-collapse:collapse;border:1px solid #eef0f3;"><thead><tr style="background:#0f172a;">${th("Proforma")}${th("Paiement")}${th("Montant", true)}</tr></thead><tbody>${etat.aRattacher
+        .map(
+          (r) =>
+            `<tr style="background:#fffbeb;">${td(`<a href="${appUrl()}/facture/${r.invoiceId}" style="color:#4f46e5;text-decoration:none;">${escapeHtml(r.numeroProforma)}</a>`)}${td(escapeHtml(r.libelle))}${td(nf(r.montant), { droite: true })}</tr>`
+        )
+        .join("")}</tbody></table>`
+    : "";
+
   return `
   <div style="font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f8;padding:28px 0;">
     <div style="max-width:720px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
@@ -203,6 +236,7 @@ function construireHtml(etat: EtatSoir): string {
         ${titre(`Campagnes en cours (${etat.campagnes.length})`)}${campagnes}
         ${titre(`Justificatifs manquants (${etat.justificatifs.length}, dont ${etat.justificatifs.filter((j) => j.enRetard).length} en retard)`)}${justifs}
         ${titre(`Avances fournisseurs non justifiées (${etat.avancesNonJustifiees.length})`)}${avances}
+        ${etat.aRattacher.length ? `${titre(`Paiements Camptrack à rattacher à un budget (${etat.aRattacher.length})`)}${aRattacher}` : ""}
       </div>
       <div style="padding:12px 26px;background:#f8fafc;border-top:1px solid #eef0f3;">
         <p style="margin:0;color:#94a3b8;font-size:11px;text-align:center;">Envoi automatique les jours ouvrés à 19 h &mdash; Réseaupub</p>
@@ -213,7 +247,7 @@ function construireHtml(etat: EtatSoir): string {
 
 /** Envoie l'état du soir (rien s'il n'y a ni campagne en cours, ni justificatif manquant, ni avance à justifier). */
 export async function envoyerEtatSoir(etat: EtatSoir): Promise<{ envoye: boolean; destinataires: number }> {
-  if (etat.campagnes.length === 0 && etat.justificatifs.length === 0 && etat.avancesNonJustifiees.length === 0) {
+  if (etat.campagnes.length === 0 && etat.justificatifs.length === 0 && etat.avancesNonJustifiees.length === 0 && etat.aRattacher.length === 0) {
     return { envoye: false, destinataires: 0 };
   }
   const [dg, comptables] = await Promise.all([getBudgetRecipients("canValidateBudgetMensuel"), getBudgetRecipients("canPayBudget")]);

@@ -105,5 +105,7 @@ export const config = {
     // motif exclut tout chemin avec un point, donc les fichiers : sans cette ligne ils seraient
     // servis à n'importe qui connaissant l'URL. Ici, connexion obligatoire (redirection sign-in).
     "/Upload/(.*)",
+    // Documentation interne (public/docs : guides de processus) : connexion obligatoire.
+    "/docs/(.*)",
   ],
 };

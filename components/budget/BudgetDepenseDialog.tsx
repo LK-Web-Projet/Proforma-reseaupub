@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
-import { etatLiasse, payeSurCommande } from '@/lib/commandeFournisseurLiasse';
+import { etatLiasse, partsLignesCommande, payeSurCommande } from '@/lib/commandeFournisseurLiasse';
 
 // 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts).
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -31,10 +31,13 @@ export interface CommandeDeLigne {
   numero: string;
   statut: string;
   montantNet: number | string;
+  totalHT: number | string;
   fournisseur: { entreprise: string };
   documents: { kind: string }[];
   factures: { id: string; reference: string; montant: number | string; status: string; pieceJointe: string | null }[];
   depenses: { montant: number | string; annuleeAt: string | null }[];
+  lignes: { id: string; designation: string; prixTotal: number | string }[];
+  imputations: { ligneCommandeId: string; montant: number | string; annuleeAt: string | null }[];
 }
 
 export interface BudgetDepenseDialogLigne {
@@ -44,6 +47,17 @@ export interface BudgetDepenseDialogLigne {
   // Moyen de paiement prévu sur la ligne (pré-sélectionné ; null = celui de la demande).
   modePaiement?: string | null;
   commandes?: CommandeDeLigne[];
+  /** Factures de prestataires internes / externes (sans bon) payables sur cette ligne. */
+  facturesPrestataires?: FacturePrestataire[];
+}
+
+export interface FacturePrestataire {
+  id: string;
+  reference: string;
+  montant: number;
+  reste: number;
+  ligneBudgetId: string | null;
+  fournisseur: { entreprise: string; typeFournisseur: string | null };
 }
 
 // Valeur du choix « Paiement » : dépense simple, ou "<commandeId>|AVANCE" / "<commandeId>|SOLDE".
@@ -56,13 +70,15 @@ interface BudgetDepenseDialogProps {
   defaultModePaiement: string;
   onClose: () => void;
   onSuccess: () => void;
+  /** Saisie lancée depuis la fiche proforma (origine tracée dans l'historique). */
+  depuisProforma?: boolean;
 }
 
 /**
  * Saisie d'une dépense réelle sur une ligne de budget par le comptable. La dépense crée une
  * écriture DEPENSE dans la caisse choisie (voir app/api/demandes-budget/[id]/depenses/route.ts).
  */
-export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePaiement, onClose, onSuccess }: BudgetDepenseDialogProps) {
+export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePaiement, onClose, onSuccess, depuisProforma }: BudgetDepenseDialogProps) {
   const [cashRegisters, setCashRegisters] = useState<CashRegisterOption[]>([]);
   const [montant, setMontant] = useState('');
   const [dateDepense, setDateDepense] = useState(new Date().toISOString().split('T')[0]);
@@ -76,23 +92,39 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
   const [motifSansJustificatif, setMotifSansJustificatif] = useState('');
   const [paiement, setPaiement] = useState(PAIEMENT_SIMPLE);
   const [factureFournisseurId, setFactureFournisseurId] = useState('');
+  // Ligne de produit du bon payée ; '' = tout le bon (réparti au prorata du reste de chaque ligne).
+  const [ligneCommandeId, setLigneCommandeId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [commandeChoisieId, natureChoisie] = paiement === PAIEMENT_SIMPLE ? [null, 'NORMALE'] : paiement.split('|');
+  // Paiement : dépense simple, "<commandeId>|AVANCE|SOLDE", ou "FACT|<factureId>" (facture de
+  // prestataire interne / externe réglée directement sur la ligne).
+  const factureDirecte = paiement.startsWith('FACT|') ? ligne?.facturesPrestataires?.find((f) => f.id === paiement.slice(5)) ?? null : null;
+  const [commandeChoisieId, natureChoisie] = paiement === PAIEMENT_SIMPLE || factureDirecte ? [null, 'NORMALE'] : paiement.split('|');
   const commandeChoisie = ligne?.commandes?.find((c) => c.id === commandeChoisieId) ?? null;
   const liasse = commandeChoisie ? etatLiasse(commandeChoisie.documents, commandeChoisie.factures) : null;
-  const resteCommande = commandeChoisie ? Number(commandeChoisie.montantNet) - payeSurCommande(commandeChoisie.depenses) : 0;
+  const resteCommande = commandeChoisie ? Number(commandeChoisie.montantNet) - payeSurCommande(commandeChoisie.imputations) : 0;
+  const partsCommande = commandeChoisie ? partsLignesCommande(commandeChoisie) : [];
+  const partChoisie = partsCommande.find((p) => p.id === ligneCommandeId) ?? null;
   const facturesAPayer = commandeChoisie?.factures.filter((f) => f.status === 'EN_ATTENTE') ?? [];
   const commandePayable = (c: CommandeDeLigne) => (c.statut === 'VALIDEE' || c.statut === 'LIVREE') && etatLiasse(c.documents).bcSigne;
 
   const choisirPaiement = (valeur: string) => {
     setPaiement(valeur);
     setFactureFournisseurId('');
+    setLigneCommandeId('');
     if (valeur === PAIEMENT_SIMPLE || !ligne) return;
+    if (valeur.startsWith('FACT|')) {
+      const f = ligne.facturesPrestataires?.find((x) => x.id === valeur.slice(5));
+      if (f) {
+        setMontant(String(Math.max(Math.min(ligne.reste, f.reste), 0)));
+        setNomReceveur(f.fournisseur.entreprise);
+      }
+      return;
+    }
     const [cid] = valeur.split('|');
     const c = ligne.commandes?.find((x) => x.id === cid);
     if (!c) return;
-    const resteC = Number(c.montantNet) - payeSurCommande(c.depenses);
+    const resteC = Number(c.montantNet) - payeSurCommande(c.imputations);
     setMontant(String(Math.max(Math.min(ligne.reste, resteC), 0)));
     setNomReceveur(c.fournisseur.entreprise);
     const enAttente = c.factures.filter((f) => f.status === 'EN_ATTENTE');
@@ -120,6 +152,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
     setMotifSansJustificatif('');
     setPaiement(PAIEMENT_SIMPLE);
     setFactureFournisseurId('');
+    setLigneCommandeId('');
   }, [ligne, proformas, defaultModePaiement]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -131,9 +164,15 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
     if (montantNum > ligne.reste + 0.005) {
       return void toast.error(`Budget de la ligne atteint : il reste ${formatMontant(ligne.reste)}.`);
     }
+    if (factureDirecte && montantNum > factureDirecte.reste + 0.005) {
+      return void toast.error(`Montant supérieur à ce qui reste à régler sur la facture : ${formatMontant(factureDirecte.reste)}.`);
+    }
     if (commandeChoisie) {
       if (montantNum > resteCommande + 0.005) {
         return void toast.error(`Montant supérieur au reste du bon de commande : il reste ${formatMontant(resteCommande)}.`);
+      }
+      if (partChoisie && montantNum > partChoisie.reste + 0.005) {
+        return void toast.error(`Montant supérieur au reste de la ligne « ${partChoisie.designation} » : il reste ${formatMontant(partChoisie.reste)}.`);
       }
       if (natureChoisie === 'SOLDE' && !liasse?.complete) {
         return void toast.error(`Liasse incomplète : manque ${liasse?.manquantes.join(', ')}.`);
@@ -166,7 +205,10 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
         data.append('commandeId', commandeChoisie.id);
         data.append('nature', natureChoisie);
         if (natureChoisie === 'SOLDE') data.append('factureFournisseurId', factureFournisseurId);
+        if (ligneCommandeId) data.append('ligneCommandeId', ligneCommandeId);
       }
+      if (factureDirecte) data.append('factureFournisseurId', factureDirecte.id);
+      if (depuisProforma) data.append('depuisProforma', 'true');
       if (notes.trim()) data.append('notes', notes.trim());
       data.append('sansJustificatif', String(preuves.length === 0 && sansJustificatif));
       if (preuves.length === 0) data.append('motifSansJustificatif', motifSansJustificatif.trim());
@@ -200,14 +242,19 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
               <p className="text-muted-foreground">Reste disponible : <strong>{formatMontant(ligne.reste)}</strong></p>
             </div>
 
-            {(ligne.commandes?.length ?? 0) > 0 && (
+            {((ligne.commandes?.length ?? 0) > 0 || (ligne.facturesPrestataires?.length ?? 0) > 0) && (
               <div className="space-y-2">
                 <Label>Paiement</Label>
                 <Select value={paiement} onValueChange={choisirPaiement}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={PAIEMENT_SIMPLE}>Dépense simple (hors bon de commande)</SelectItem>
-                    {ligne.commandes!.map((c) => (
+                    {(ligne.facturesPrestataires ?? []).map((f) => (
+                      <SelectItem key={f.id} value={`FACT|${f.id}`}>
+                        Facture {f.reference} — {f.fournisseur.entreprise} (reste {formatMontant(f.reste)})
+                      </SelectItem>
+                    ))}
+                    {(ligne.commandes ?? []).map((c) => (
                       <React.Fragment key={c.id}>
                         <SelectItem value={`${c.id}|AVANCE`} disabled={!commandePayable(c)}>
                           Avance — {c.numero} ({c.fournisseur.entreprise})
@@ -219,7 +266,12 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
                     ))}
                   </SelectContent>
                 </Select>
-                {ligne.commandes!.some((c) => !commandePayable(c)) && (
+                {factureDirecte && (
+                  <p className="text-xs rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+                    Facture {factureDirecte.reference} ({factureDirecte.fournisseur.entreprise}) : reste à régler <strong>{formatMontant(factureDirecte.reste)}</strong> sur {formatMontant(factureDirecte.montant)}. Elle passera « payée » une fois entièrement réglée.
+                  </p>
+                )}
+                {(ligne.commandes ?? []).some((c) => !commandePayable(c)) && (
                   <p className="text-xs text-muted-foreground">Un bon non validé ou sans scan signé ne peut pas être payé.</p>
                 )}
                 {commandeChoisie && liasse && (
@@ -231,6 +283,30 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
                       Liasse {liasse.nbPieces}/4{liasse.complete ? ' — complète' : ` — manque : ${liasse.manquantes.join(', ')}`}
                       {natureChoisie === 'AVANCE' && !liasse.complete ? ". L'avance restera « non justifiée » jusqu'à la liasse complète." : ''}
                     </p>
+                  </div>
+                )}
+                {commandeChoisie && partsCommande.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Ligne de produit du bon</Label>
+                    <Select
+                      value={ligneCommandeId || '__TOUT__'}
+                      onValueChange={(v) => {
+                        const id = v === '__TOUT__' ? '' : v;
+                        setLigneCommandeId(id);
+                        const p = partsCommande.find((x) => x.id === id);
+                        if (p) setMontant(String(Math.max(Math.min(p.reste, resteCommande, ligne.reste), 0)));
+                      }}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__TOUT__">Tout le bon (réparti au prorata des lignes)</SelectItem>
+                        {partsCommande.map((p) => (
+                          <SelectItem key={p.id} value={p.id} disabled={p.reste <= 0.004}>
+                            {p.designation} — reste {formatMontant(Math.max(p.reste, 0))}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
                 {natureChoisie === 'SOLDE' && (

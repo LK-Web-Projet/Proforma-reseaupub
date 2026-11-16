@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       }
     }
     if (sansJustificatif) {
-      where.depenses = { some: { annuleeAt: null, attachments: { none: {} } } };
+      where.depenses = { some: { annuleeAt: null, source: { not: "CAMPTRACK" }, attachments: { none: {} } } };
     }
     if (depassementEnAttente) {
       where.depassements = { some: { statut: StatutDepassement.EN_ATTENTE } };
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
         lignes: true,
         bonCommande: { select: { id: true, numero: true } },
         proformas: { include: { invoice: { include: { client: true } } } },
-        depenses: { where: { annuleeAt: null }, select: { montant: true, createdAt: true, _count: { select: { attachments: true } } } },
+        depenses: { where: { annuleeAt: null }, select: { montant: true, createdAt: true, source: true, _count: { select: { attachments: true } } } },
         depassements: { where: { statut: { in: [StatutDepassement.APPROUVE, StatutDepassement.EN_ATTENTE] } }, select: { montant: true, statut: true } },
       },
     });
@@ -85,10 +85,10 @@ export async function GET(request: NextRequest) {
           d.lignes.reduce((s, l) => s + montantAccordeLigne(l), 0) +
           depassements.filter((x) => x.statut === StatutDepassement.APPROUVE).reduce((s, x) => s + Number(x.montant), 0),
         montantConsomme: depenses.reduce((s, dep) => s + Number(dep.montant), 0),
-        nbDepensesSansJustificatif: depenses.filter((dep) => dep._count.attachments === 0).length,
+        nbDepensesSansJustificatif: depenses.filter((dep) => dep._count.attachments === 0 && dep.source !== "CAMPTRACK").length,
         // Sans justificatif ET délai de 24 h ouvrées dépassé (affichées en rouge).
         nbJustificatifsEnRetard: depenses.filter(
-          (dep) => etatJustificatif({ createdAt: dep.createdAt, nbJustificatifs: dep._count.attachments }, maintenant) === "EN_RETARD"
+          (dep) => etatJustificatif({ createdAt: dep.createdAt, nbJustificatifs: dep._count.attachments, source: dep.source }, maintenant) === "EN_RETARD"
         ).length,
         nbDepassementsEnAttente: depassements.filter((x) => x.statut === StatutDepassement.EN_ATTENTE).length,
         nbLignesACorriger: d.lignes.filter((l) => l.statutValidation === "A_CORRIGER").length,

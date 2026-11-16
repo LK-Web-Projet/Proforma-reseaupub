@@ -36,6 +36,8 @@ export interface DepensePourJustificatif {
   createdAt: Date | string;
   annuleeAt?: Date | string | null;
   nbJustificatifs: number;
+  /** Dépense reçue de Camptrack : les pièces (états signés, historique MTN) y sont tenues. */
+  source?: string | null;
 }
 
 export type EtatJustificatif = "RECU" | "ATTENDU" | "EN_RETARD" | "SANS_OBJET";
@@ -50,6 +52,6 @@ export type EtatJustificatif = "RECU" | "ATTENDU" | "EN_RETARD" | "SANS_OBJET";
  */
 export function etatJustificatif(d: DepensePourJustificatif, maintenant: Date = new Date()): EtatJustificatif {
   if (d.annuleeAt) return "SANS_OBJET";
-  if (d.nbJustificatifs > 0) return "RECU";
+  if (d.nbJustificatifs > 0 || d.source === "CAMPTRACK") return "RECU";
   return maintenant.getTime() > echeanceJustificatif(d.createdAt).getTime() ? "EN_RETARD" : "ATTENDU";
 }

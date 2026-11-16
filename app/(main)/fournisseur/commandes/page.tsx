@@ -137,7 +137,7 @@ export default function CommandesFournisseursListPage() {
 
   const summary = useMemo(() => {
     const total = commandes.reduce((sum, c) => sum + Number(c.montantNet), 0);
-    const validees = commandes.filter((c) => c.statut === 'VALIDEE' || c.statut === 'LIVREE');
+    const validees = commandes.filter((c) => c.statut === 'VALIDEE' || c.statut === 'LIVREE' || c.statut === 'PAYEE');
     const totalValidees = validees.reduce((sum, c) => sum + Number(c.montantNet), 0);
     const enBrouillon = commandes.filter((c) => c.statut === 'BROUILLON').reduce((sum, c) => sum + Number(c.montantNet), 0);
     return { total, totalValidees, enBrouillon, count: commandes.length };
@@ -247,6 +247,7 @@ export default function CommandesFournisseursListPage() {
                   <SelectItem value="BROUILLON">Brouillon</SelectItem>
                   <SelectItem value="VALIDEE">Validée</SelectItem>
                   <SelectItem value="LIVREE">Livrée</SelectItem>
+                  <SelectItem value="PAYEE">Payée</SelectItem>
                   <SelectItem value="ANNULEE">Annulée</SelectItem>
                 </SelectContent>
               </Select>

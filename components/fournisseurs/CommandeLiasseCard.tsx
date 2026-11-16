@@ -17,19 +17,31 @@ import { cn } from '@/lib/utils';
 import {
   etatLiasse,
   NATURE_DEPENSE_LABELS,
+  partsLignesCommande,
   payeSurCommande,
   TYPE_DOCUMENT_COMMANDE_LABELS,
   TYPES_DOCUMENT_COMMANDE,
   type TypeDocumentCommandeValue,
 } from '@/lib/commandeFournisseurLiasse';
-import { modePaiementLabel } from '@/lib/budgetTypes';
 
 export interface CommandeSuivi {
   id: string;
   numero: string;
   statut: string;
   montantNet: number | string;
+  totalHT: number | string;
   fournisseurId: string;
+  lignes: { id: string; designation: string; prixTotal: number | string }[];
+  imputations: {
+    id: string;
+    ligneCommandeId: string;
+    montant: number | string;
+    nature: string;
+    annuleeAt: string | null;
+    cashJournalEntryId: number;
+    factureFournisseurId: string | null;
+    cashJournalEntry: { date_operation: string; libelle: string; budgetDepense: { demandeBudgetId: string } | null; paiement: { invoiceId: string } | null };
+  }[];
   ligneBudget: { id: string; designation: string; demandeBudget: { id: string; numero: string; type: string; statut: string } } | null;
   documents: { id: string; kind: string; url: string; fileName: string; createdAt: string; createdByEmail: string }[];
   factures: { id: string; reference: string; montant: number | string; date: string; status: string; pieceJointe: string | null }[];
@@ -60,10 +72,22 @@ interface LigneCandidate {
  */
 export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeSuivi; onChange: () => void }) {
   const liasse = etatLiasse(commande.documents, commande.factures);
-  const paye = payeSurCommande(commande.depenses);
+  // Payé = imputations non annulées, quelle que soit l'origine (budget, proforma, Camptrack).
+  const paye = payeSurCommande(commande.imputations);
   const reste = Number(commande.montantNet) - paye;
-  const avancesNonJustifiees = commande.depenses.filter((d) => d.nature === 'AVANCE' && !d.annuleeAt && !liasse.complete);
-  const paiementsActifs = commande.depenses.some((d) => !d.annuleeAt);
+  const parts = partsLignesCommande(commande);
+  // Un paiement = une écriture de caisse (ses imputations regroupées par ligne de produit).
+  const paiements = Array.from(
+    commande.imputations.reduce((m, i) => {
+      const p = m.get(i.cashJournalEntryId) ?? { ...i, total: 0, lignes: [] as string[] };
+      p.total += Number(i.montant);
+      p.lignes.push(commande.lignes.find((l) => l.id === i.ligneCommandeId)?.designation ?? '?');
+      m.set(i.cashJournalEntryId, p);
+      return m;
+    }, new Map<number, CommandeSuivi['imputations'][number] & { total: number; lignes: string[] }>()).values()
+  );
+  const avancesNonJustifiees = paiements.filter((p) => p.nature === 'AVANCE' && !p.annuleeAt && !liasse.complete);
+  const paiementsActifs = paiements.some((p) => !p.annuleeAt);
   const annulee = commande.statut === 'ANNULEE';
 
   const [pieceType, setPieceType] = useState<TypeDocumentCommandeValue | null>(null);
@@ -180,18 +204,45 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
               Avance non justifiée : la liasse est incomplète (manque {liasse.manquantes.join(', ')}). Le solde sera bloqué jusque-là.
             </p>
           )}
-          {commande.depenses.map((d) => (
-            <div key={d.id} className={cn('flex items-center justify-between gap-2 rounded-md border px-3 py-2', d.annuleeAt && 'opacity-60 line-through')}>
-              <span>
-                <Badge variant="outline" className={cn('mr-2 text-[10px]', d.nature === 'AVANCE' && !liasse.complete && !d.annuleeAt && 'bg-red-100 text-red-700 border-red-300')}>
-                  {NATURE_DEPENSE_LABELS[d.nature] ?? d.nature}
-                </Badge>
-                {format(new Date(d.dateDepense), 'dd/MM/yyyy')} · {d.nomReceveur} · {modePaiementLabel(d.modePaiement)}
-              </span>
-              <Link href={`/budget/demandes/${d.demandeBudgetId}`} className="font-medium text-primary hover:underline">{fcfa(Number(d.montant))}</Link>
+          {parts.length > 0 && (
+            <div className="rounded-md border overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50">
+                  <tr><th className="text-left px-3 py-1.5">Ligne de produit</th><th className="text-right px-3 py-1.5">Montant</th><th className="text-right px-3 py-1.5">Payé</th><th className="text-right px-3 py-1.5">Reste</th></tr>
+                </thead>
+                <tbody>
+                  {parts.map((p) => (
+                    <tr key={p.id} className="border-t">
+                      <td className="px-3 py-1.5">{p.designation}</td>
+                      <td className="px-3 py-1.5 text-right whitespace-nowrap">{fcfa(p.part)}</td>
+                      <td className="px-3 py-1.5 text-right whitespace-nowrap">{fcfa(p.paye)}</td>
+                      <td className={cn('px-3 py-1.5 text-right whitespace-nowrap font-medium', p.reste <= 0.004 && 'text-green-700')}>{fcfa(Math.max(p.reste, 0))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
-          {commande.depenses.length === 0 && (
+          )}
+          {paiements.map((p) => {
+            const lien = p.cashJournalEntry.budgetDepense
+              ? `/budget/demandes/${p.cashJournalEntry.budgetDepense.demandeBudgetId}`
+              : p.cashJournalEntry.paiement
+                ? `/facture/${p.cashJournalEntry.paiement.invoiceId}`
+                : '/journal-caisse';
+            return (
+              <div key={p.cashJournalEntryId} className={cn('flex items-center justify-between gap-2 rounded-md border px-3 py-2', p.annuleeAt && 'opacity-60 line-through')}>
+                <span className="min-w-0">
+                  <Badge variant="outline" className={cn('mr-2 text-[10px]', p.nature === 'AVANCE' && !liasse.complete && !p.annuleeAt && 'bg-red-100 text-red-700 border-red-300')}>
+                    {NATURE_DEPENSE_LABELS[p.nature] ?? p.nature}
+                  </Badge>
+                  {format(new Date(p.cashJournalEntry.date_operation), 'dd/MM/yyyy')} · {p.lignes.length > 1 ? `${p.lignes.length} lignes (prorata)` : p.lignes[0]}
+                  <span className="block text-[11px] text-muted-foreground truncate">{p.cashJournalEntry.libelle}</span>
+                </span>
+                <Link href={lien} className="font-medium text-primary hover:underline whitespace-nowrap">{fcfa(p.total)}</Link>
+              </div>
+            );
+          })}
+          {paiements.length === 0 && (
             <p className="text-xs text-muted-foreground">
               L&apos;avance et le solde se paient depuis la fiche du budget (bouton « Dépense » sur la ligne), une fois le bon validé et signé.
             </p>
@@ -279,7 +330,7 @@ function FactureDialog({ commande, open, onClose, onSuccess }: { commande: Comma
   useEffect(() => {
     if (open) {
       setReference('');
-      setMontant(String(Math.max(Number(commande.montantNet) - payeSurCommande(commande.depenses), 0)));
+      setMontant(String(Math.max(Number(commande.montantNet) - payeSurCommande(commande.imputations), 0)));
       setPiece(null);
     }
   }, [open, commande]);

@@ -42,6 +42,9 @@ import { ProduitModal } from "@/components/ProduitModal";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, DISCOUNT_TYPE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
+import { BudgetDepenseDialog, type BudgetDepenseDialogLigne, type CommandeDeLigne, type FacturePrestataire } from "@/components/budget/BudgetDepenseDialog";
+import { ChoixLigneBudgetDialog, type BudgetDepenseOption } from "@/components/depenses/ChoixLigneBudgetDialog";
+import { etatLiasse, partsLignesCommande, payeSurCommande } from "@/lib/commandeFournisseurLiasse";
 
 type Campagne = {
   id: string;
@@ -176,15 +179,60 @@ export default function FactureDetailPage() {
   const [campagnes, setCampagnes] = useState<Campagne[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
-  // Droit « Saisir au journal de caisse » : une dépense sur proforma est une sortie hors budget.
+  // Droits : « Saisir au journal de caisse » (dépense d'une campagne sans budget) et « Enregistrer
+  // les dépenses de budget » (dépense d'une campagne avec budget, sur une de ses lignes).
   const [peutSaisirCaisse, setPeutSaisirCaisse] = useState(false);
+  const [peutPayerBudget, setPeutPayerBudget] = useState(false);
+  // Dépense : avec budget → choix de la ligne puis même fenêtre que la fiche budget ; sans budget →
+  // sortie directe, bon de commande facultatif.
+  const [budgetsDepense, setBudgetsDepense] = useState<BudgetDepenseOption[]>([]);
+  const [commandesSansBudget, setCommandesSansBudget] = useState<CommandeDeLigne[]>([]);
+  const [facturesPrestataires, setFacturesPrestataires] = useState<FacturePrestataire[]>([]);
+  const [choixLigneOuvert, setChoixLigneOuvert] = useState(false);
+  const [depenseBudget, setDepenseBudget] = useState<{ demandeId: string; modePaiement: string; ligne: BudgetDepenseDialogLigne } | null>(null);
+  const [paiementBc, setPaiementBc] = useState('NORMALE');
+  const [ligneBc, setLigneBc] = useState('');
+  const [factureBc, setFactureBc] = useState('');
 
   useEffect(() => {
     fetch('/api/demandes-budget/me-role')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setPeutSaisirCaisse(!!data?.canSaisirCaisse))
+      .then((data) => {
+        setPeutSaisirCaisse(!!data?.canSaisirCaisse);
+        setPeutPayerBudget(!!data?.canPay);
+      })
       .catch(() => setPeutSaisirCaisse(false));
   }, []);
+
+  const ouvrirDepense = async () => {
+    try {
+      const res = await fetch(`/api/factures/${id}/lignes-depense`);
+      const data = res.ok ? await res.json() : null;
+      if (!data) throw new Error();
+      if (data.aBudget) {
+        if (!peutPayerBudget) {
+          toast.error("Cette campagne a un budget : ses dépenses sont enregistrées par le comptable (droit « Enregistrer les dépenses de budget »).");
+          return;
+        }
+        setBudgetsDepense(data.budgets);
+        setFacturesPrestataires(data.facturesPrestataires ?? []);
+        setChoixLigneOuvert(true);
+        return;
+      }
+      if (!peutSaisirCaisse) {
+        toast.error("Campagne sans budget : la dépense directe demande le droit « Saisir au journal de caisse ».");
+        return;
+      }
+      setCommandesSansBudget(data.commandesSansBudget ?? []);
+      setPaiementBc('NORMALE');
+      setLigneBc('');
+      setFactureBc('');
+      setOperationType("DEPENSE");
+      setIsPaymentDialogOpen(true);
+    } catch {
+      toast.error("Impossible de préparer la dépense.");
+    }
+  };
 
   const fetchFacture = useCallback(async () => {
     if (!id) return;
@@ -406,7 +454,16 @@ export default function FactureDetailPage() {
         notes: newPayment.notes, 
         datePaiement: new Date(newPayment.datePaiement), 
         cashRegisterId: newPayment.methode === 'Espèces' && operationType === 'PAIEMENT' ? 1 : parseInt(selectedCashRegisterId, 10),
-        type: operationType 
+        type: operationType,
+        // Campagne sans budget : avance / solde d'un bon de commande lié à la proforma (facultatif).
+        ...(operationType === 'DEPENSE' && paiementBc !== 'NORMALE'
+          ? {
+              commandeId: paiementBc.split('|')[0],
+              nature: paiementBc.split('|')[1],
+              ligneCommandeId: ligneBc || undefined,
+              factureFournisseurId: factureBc || undefined,
+            }
+          : {}),
     };
     data.append('paymentData', JSON.stringify(paymentData));
     if (paymentFiles) Array.from(paymentFiles).forEach(f => data.append('files', f));
@@ -699,8 +756,8 @@ export default function FactureDetailPage() {
                                 <PlusCircle className="w-4 h-4 mr-2" /> Paiement
                             </Button>
                         )}
-                        {peutSaisirCaisse && (
-                            <Button size="sm" variant="outline" onClick={() => { setOperationType("DEPENSE"); setIsPaymentDialogOpen(true); }}>
+                        {(peutSaisirCaisse || peutPayerBudget) && (
+                            <Button size="sm" variant="outline" onClick={ouvrirDepense}>
                                 <PlusCircle className="w-4 h-4 mr-2" /> Dépense
                             </Button>
                         )}
@@ -1032,6 +1089,61 @@ export default function FactureDetailPage() {
                     </Select>
                 )}
             </div>
+            {operationType === "DEPENSE" && (
+                <p className="text-xs rounded-md bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
+                  Campagne sans budget : sortie directe de la caisse choisie, imputée à cette proforma.
+                </p>
+            )}
+            {operationType === "DEPENSE" && commandesSansBudget.length > 0 && (() => {
+                const [cid, nat] = paiementBc === 'NORMALE' ? [null, 'NORMALE'] : paiementBc.split('|');
+                const c = commandesSansBudget.find((x) => x.id === cid) ?? null;
+                const liasse = c ? etatLiasse(c.documents, c.factures) : null;
+                const parts = c ? partsLignesCommande(c) : [];
+                return (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Bon de commande (facultatif)</label>
+                    <Select value={paiementBc} onValueChange={(v) => { setPaiementBc(v); setLigneBc(''); setFactureBc(''); }}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="NORMALE">Aucun (dépense simple)</SelectItem>
+                            {commandesSansBudget.map((b) => (
+                              <SelectItem key={`${b.id}a`} value={`${b.id}|AVANCE`} disabled={!etatLiasse(b.documents).bcSigne}>Avance — {b.numero} ({b.fournisseur.entreprise})</SelectItem>
+                            ))}
+                            {commandesSansBudget.map((b) => (
+                              <SelectItem key={`${b.id}s`} value={`${b.id}|SOLDE`} disabled={!etatLiasse(b.documents, b.factures).complete}>Solde — {b.numero} ({b.fournisseur.entreprise})</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {c && liasse && (
+                      <p className="text-xs text-muted-foreground">
+                        Reste du bon : {new Intl.NumberFormat('fr-FR').format(Math.round(Number(c.montantNet) - payeSurCommande(c.imputations)))} F · liasse {liasse.nbPieces}/4
+                        {!liasse.complete ? ` (manque : ${liasse.manquantes.join(', ')})` : ''}
+                      </p>
+                    )}
+                    {c && (
+                      <Select value={ligneBc || '__TOUT__'} onValueChange={(v) => setLigneBc(v === '__TOUT__' ? '' : v)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="__TOUT__">Tout le bon (réparti au prorata des lignes)</SelectItem>
+                              {parts.map((p) => (
+                                <SelectItem key={p.id} value={p.id} disabled={p.reste <= 0.004}>{p.designation} — reste {new Intl.NumberFormat('fr-FR').format(Math.round(Math.max(p.reste, 0)))} F</SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                    )}
+                    {c && nat === 'SOLDE' && (
+                      <Select value={factureBc} onValueChange={setFactureBc}>
+                          <SelectTrigger><SelectValue placeholder="Facture fournisseur réglée" /></SelectTrigger>
+                          <SelectContent>
+                              {c.factures.filter((f) => f.status === 'EN_ATTENTE').map((f) => (
+                                <SelectItem key={f.id} value={f.id}>{f.reference} — {new Intl.NumberFormat('fr-FR').format(Number(f.montant))} F</SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                );
+            })()}
             <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Pièce(s) jointe(s)</label>
                 <Input type="file" multiple onChange={(e) => setPaymentFiles(e.target.files)} className="text-[10px]" />
@@ -1046,6 +1158,37 @@ export default function FactureDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ChoixLigneBudgetDialog
+        open={choixLigneOuvert}
+        budgets={budgetsDepense}
+        onClose={() => setChoixLigneOuvert(false)}
+        onChoisir={(b, l) => {
+          setChoixLigneOuvert(false);
+          setDepenseBudget({
+            demandeId: b.id,
+            modePaiement: b.modePaiement,
+            ligne: {
+              id: l.id,
+              designation: `${l.designation} (budget ${b.numero})`,
+              reste: l.reste,
+              modePaiement: l.modePaiement,
+              commandes: l.commandes,
+              facturesPrestataires: facturesPrestataires.filter((f) => !f.ligneBudgetId || f.ligneBudgetId === l.id),
+            },
+          });
+        }}
+      />
+
+      <BudgetDepenseDialog
+        demandeId={depenseBudget?.demandeId ?? ''}
+        ligne={depenseBudget?.ligne ?? null}
+        proformas={[{ id: facture.id, numero: facture.numero, objet: facture.objet }]}
+        defaultModePaiement={depenseBudget?.modePaiement ?? 'VIREMENT'}
+        depuisProforma
+        onClose={() => setDepenseBudget(null)}
+        onSuccess={fetchFacture}
+      />
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-sm border-none shadow-2xl">

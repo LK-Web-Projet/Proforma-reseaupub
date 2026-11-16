@@ -4,6 +4,8 @@ import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { auth } from "@clerk/nextjs/server";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
 import { safeCreatedById } from "@/lib/authz";
+import { exigeBonDeCommande } from "@/lib/typeFournisseur";
+import { refusLigneBudgetCommande } from "@/lib/commandeFournisseurSuivi";
 
 // GET /api/factures-fournisseurs - Récupérer toutes les factures fournisseurs
 export async function GET(req: NextRequest) {
@@ -101,6 +103,8 @@ export async function POST(req: NextRequest) {
     const statusValue = formData.get("status");
     // Bon de commande réglé par cette facture (facultatif) : il doit être du même prestataire.
     const commandeId = (formData.get("commandeId") as string | null) || null;
+    // Prestataire interne / externe : rattachement direct (facultatif) à une ligne de budget.
+    const ligneBudgetId = (formData.get("ligneBudgetId") as string | null) || null;
 
     const status =
       typeof statusValue === "string"
@@ -118,10 +122,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Facture d'un « Fournisseur » : bon de commande obligatoire (le solde du bon la passera
+    // « payée »). Prestataire interne / externe : bon facultatif, rattachement possible à une ligne de
+    // budget (ex. budget mensuel de la comptabilité pour la paie), réglée par des dépenses sur cette ligne.
+    const prestataire = fournisseurId
+      ? await prisma.fournisseur.findUnique({ where: { id: fournisseurId }, select: { typeFournisseur: true } })
+      : null;
+    if (exigeBonDeCommande(prestataire?.typeFournisseur) && !commandeId) {
+      return NextResponse.json(
+        { message: "Ce prestataire est un fournisseur : choisissez le bon de commande auquel répond cette facture." },
+        { status: 400 },
+      );
+    }
+    if (commandeId && ligneBudgetId) {
+      return NextResponse.json(
+        { message: "Une facture est rattachée soit à un bon de commande, soit à une ligne de budget, pas aux deux." },
+        { status: 400 },
+      );
+    }
+    if (ligneBudgetId) {
+      const refusLigne = await refusLigneBudgetCommande(prisma, ligneBudgetId);
+      if (refusLigne) return NextResponse.json({ message: refusLigne }, { status: 400 });
+    }
     if (commandeId && fournisseurId) {
-      const commande = await prisma.commandeFournisseur.findUnique({ where: { id: commandeId }, select: { fournisseurId: true } });
+      const commande = await prisma.commandeFournisseur.findUnique({ where: { id: commandeId }, select: { fournisseurId: true, statut: true } });
       if (!commande || commande.fournisseurId !== fournisseurId) {
         return NextResponse.json({ message: "Ce bon de commande n'appartient pas à ce prestataire." }, { status: 400 });
+      }
+      if (commande.statut === "ANNULEE") {
+        return NextResponse.json({ message: "Ce bon de commande est annulé." }, { status: 400 });
       }
     }
 
@@ -179,6 +208,7 @@ export async function POST(req: NextRequest) {
         pieceJointe: pieceJointeUrl,
         createdById,
         commandeId,
+        ligneBudgetId,
       },
     });
 

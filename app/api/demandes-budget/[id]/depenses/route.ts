@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ActionBudget, ModePaiementDemande, NatureDepense, Prisma, StatutDemandeBudget, StatutFactureFournisseur, StatutLigneBudget } from "@prisma/client";
+import { ModePaiementDemande, NatureDepense, Prisma, SourceDepense } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
-import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
+import { requireBudgetUser } from "@/lib/budgetAuth";
 import { saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
-import { BUDGET_EPSILON, cloturerBudgetsMensuelsEchus, getLigneDisponible, logBudget, recalculerStatutBudget, seuilsFranchis } from "@/lib/budgetSuivi";
+import { cloturerBudgetsMensuelsEchus, seuilsFranchis } from "@/lib/budgetSuivi";
 import { sendAlerteConsommationNotification } from "@/lib/email/demandeBudget";
-import { controlerPaiementCommande, PaiementCommandeError } from "@/lib/commandeFournisseurSuivi";
-
-/** Erreur métier → réponse 400 avec le message tel quel. */
-class BudgetDepenseError extends Error {}
+import { PaiementCommandeError } from "@/lib/commandeFournisseurSuivi";
+import { DepenseError, enregistrerDepense } from "@/lib/depenses/enregistrerDepense";
+import { isSoldeInsuffisantError } from "@/lib/cashJournal";
 
 const depenseSchema = z
   .object({
@@ -24,24 +22,25 @@ const depenseSchema = z
     notes: z.string().optional(),
     sansJustificatif: z.boolean(),
     motifSansJustificatif: z.string().optional(),
-    // Paiement fournisseur (Lot C) : avance ou solde d'un bon de commande financé par la ligne.
+    // Paiement fournisseur : avance ou solde d'un bon de commande financé par la ligne, sur une
+    // ligne de produit du bon (ou « tout le bon », réparti au prorata).
     commandeId: z.string().optional(),
     nature: z.nativeEnum(NatureDepense).default(NatureDepense.NORMALE),
+    ligneCommandeId: z.string().optional(),
     factureFournisseurId: z.string().optional(),
+    // Saisie lancée depuis la fiche proforma (même opération, origine tracée).
+    depuisProforma: z.boolean().optional(),
   })
   .refine((d) => d.nature === NatureDepense.NORMALE || !!d.commandeId, {
     message: "Choisissez le bon de commande concerné par cette avance ou ce solde.",
   });
 
 /**
- * POST /api/demandes-budget/[id]/depenses — le comptable enregistre une dépense réelle sur une
- * ligne de budget. Celui qui a validé le budget ne peut pas en enregistrer les dépenses
- * (séparation des tâches). Dans une seule transaction :
- *   1. vérifie le reste disponible de la ligne (prévu + dépassements approuvés − dépenses actives) ;
- *   2. crée l'écriture DEPENSE dans le journal de la caisse choisie (solde vérifié) — et, si le
- *      budget est lié à une proforma, le Paiement DEPENSE de cette proforma (marge juste) ;
- *   3. crée la BudgetDepense rattachée à cette écriture, avec ses justificatifs ;
- *   4. passe la demande en EN_COURS, ou PAYEE si toutes ses lignes sont soldées.
+ * POST /api/demandes-budget/[id]/depenses — le comptable enregistre une dépense réelle sur une ligne
+ * de budget (depuis la fiche budget, ou depuis la fiche proforma de la campagne). Tout est fait par
+ * enregistrerDepense (lib/depenses/enregistrerDepense.ts) dans une seule transaction : contrôles du
+ * budget, écriture dans la caisse choisie, dépense sur la proforma, bon de commande (imputation sur
+ * la ligne de produit, facture et bon « payés »), historique et statut du budget.
  * Un justificatif n'est pas obligatoire, mais son absence doit être déclarée avec un motif.
  */
 export async function POST(
@@ -76,7 +75,9 @@ export async function POST(
       motifSansJustificatif: ((formData.get("motifSansJustificatif") as string) || "").trim() || undefined,
       commandeId: (formData.get("commandeId") as string) || undefined,
       nature: (formData.get("nature") as string) || undefined,
+      ligneCommandeId: (formData.get("ligneCommandeId") as string) || undefined,
       factureFournisseurId: (formData.get("factureFournisseurId") as string) || undefined,
+      depuisProforma: formData.get("depuisProforma") === "true",
     });
     if (!validation.success) {
       return NextResponse.json({ error: validation.error.issues[0]?.message ?? "Données invalides." }, { status: 400 });
@@ -103,173 +104,49 @@ export async function POST(
       kind: "PREUVE_PAIEMENT",
     });
 
-    const { depense, demande, ligne, avant } = await prisma.$transaction(
-      async (tx) => {
-        const demande = await tx.demandeBudget.findUnique({
-          where: { id },
-          include: { lignes: true, proformas: { include: { invoice: { select: { id: true, numero: true } } } } },
-        });
-        if (!demande) throw new BudgetDepenseError("Demande introuvable.");
-        const statutsDepensables: StatutDemandeBudget[] = [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS, StatutDemandeBudget.VALIDATION_PARTIELLE];
-        if (!statutsDepensables.includes(demande.statut)) {
-          throw new BudgetDepenseError("Les dépenses ne peuvent être enregistrées que sur un budget validé et non clôturé.");
-        }
-        if (isSameEmail(demande.validatedByEmail, caps.email)) {
-          throw new BudgetDepenseError(
-            "Vous avez validé ce budget : ses dépenses doivent être enregistrées par une autre personne (séparation des tâches)."
-          );
-        }
-        // Pas d'écriture de caisse antidatée avant la validation, ni datée dans le futur
-        // (marge d'un jour pour les écarts de fuseau horaire).
-        const UN_JOUR = 24 * 3600 * 1000;
-        if (dateDepense.getTime() > Date.now() + UN_JOUR) {
-          throw new BudgetDepenseError("La date de la dépense ne peut pas être dans le futur.");
-        }
-        if (demande.validatedAt && dateDepense.getTime() < demande.validatedAt.getTime() - UN_JOUR) {
-          throw new BudgetDepenseError(
-            `La date de la dépense est antérieure à la validation du budget (${demande.validatedAt.toLocaleDateString("fr-FR")}).`
-          );
-        }
-
-        const ligne = demande.lignes.find((l) => l.id === data.ligneId);
-        if (!ligne) throw new BudgetDepenseError("Cette ligne n'appartient pas à ce budget.");
-        if (ligne.statutValidation !== StatutLigneBudget.ACCORDEE) {
-          throw new BudgetDepenseError(
-            ligne.statutValidation === StatutLigneBudget.RETIREE
-              ? "Cette ligne a été retirée du budget."
-              : "Cette ligne n'est pas encore accordée : aucune dépense possible avant sa validation."
-          );
-        }
-        // Séparation des tâches aussi au niveau de la ligne (validation ligne par ligne).
-        if (isSameEmail(ligne.decideParEmail, caps.email)) {
-          throw new BudgetDepenseError("Vous avez accordé cette ligne : ses dépenses doivent être enregistrées par une autre personne.");
-        }
-
-        // Verrou sur la ligne : deux dépenses simultanées ne peuvent pas dépasser le plafond ensemble.
-        await tx.$queryRaw`SELECT id FROM "DemandeBudgetLigne" WHERE id = ${ligne.id} FOR UPDATE`;
-        const avant = await getLigneDisponible(tx, ligne);
-        if (data.montant > avant.reste + BUDGET_EPSILON) {
-          throw new BudgetDepenseError(
-            `Budget de la ligne « ${ligne.designation} » atteint : il reste ${Math.max(avant.reste, 0).toLocaleString("fr-FR")} FCFA. Demandez un dépassement pour aller au-delà.`
-          );
-        }
-
-        // Avance / solde d'un bon de commande : BC de cette ligne, validé et signé, montant dans son
-        // reste ; solde seulement sur liasse complète, avec la facture fournisseur réglée.
-        const paiementCommande = data.commandeId
-          ? await controlerPaiementCommande(tx, {
-              commandeId: data.commandeId,
-              ligneId: ligne.id,
-              nature: data.nature,
-              montant: data.montant,
-              factureFournisseurId: data.factureFournisseurId,
-            })
-          : null;
-
-        // Budget lié à une ou plusieurs proformas (CAMPAGNE, ou TIERS avec proforma) : la dépense
-        // est imputée à l'une d'elles. Une seule → choisie d'office ; plusieurs → choix explicite.
-        let invoiceId: string | null = null;
-        if (demande.proformas.length > 0) {
-          invoiceId = data.invoiceId ?? (demande.proformas.length === 1 ? demande.proformas[0].invoiceId : null);
-          if (!invoiceId) throw new BudgetDepenseError("Choisissez la proforma à laquelle imputer cette dépense.");
-          if (!demande.proformas.some((p) => p.invoiceId === invoiceId)) {
-            throw new BudgetDepenseError("Cette proforma n'est pas liée à ce budget.");
-          }
-        }
-
-        const libelle = paiementCommande
-          ? `Budget ${demande.numero} — ${data.nature === NatureDepense.SOLDE ? "Solde" : "Avance"} BC ${paiementCommande.commande.numero} — ${data.nomReceveur}`
-          : `Budget ${demande.numero} — ${ligne.designation} — ${data.nomReceveur}`;
-        const cashJournalEntry = invoiceId
-          ? (
-              await recordDepensePaiement(tx, {
-                invoiceId,
-                cashRegisterId: data.cashRegisterId,
-                montant: data.montant,
-                libelle,
-                date_operation: dateDepense,
-                methode: data.modePaiement,
-                reference: demande.numero,
-                notes: data.notes,
-                createdById: caps.userId,
-              })
-            ).cashJournalEntry
-          : await recordCashDepense(tx, {
-              cashRegisterId: data.cashRegisterId,
-              montant: data.montant,
-              libelle,
-              date_operation: dateDepense,
-              createdById: caps.userId,
-            });
-
-        const created = await tx.budgetDepense.create({
-          data: {
-            demandeBudgetId: id,
-            ligneId: ligne.id,
-            montant: data.montant,
-            dateDepense,
-            nomReceveur: data.nomReceveur,
-            modePaiement: data.modePaiement,
-            notes: data.notes,
-            cashRegisterId: data.cashRegisterId,
-            cashJournalEntryId: cashJournalEntry.id,
-            invoiceId,
-            commandeId: paiementCommande ? paiementCommande.commande.id : null,
-            nature: paiementCommande ? data.nature : NatureDepense.NORMALE,
-            factureFournisseurId: paiementCommande?.facture?.id ?? null,
-            sansJustificatif: savedFiles.length === 0,
-            motifSansJustificatif: savedFiles.length === 0 ? data.motifSansJustificatif : null,
-            createdByEmail: caps.email,
-          },
-        });
-
-        // Le solde règle la facture fournisseur : elle passe PAYEE (jamais à la main).
-        if (paiementCommande?.facture) {
-          await tx.factureFournisseur.update({
-            where: { id: paiementCommande.facture.id },
-            data: { status: StatutFactureFournisseur.PAYEE },
-          });
-        }
-
-        if (savedFiles.length > 0) {
-          await tx.demandeBudgetAttachment.createMany({
-            data: savedFiles.map((f) => ({ demandeBudgetId: id, depenseId: created.id, kind: "PREUVE_PAIEMENT" as const, ...f })),
-          });
-        }
-
-        await logBudget(tx, {
-          demandeBudgetId: id,
-          action: ActionBudget.DEPENSE,
-          auteurEmail: caps.email,
-          auteurNom: caps.name,
+    const resultat = await prisma.$transaction(
+      (tx) =>
+        enregistrerDepense(tx, {
+          source: data.depuisProforma ? SourceDepense.PROFORMA : SourceDepense.MANUEL,
+          auteur: { userId: caps.userId, email: caps.email, name: caps.name },
           montant: data.montant,
-          details: `${ligne.designation}${paiementCommande ? ` — ${data.nature === NatureDepense.SOLDE ? "solde" : "avance"} du BC ${paiementCommande.commande.numero}` : ""} — ${data.nomReceveur} — caisse n° ${data.cashRegisterId}, écriture n° ${cashJournalEntry.id}${savedFiles.length === 0 ? ` — SANS JUSTIFICATIF (${data.motifSansJustificatif})` : ""}`,
-        });
-
-        // Toutes les lignes soldées → budget entièrement consommé (PAYEE), sinon EN_COURS.
-        await recalculerStatutBudget(tx, id, { datePaiement: dateDepense, nomReceveur: data.nomReceveur });
-
-        return { depense: created, demande, ligne, avant };
-      },
+          dateDepense,
+          cashRegisterId: data.cashRegisterId,
+          nomReceveur: data.nomReceveur,
+          modePaiement: data.modePaiement,
+          notes: data.notes,
+          ligneBudgetId: data.ligneId,
+          demandeBudgetId: id,
+          invoiceId: data.invoiceId,
+          commandeId: data.commandeId,
+          nature: data.nature,
+          ligneCommandeId: data.ligneCommandeId,
+          factureFournisseurId: data.factureFournisseurId,
+          justificatifs: savedFiles,
+          motifSansJustificatif: data.motifSansJustificatif,
+        }),
       { timeout: 20000 }
     );
 
     // Alertes 80 % / 100 % de la ligne — hors transaction, un échec d'email ne bloque rien.
-    for (const seuil of seuilsFranchis(avant.consomme, avant.consomme + data.montant, avant.plafond)) {
-      sendAlerteConsommationNotification(
-        demande,
-        { designation: ligne.designation, seuil, consomme: avant.consomme + data.montant, plafond: avant.plafond }
-      ).catch((err) => console.error("Erreur lors de l'envoi de l'alerte de consommation:", err));
+    const { demande, ligne, avant } = resultat;
+    if (demande && ligne && avant) {
+      const demandeEmail = await prisma.demandeBudget.findUnique({ where: { id: demande.id }, include: { lignes: true } });
+      for (const seuil of seuilsFranchis(avant.consomme, avant.consomme + data.montant, avant.plafond)) {
+        if (!demandeEmail) break;
+        sendAlerteConsommationNotification(demandeEmail, {
+          designation: ligne.designation,
+          seuil,
+          consomme: avant.consomme + data.montant,
+          plafond: avant.plafond,
+        }).catch((err) => console.error("Erreur lors de l'envoi de l'alerte de consommation:", err));
+      }
     }
 
-    return NextResponse.json(depense, { status: 201 });
+    return NextResponse.json(resultat.budgetDepense, { status: 201 });
   } catch (error) {
-    if (error instanceof BudgetDepenseError || error instanceof UploadRejectedError || error instanceof PaiementCommandeError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    // "Solde insuffisant…" levé par recordCashDepense : erreur métier, pas une panne serveur.
-    if (error instanceof Error && error.message.startsWith("Solde insuffisant")) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof DepenseError || error instanceof UploadRejectedError || error instanceof PaiementCommandeError || isSoldeInsuffisantError(error)) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
     }
     console.error(`Erreur lors de l'enregistrement d'une dépense sur la demande ${id}:`, error);
     const fsMessage = describeFsError(error);

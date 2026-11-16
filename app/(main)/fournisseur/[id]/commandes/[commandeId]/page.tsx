@@ -106,6 +106,7 @@ interface CommandeDetail {
     documents: CommandeSuivi["documents"];
     factures: CommandeSuivi["factures"];
     depenses: CommandeSuivi["depenses"];
+    imputations: CommandeSuivi["imputations"];
 }
 
 const cleanText = (text: string) => {
