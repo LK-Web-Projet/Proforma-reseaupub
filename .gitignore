@@ -42,6 +42,9 @@ next-env.d.ts
 
 /lib/generated/prisma
 
+# build de vérification (NEXT_DIST_DIR)
+/.next-verif/
+
 # tests de bout en bout (Playwright)
 /e2e/.run/
 /test-results/

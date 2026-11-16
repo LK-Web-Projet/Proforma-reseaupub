@@ -137,13 +137,5 @@ export async function requireCaisseUser(): Promise<BudgetCapabilities | NextResp
   return caps;
 }
 
-type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget" | "canSaisirCaisse";
-
-/** Emails des utilisateurs actifs dont le rôle porte le droit demandé (destinataires des notifications). */
-export async function getBudgetRecipients(flag: BudgetFlag): Promise<string[]> {
-  const users = await prisma.user.findMany({
-    where: { active: true, role: { [flag]: true } },
-    select: { email: true },
-  });
-  return Array.from(new Set(users.map((u) => u.email)));
-}
+// Déplacé dans un module sans Clerk (chargé par la minuterie interne) ; réexporté ici.
+export { getBudgetRecipients, type BudgetFlag } from "@/lib/budgetDestinataires";

@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma";
 import { escapeHtml } from "@/lib/email/sendEmail";
 import type { JustificatifManquant } from "@/lib/email/demandeBudget";
-import { getBudgetRecipients } from "@/lib/budgetAuth";
+import { getBudgetRecipients } from "@/lib/budgetDestinataires"; // sans Clerk (minuterie interne)
 import { montantAccordeLigne } from "@/lib/budgetSuivi";
 import { echeanceJustificatif, etatJustificatif } from "@/lib/justificatifs";
 import { etatLiasse } from "@/lib/commandeFournisseurLiasse";

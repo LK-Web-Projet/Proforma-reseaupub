@@ -2,16 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
+import { getBudgetCapabilities } from "@/lib/budgetAuth";
 
 /**
- * Procédure de paiement (Lot C) : une facture fournisseur passe PAYEE uniquement quand une dépense
- * de budget (solde du bon de commande) la règle — jamais à la main ; on ne l'annule pas tant
- * qu'un paiement actif la règle. Renvoie le motif du refus, ou null.
+ * Procédure de paiement : une facture rattachée à un bon de commande ou à une ligne de budget passe
+ * PAYEE uniquement par son paiement (solde du bon, dépenses sur la ligne) — jamais à la main.
+ * Exception — RÉGULARISATION : une facture liée à rien (ni bon, ni ligne, ni paiement enregistré),
+ * typiquement une facture antérieure à la procédure déjà réglée hors plateforme, peut être marquée
+ * payée à la main par la direction (droit « Valider les budgets mensuels »).
+ * On ne l'annule pas tant qu'un paiement actif la règle. Renvoie le motif du refus, ou null.
  */
 async function refusChangementStatut(id: string, actuel: StatutFactureFournisseur, nouveau: StatutFactureFournisseur): Promise<string | null> {
   if (nouveau === actuel) return null;
   if (nouveau === StatutFactureFournisseur.PAYEE) {
-    return "Une facture fournisseur passe « payée » par le paiement de son solde (dépense de budget sur le bon de commande), pas à la main.";
+    const facture = await prisma.factureFournisseur.findUnique({
+      where: { id },
+      select: { commandeId: true, ligneBudgetId: true, _count: { select: { depenses: true } } },
+    });
+    const liee = !!facture?.commandeId || !!facture?.ligneBudgetId || (facture?._count.depenses ?? 0) > 0;
+    if (liee) {
+      return "Cette facture est rattachée à un bon de commande ou à une ligne de budget : elle passe « payée » par son paiement (dépense sur le budget), pas à la main.";
+    }
+    const caps = await getBudgetCapabilities();
+    if (!caps?.canValidateMensuel) {
+      return "Seule la direction peut régulariser une facture (la marquer payée à la main). Sinon, réglez-la par une dépense sur le budget.";
+    }
+    return null;
   }
   if (nouveau === StatutFactureFournisseur.ANNULEE) {
     const paiements = await prisma.budgetDepense.count({ where: { factureFournisseurId: id, annuleeAt: null } });

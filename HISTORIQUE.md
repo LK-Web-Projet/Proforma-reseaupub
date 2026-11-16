@@ -22,6 +22,43 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-17 (suite 4) — Vérification de non-régression de toute la logique métier
+
+**Demande / Contexte**
+S'assurer que la chaîne de dépense unifiée, les lots CampTrack et la nuance des prestataires ne cassent aucune logique existante.
+
+**Vérifications faites**
+- 9 suites de tests en base (transactions annulées ou données marquées puis nettoyées) : 218 contrôles, tous OK. Ils couvrent le budget (logique 89 et base 37), le Lot A (15), le Lot C (19 + 8 + 5), le service de dépense (18), les factures de prestataires (11) et les routes CampTrack avec le vrai JSON (16).
+- Recherche dans le code de tout calcul du « payé » d'un bon de commande qui ne passerait pas par les imputations : aucun trouvé.
+- Audit des données en lecture seule : aucun solde de caisse négatif, aucun écart entre les soldes et le journal, aucun lot ni paiement à rattacher. 3 bons validés sans scan signé ne sont pas payables, ce qui est voulu par la procédure.
+- Build de production complet, puis ouverture dans le navigateur (Playwright) des 29 grandes pages, y compris les nouvelles. Aucun écran d’erreur, aucune erreur JavaScript, aucune API en erreur 500. Le planificateur démarre sans erreur avec le build de production.
+
+**Régressions trouvées et corrigées**
+- **138 anciennes factures fournisseurs EN_ATTENTE**, créées sans bon ni ligne de budget, ne pouvaient plus être marquées « payée ». Correctif dans `app/api/factures-fournisseurs/[id]/route.ts` et les pages `fournisseur/factures` et `fournisseur/[id]` :
+  - le passage manuel à PAYEE reste refusé pour une facture liée à un bon, à une ligne ou à des dépenses ;
+  - il est autorisé pour une facture non liée, avec le droit « Valider les budgets mensuels » (régularisation DG), libellé « Payée (régularisation) ».
+- **Planificateur en production** : `instrumentation.ts` → `etatSoir` → `budgetAuth` importait `@clerk/nextjs`, ce qui échoue au démarrage en production. `getBudgetRecipients` est déplacé dans le nouveau module `lib/budgetDestinataires.ts`, sans Clerk. `budgetAuth` le réexporte, et rien ne change pour les autres appelants. Constat : le planificateur démarre maintenant avec le build de production.
+
+**Autres modifications**
+- `next.config.ts` : `distDir: process.env.NEXT_DIST_DIR || ".next"`. Le build de vérification se fait dans `.next-verif` sans toucher au serveur de dev. Docker n'est pas changé, puisque `.next` reste la valeur par défaut. `.gitignore` est complété.
+- `e2e/non-regression.spec.ts` : une page lente ou une navigation interrompue est notée en échec sans arrêter la tournée (limite de 90 s par page, 15 min au total). Ajout des pages notifications, paramètres des notifications, recherche, aide, liste des factures, bons de commande et fiche d'un bon.
+
+**Changements de comportement voulus (ce ne sont pas des régressions)**
+- Le bouton Dépense de la proforma passe par une ligne du budget quand la campagne en a un.
+- Une nouvelle facture d'un prestataire de type Fournisseur exige un bon de commande.
+- Les transitions de statut des bons sont restreintes, et PAYEE est automatique.
+- La saisie au journal de caisse exige le droit « Saisir au journal de caisse ».
+- Toute sortie au-delà du solde de la caisse est refusée.
+
+**Erreurs rencontrées & solutions**
+- Coupures ponctuelles de Supabase (P1001) pendant les tests et au démarrage, avec la synchronisation des rôles en échec : relance. Ce n'est pas lié au code.
+
+**À tester / points d'attention**
+- Un build avec `NEXT_DIST_DIR` fait réécrire `tsconfig.json` par Next.js, qui y ajoute `<dossier>/types`. Il faut restaurer `tsconfig.json` après coup (`git restore tsconfig.json`) et ne pas le committer.
+- Le rôle « Comptable » n'a aucun utilisateur. Les 5 admins ont tous les droits, la séparation des tâches s'applique donc entre eux. Il faut attribuer les rôles réels avant la mise en service.
+
+---
+
 ## 2026-11-17 (suite 3) — Lots CampTrack : alignement sur le contrat déjà codé dans CampTrack
 
 **Demande / Contexte**

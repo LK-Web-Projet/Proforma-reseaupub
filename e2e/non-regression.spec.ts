@@ -13,11 +13,12 @@ test.afterAll(async () => {
 });
 
 test("Pages principales (admin) : aucune erreur", async ({ browser }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(900_000);
   const ctx = readRunContext();
   const uneDemande = await prisma.demandeBudget.findFirst({ where: { NOT: { contexteMotivation: { contains: "E2E-" } } }, orderBy: { createdAt: "desc" } });
   const uneFacture = await prisma.invoice.findFirst({ where: { NOT: { numero: { startsWith: "E2E-" } } } });
   const unFournisseur = await prisma.fournisseur.findFirst({ orderBy: { createdAt: "desc" } });
+  const uneCommande = await prisma.commandeFournisseur.findFirst({ orderBy: { createdAt: "desc" } });
 
   const pages = [
     "/dashboard",
@@ -38,10 +39,17 @@ test("Pages principales (admin) : aucune erreur", async ({ browser }) => {
     "/parametres",
     "/parametres/roles",
     "/parametres/utilisateurs",
+    "/parametres/notifications",
+    "/notifications",
+    "/recherche?q=DB-2026",
+    "/aide",
+    "/fournisseur/factures",
+    "/fournisseur/commandes",
     `/facture/${ctx.invoiceId}`,
     ...(uneFacture ? [`/facture/${uneFacture.id}`] : []),
     ...(uneDemande ? [`/budget/demandes/${uneDemande.id}`] : []),
     ...(unFournisseur ? [`/fournisseur/${unFournisseur.id}`] : []),
+    ...(uneCommande ? [`/fournisseur/${uneCommande.fournisseurId}/commandes/${uneCommande.id}`] : []),
   ];
 
   const { page, erreurs, fermer } = await connecter(browser, ADMIN.email, ADMIN.password);
@@ -53,8 +61,13 @@ test("Pages principales (admin) : aucune erreur", async ({ browser }) => {
 
   for (const url of pages) {
     const avant = erreurs.length;
-    const res = await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle").catch(() => undefined);
+    // Une page lente ou une navigation interrompue est notée en échec, sans arrêter la tournée.
+    const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90_000 }).catch((e: Error) => {
+      echecs.push(`${url} → navigation impossible : ${e.message.split("\n")[0]}`);
+      return undefined;
+    });
+    if (res === undefined) continue;
+    await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
     const statut = res?.status() ?? 0;
     const ecranErreur = await page
       .getByText(/Application error|Unhandled Runtime Error|Internal Server Error|This page could not be found/)
