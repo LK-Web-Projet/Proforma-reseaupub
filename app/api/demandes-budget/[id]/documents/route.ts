@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget } from "@/lib/budgetSuivi";
+import { logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
 import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAuth";
+import { sendDemandeValideeNotification } from "@/lib/email/demandeBudget";
 import { saveTypedDemandeBudgetAttachments, saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 
 // POST /api/demandes-budget/[id]/documents
 // - Sans `depenseId` : ajoute des documents complémentaires à une demande en validation, validée
 //   ou en cours (auteur de la demande ou rôle du circuit budget) — notamment le scan du budget
-//   signé par la DG, exigé avant de valider un budget de campagne.
+//   signé par la DG : joint pendant la validation, il la complète (statut recalculé).
 // - Avec `depenseId` : ajoute après coup le justificatif d'une dépense enregistrée « sans
 //   justificatif » (comptable uniquement) — la dépense repasse alors en « justifiée ».
 export async function POST(
@@ -80,18 +81,30 @@ export async function POST(
       return NextResponse.json({ error: "Aucun document fourni." }, { status: 400 });
     }
 
-    await prisma.$transaction([
-      prisma.demandeBudgetAttachment.createMany({ data: attachmentRows }),
-      logBudget(prisma, {
+    const resultat = await prisma.$transaction(async (tx) => {
+      await tx.demandeBudgetAttachment.createMany({ data: attachmentRows });
+      await logBudget(tx, {
         demandeBudgetId: id,
         action: ActionBudget.DOCUMENTS,
         auteurEmail: caps.email,
         auteurNom: caps.name,
         details: attachmentRows.map((f) => f.fileName).join(", "),
-      }),
-    ]);
+      });
+      // Budget signé joint pendant la validation : c'est ce qui la complète si toutes les lignes
+      // sont décidées (sinon le budget reste en validation partielle, mais devient dépensable).
+      const enValidation = demande.statut === "SOUMISE" || demande.statut === "VALIDATION_PARTIELLE";
+      if (enValidation && attachmentRows.some((r) => r.kind === "BUDGET_SIGNE")) {
+        return majStatutApresDecision(tx, id, caps, { declencheur: "SIGNATURE" });
+      }
+      return null;
+    }, { maxWait: 10_000, timeout: 30_000 });
 
-    return NextResponse.json({ success: true, count: attachmentRows.length });
+    if (resultat?.devenuValide) {
+      const demandeAJour = await prisma.demandeBudget.findUniqueOrThrow({ where: { id }, include: { lignes: true } });
+      sendDemandeValideeNotification(demandeAJour).catch((err) => console.error("Erreur lors de l'envoi de la notification de validation:", err));
+    }
+
+    return NextResponse.json({ success: true, count: attachmentRows.length, statut: resultat?.statut ?? demande.statut });
   } catch (error) {
     if (error instanceof UploadRejectedError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

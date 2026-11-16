@@ -246,6 +246,21 @@ export async function sendLigneACorrigerNotification(
   });
 }
 
+/**
+ * Budget signé : la DG a accordé des lignes, le demandeur doit maintenant imprimer le budget, le
+ * faire signer et joindre le scan. Sans lui, la validation n'est pas complète et rien n'est dépensable.
+ */
+export async function sendBudgetSigneDemandeNotification(demande: DemandeBudgetForEmail, opts: { toutDecide: boolean }) {
+  await notifierBudget("BUDGET_SIGNE_A_JOINDRE", demande, {
+    to: demande.requesterEmail,
+    subject: `Budget ${demande.numero} : joignez le budget signé`,
+    title: "✍️ Budget signé à joindre",
+    intro: opts.toutDecide
+      ? "Toutes les lignes de votre budget ont été décidées. Il ne manque plus que le <strong>budget signé</strong> : imprimez-le depuis la fiche du budget, faites-le signer par la Direction générale et joignez le scan. Le budget passera alors « Validé » et ses lignes deviendront dépensables."
+      : "Des lignes de votre budget ont été accordées. Imprimez le budget depuis sa fiche, faites-le signer par la Direction générale et joignez le <strong>scan signé</strong>. Tant qu'il manque, le budget reste « Validation partielle » et aucune dépense n'est possible.",
+  });
+}
+
 /** Validation ligne par ligne : une ligne corrigée par le demandeur repart en validation. */
 export async function sendLigneCorrigeeNotification(demande: DemandeBudgetForEmail, opts: { designation: string; auteur: string }) {
   const recipients = await getBudgetRecipients(

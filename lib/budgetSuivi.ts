@@ -1,4 +1,4 @@
-import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, StatutLigneBudget } from "@prisma/client";
+import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, StatutLigneBudget, TypeBudget } from "@prisma/client";
 
 type Db = Prisma.TransactionClient;
 
@@ -96,44 +96,85 @@ export async function recalculerStatutBudget(db: Db, demandeBudgetId: string, op
 }
 
 /**
- * Budget de campagne : il est imprimé, signé en papier par la DG, puis validé sur la plateforme
- * avec le scan signé en pièce jointe (procédure de paiement, section 4). Renvoie le motif de refus
- * si ce scan manque, sinon null. Les autres types de budget ne sont pas concernés.
+ * Budget signé (procédure de paiement) : la DG décide d'abord les lignes sur la plateforme, puis le
+ * demandeur imprime le budget, le fait signer et joint le scan (document BUDGET_SIGNE). Les types
+ * concernés se règlent dans Paramètres → Rôles (EntrepriseConfig.typesBudgetSigneRequis).
+ * Tant que le scan manque, le budget reste en VALIDATION_PARTIELLE et ses lignes accordées ne sont
+ * PAS dépensables. Un budget déjà validé n'est jamais bloqué après coup (budgets antérieurs).
  */
-export async function refusBudgetSigneManquant(
-  db: Db,
-  demande: { id: string; type: string }
-): Promise<string | null> {
-  if (demande.type !== "CAMPAGNE") return null;
-  const nb = await db.demandeBudgetAttachment.count({
-    where: { demandeBudgetId: demande.id, kind: "BUDGET_SIGNE", depenseId: null },
-  });
-  return nb > 0
-    ? null
-    : "Budget de campagne : imprimez-le, faites-le signer par la DG, puis joignez le scan signé (document « Budget signé ») avant de le valider.";
+export const TYPES_BUDGET_SIGNE_DEFAUT: TypeBudget[] = [TypeBudget.CAMPAGNE, TypeBudget.MENSUEL];
+
+export const MESSAGE_SIGNATURE_ATTENDUE =
+  "Le budget signé n'est pas encore joint : imprimez le budget, faites-le signer par la DG et joignez le scan (fiche du budget). Aucune dépense n'est possible avant.";
+
+export async function typesBudgetSigneRequis(db: Db): Promise<TypeBudget[]> {
+  const config = await db.entrepriseConfig.findUnique({ where: { id: "singleton" }, select: { typesBudgetSigneRequis: true } });
+  return config ? config.typesBudgetSigneRequis : TYPES_BUDGET_SIGNE_DEFAUT;
 }
 
-export type ResultatDecision = { statut: StatutDemandeBudget; devenuValide: boolean; devenuRejete: boolean };
+export async function budgetSigneJoint(db: Db, demandeBudgetId: string): Promise<boolean> {
+  const nb = await db.demandeBudgetAttachment.count({ where: { demandeBudgetId, kind: "BUDGET_SIGNE", depenseId: null } });
+  return nb > 0;
+}
+
+/** Vrai si ce budget, encore en validation, attend son scan signé (type concerné et scan absent). */
+export async function signatureAttendue(db: Db, demande: { id: string; type: TypeBudget; statut: StatutDemandeBudget }): Promise<boolean> {
+  const enValidation: StatutDemandeBudget[] = [StatutDemandeBudget.SOUMISE, StatutDemandeBudget.VALIDATION_PARTIELLE];
+  if (!enValidation.includes(demande.statut)) return false;
+  if (!(await typesBudgetSigneRequis(db)).includes(demande.type)) return false;
+  return !(await budgetSigneJoint(db, demande.id));
+}
+
+const STATUTS_DEPENSABLES: StatutDemandeBudget[] = [StatutDemandeBudget.VALIDEE, StatutDemandeBudget.EN_COURS, StatutDemandeBudget.VALIDATION_PARTIELLE];
+
+/**
+ * Le budget accepte-t-il des dépenses ? Statut ouvert (validé, en cours, ou partiellement validé
+ * pour ses lignes accordées) ET scan signé joint s'il est exigé. `motif` explique le refus.
+ */
+export async function etatDepensable(
+  db: Db,
+  demande: { id: string; numero: string; type: TypeBudget; statut: StatutDemandeBudget }
+): Promise<{ depensable: boolean; motif: string | null }> {
+  if (!STATUTS_DEPENSABLES.includes(demande.statut)) {
+    return { depensable: false, motif: `Le budget ${demande.numero} n'est pas ouvert aux dépenses (il doit être validé et non clôturé).` };
+  }
+  if (await signatureAttendue(db, demande)) {
+    return { depensable: false, motif: `Budget ${demande.numero} : ${MESSAGE_SIGNATURE_ATTENDUE}` };
+  }
+  return { depensable: true, motif: null };
+}
+
+export type ResultatDecision = {
+  statut: StatutDemandeBudget;
+  devenuValide: boolean;
+  devenuRejete: boolean;
+  /** Le demandeur doit joindre le budget signé : première ligne accordée, ou toutes décidées. */
+  signatureDemandee: null | { toutDecide: boolean };
+};
 
 /**
  * Met à jour le statut d'un budget après une décision sur une ligne (accorder, demander une
  * correction), une correction ou un retrait par le demandeur, ou un « tout valider » :
  * - toutes les lignes retirées → REJETEE ;
- * - plus aucune ligne EN_ATTENTE ni A_CORRIGER → VALIDEE (puis EN_COURS / PAYEE si des dépenses
- *   ont déjà été faites pendant la validation partielle) ;
- * - au moins une ligne accordée et d'autres en cours → VALIDATION_PARTIELLE ;
+ * - plus aucune ligne EN_ATTENTE ni A_CORRIGER, ET scan signé joint s'il est exigé → VALIDEE (puis
+ *   EN_COURS / PAYEE si des dépenses ont déjà été faites pendant la validation partielle) ;
+ * - au moins une ligne accordée et d'autres en cours, ou scan signé manquant → VALIDATION_PARTIELLE
+ *   (sans scan, les lignes accordées ne sont pas dépensables : voir etatDepensable) ;
  * - aucune accordée → reste SOUMISE.
+ * Appelée aussi quand le scan signé est joint (declencheur SIGNATURE) : c'est ce qui complète la
+ * validation si toutes les lignes sont décidées.
  * Recalcule aussi montantTotal (demandé) = Σ montants demandés des lignes non retirées.
  */
 export async function majStatutApresDecision(
   db: Db,
   demandeBudgetId: string,
-  auteur: { email: string; name?: string | null }
+  auteur: { email: string; name?: string | null },
+  opts: { declencheur?: "DECISION" | "SIGNATURE" } = {}
 ): Promise<ResultatDecision | null> {
   const demande = await db.demandeBudget.findUnique({ where: { id: demandeBudgetId }, include: { lignes: true } });
   if (!demande) return null;
   const enDecision: StatutDemandeBudget[] = [StatutDemandeBudget.SOUMISE, StatutDemandeBudget.VALIDATION_PARTIELLE];
-  if (!enDecision.includes(demande.statut)) return { statut: demande.statut, devenuValide: false, devenuRejete: false };
+  if (!enDecision.includes(demande.statut)) return { statut: demande.statut, devenuValide: false, devenuRejete: false, signatureDemandee: null };
 
   const actives = demande.lignes.filter((l) => l.statutValidation !== StatutLigneBudget.RETIREE);
   const montantTotal = actives.reduce((s, l) => s + Number(l.montant), 0);
@@ -149,18 +190,26 @@ export async function majStatutApresDecision(
       },
     });
     await logBudget(db, { demandeBudgetId, action: ActionBudget.REJET, auteurEmail: auteur.email, auteurNom: auteur.name, details: "Toutes les lignes ont été retirées du budget." });
-    return { statut: StatutDemandeBudget.REJETEE, devenuValide: false, devenuRejete: true };
+    return { statut: StatutDemandeBudget.REJETEE, devenuValide: false, devenuRejete: true, signatureDemandee: null };
   }
 
   const resteADecider = actives.some(
     (l) => l.statutValidation === StatutLigneBudget.EN_ATTENTE || l.statutValidation === StatutLigneBudget.A_CORRIGER
   );
   const auMoinsUneAccordee = actives.some((l) => l.statutValidation === StatutLigneBudget.ACCORDEE);
+  // Scan signé exigé pour ce type et pas encore joint : la validation ne peut pas être complète.
+  const enAttenteSignature = auMoinsUneAccordee && (await signatureAttendue(db, demande));
 
-  if (!resteADecider) {
+  if (!resteADecider && !enAttenteSignature) {
+    // Le valideur enregistré est celui qui a décidé la dernière ligne — jamais le demandeur qui
+    // joint le scan ou retire une ligne (séparation des tâches sur les dépenses).
+    const derniereDecision = actives
+      .filter((l) => l.statutValidation === StatutLigneBudget.ACCORDEE && l.decideParEmail && l.decideAt)
+      .sort((a, b) => b.decideAt!.getTime() - a.decideAt!.getTime())[0];
+    const validateurEmail = derniereDecision?.decideParEmail ?? auteur.email;
     await db.demandeBudget.update({
       where: { id: demandeBudgetId },
-      data: { statut: StatutDemandeBudget.VALIDEE, montantTotal, validatedByEmail: auteur.email, validatedAt: new Date() },
+      data: { statut: StatutDemandeBudget.VALIDEE, montantTotal, validatedByEmail: validateurEmail, validatedAt: new Date() },
     });
     const totaux = await getBudgetTotaux(db, demandeBudgetId);
     await logBudget(db, {
@@ -169,17 +218,24 @@ export async function majStatutApresDecision(
       auteurEmail: auteur.email,
       auteurNom: auteur.name,
       montant: totaux.plafond,
-      details: `Toutes les lignes sont décidées — accordé ${totaux.plafond.toLocaleString("fr-FR")} FCFA sur ${montantTotal.toLocaleString("fr-FR")} FCFA demandés`,
+      details:
+        (opts.declencheur === "SIGNATURE" ? "Budget signé joint — validation complète. " : "Toutes les lignes sont décidées — ") +
+        `accordé ${totaux.plafond.toLocaleString("fr-FR")} FCFA sur ${montantTotal.toLocaleString("fr-FR")} FCFA demandés`,
     });
     const statut = (await recalculerStatutBudget(db, demandeBudgetId)) ?? StatutDemandeBudget.VALIDEE;
-    return { statut, devenuValide: true, devenuRejete: false };
+    return { statut, devenuValide: true, devenuRejete: false, signatureDemandee: null };
   }
 
   const statut = auMoinsUneAccordee ? StatutDemandeBudget.VALIDATION_PARTIELLE : StatutDemandeBudget.SOUMISE;
   if (statut !== demande.statut || Number(demande.montantTotal) !== montantTotal) {
     await db.demandeBudget.update({ where: { id: demandeBudgetId }, data: { statut, montantTotal } });
   }
-  return { statut, devenuValide: false, devenuRejete: false };
+  // Le demandeur est prévenu à la première ligne accordée, puis quand il ne manque plus que le scan.
+  const signatureDemandee =
+    enAttenteSignature && opts.declencheur !== "SIGNATURE" && (demande.statut === StatutDemandeBudget.SOUMISE || !resteADecider)
+      ? { toutDecide: !resteADecider }
+      : null;
+  return { statut, devenuValide: false, devenuRejete: false, signatureDemandee };
 }
 
 /**

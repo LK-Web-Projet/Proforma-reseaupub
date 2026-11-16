@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { ActionBudget, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget, majStatutApresDecision, refusBudgetSigneManquant } from "@/lib/budgetSuivi";
+import { logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
 import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
-import { sendDemandeValideeNotification } from "@/lib/email/demandeBudget";
+import { sendBudgetSigneDemandeNotification, sendDemandeValideeNotification } from "@/lib/email/demandeBudget";
 
 class ValidationError extends Error {}
 
 /**
  * POST /api/demandes-budget/[id]/valider — « Tout valider » : accorde au montant demandé toutes
  * les lignes encore EN_ATTENTE (les décisions déjà prises ligne par ligne sont conservées, y compris
- * les montants réduits), puis le budget passe VALIDEE. Refusé tant qu'une ligne attend une
- * correction du demandeur. Pour décider ligne par ligne : /lignes/[ligneId]/decider.
+ * les montants réduits). Le budget passe VALIDEE si le scan signé est joint (ou non exigé pour ce
+ * type) ; sinon il reste en VALIDATION_PARTIELLE et le demandeur est invité à joindre le budget
+ * signé. Refusé tant qu'une ligne attend une correction du demandeur. Ligne par ligne :
+ * /lignes/[ligneId]/decider.
  */
 export async function POST(
   _request: Request,
@@ -35,10 +37,6 @@ export async function POST(
     if (refus) {
       return NextResponse.json({ error: refus }, { status: 403 });
     }
-    const refusSigne = await refusBudgetSigneManquant(prisma, existing);
-    if (refusSigne) {
-      return NextResponse.json({ error: refusSigne }, { status: 400 });
-    }
 
     const { demande, resultat } = await prisma.$transaction(async (tx) => {
       // Relu sous verrou : une décision de ligne concurrente ne peut pas être écrasée.
@@ -51,11 +49,12 @@ export async function POST(
         );
       }
       const enAttente = lignes.filter((l) => l.statutValidation === StatutLigneBudget.EN_ATTENTE);
-      const maintenant = new Date();
-      for (const l of enAttente) {
-        await tx.demandeBudgetLigne.update({
-          where: { id: l.id },
-          data: { statutValidation: StatutLigneBudget.ACCORDEE, montantAccorde: null, decideParEmail: caps.email, decideAt: maintenant, motifDecision: null },
+      // Une seule requête pour toutes les lignes : la boucle ligne par ligne dépassait le délai de
+      // la transaction avec la base distante (erreur P2028 sur les budgets à nombreuses lignes).
+      if (enAttente.length > 0) {
+        await tx.demandeBudgetLigne.updateMany({
+          where: { id: { in: enAttente.map((l) => l.id) }, statutValidation: StatutLigneBudget.EN_ATTENTE },
+          data: { statutValidation: StatutLigneBudget.ACCORDEE, montantAccorde: null, decideParEmail: caps.email, decideAt: new Date(), motifDecision: null },
         });
       }
       if (enAttente.length > 0) {
@@ -72,11 +71,16 @@ export async function POST(
       const resultat = await majStatutApresDecision(tx, id, caps);
       const demande = await tx.demandeBudget.findUniqueOrThrow({ where: { id }, include: { lignes: true } });
       return { demande, resultat };
-    });
+    }, { maxWait: 10_000, timeout: 30_000 });
 
     if (resultat?.devenuValide) {
       sendDemandeValideeNotification(demande).catch((err) =>
         console.error("Erreur lors de l'envoi de la notification de validation:", err)
+      );
+    }
+    if (resultat?.signatureDemandee) {
+      sendBudgetSigneDemandeNotification(demande, resultat.signatureDemandee).catch((err) =>
+        console.error("Erreur lors de la demande du budget signé:", err)
       );
     }
 

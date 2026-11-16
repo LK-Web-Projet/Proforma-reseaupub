@@ -59,7 +59,7 @@ Authorization: Bearer {PROFORMA_API_KEY}
 
 - `aBudget: false` : la campagne n'a pas de budget. Ne pas afficher la liste et ne rien envoyer de plus (comportement actuel).
 - `aBudget: true` avec `lignes` non vide : la liste est **obligatoire**.
-- `aBudget: true` avec `lignes` vide : le budget n'est pas encore validé ou il est clôturé. Afficher « Le budget de cette campagne n'est pas ouvert aux dépenses » et **bloquer le paiement**.
+- `aBudget: true` avec `lignes` vide : le budget n'est pas encore validé, son budget signé n'est pas encore joint, ou il est clôturé. Afficher « Le budget de cette campagne n'est pas ouvert aux dépenses » et **bloquer le paiement**.
 
 Si la campagne n'a pas de proforma, cet appel est inutile.
 
@@ -102,6 +102,7 @@ Les messages sont déjà renvoyés dans `{ "error": "…" }`, avec ton format ha
 |---|---|
 | « Budget de la ligne … atteint : il reste … » | Le lot dépasse le reste de la ligne |
 | « Le budget DB-… n'est pas ouvert aux dépenses… » | Le budget n'est pas validé, ou il est clôturé |
+| « Budget DB-… : Le budget signé n'est pas encore joint… » | Les lignes sont accordées, mais le scan du budget signé par la DG n'est pas encore joint dans Finance |
 | « Vous avez validé ce budget… » / « Vous avez accordé cette ligne… » | `comptableEmail` est celui de la personne qui a validé |
 | « comptableEmail est requis avec ligneBudgetId… » | Le champ est manquant |
 | « Cette proforma n'est pas liée à ce budget. » | La ligne choisie appartient au budget d'une autre campagne |

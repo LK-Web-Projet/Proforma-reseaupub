@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyIntegrationKey } from "@/lib/integrationAuth";
-import { getLigneDisponible } from "@/lib/budgetSuivi";
+import { etatDepensable, getLigneDisponible } from "@/lib/budgetSuivi";
 
-const STATUTS_DEPENSABLES = ["VALIDEE", "EN_COURS", "VALIDATION_PARTIELLE"] as const;
 
 /**
  * GET /api/integration/budgets/lignes?proformaId= — pour Camptrack : lignes de budget sur
@@ -22,9 +21,12 @@ export async function GET(request: NextRequest) {
     const budgets = await prisma.demandeBudget.findMany({
       where: { proformas: { some: { invoiceId: proformaId } } },
       orderBy: { createdAt: "asc" },
-      select: { id: true, numero: true, statut: true, lignes: { where: { statutValidation: "ACCORDEE" }, orderBy: { designation: "asc" } } },
+      select: { id: true, numero: true, type: true, statut: true, lignes: { where: { statutValidation: "ACCORDEE" }, orderBy: { designation: "asc" } } },
     });
-    const ouverts = budgets.filter((b) => (STATUTS_DEPENSABLES as readonly string[]).includes(b.statut));
+    // Budget ouvert ET budget signé joint s'il est exigé : sinon ses lignes ne sont pas renvoyées
+    // (CampTrack affiche alors « budget pas ouvert aux dépenses »).
+    const ouverts = [];
+    for (const b of budgets) if ((await etatDepensable(prisma, b)).depensable) ouverts.push(b);
     const lignes = [];
     for (const b of ouverts) {
       for (const l of b.lignes) {

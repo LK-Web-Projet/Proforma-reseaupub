@@ -53,21 +53,24 @@ model User {
 }
 
 model EntrepriseConfig {
-  id                        String   @id @default("singleton")
-  nom                       String   @default("Reseaupub")
+  id                        String       @id @default("singleton")
+  nom                       String       @default("Reseaupub")
   slogan                    String?
-  adresse                   String   @default("Etoile Rouge, Cotonou, Bénin")
-  telephone                 String   @default("+229 01 69 81 30 30")
-  email                     String   @default("contact@reseaupub.com")
-  emailFinance              String   @default("finance@reseaupub.com")
+  adresse                   String       @default("Etoile Rouge, Cotonou, Bénin")
+  telephone                 String       @default("+229 01 69 81 30 30")
+  email                     String       @default("contact@reseaupub.com")
+  emailFinance              String       @default("finance@reseaupub.com")
   siteWeb                   String?
-  ifu                       String   @default("0201710009974")
+  ifu                       String       @default("0201710009974")
   rccm                      String?
-  nomDirecteur              String   @default("Directeur Général")
-  logoPath                  String   @default("rplogo.png")
+  nomDirecteur              String       @default("Directeur Général")
+  logoPath                  String       @default("rplogo.png")
   // Au-dessus de ce montant, un budget non mensuel doit être validé par un rôle "canValidateBudgetMensuel".
-  plafondValidationDeleguee Decimal  @default(500000) @db.Decimal(12, 2)
-  updatedAt                 DateTime @updatedAt
+  plafondValidationDeleguee Decimal      @default(500000) @db.Decimal(12, 2)
+  // Types de budget dont le scan signé (document BUDGET_SIGNE) est exigé : tant qu’il manque, le
+  // budget reste en VALIDATION_PARTIELLE et ses lignes accordées ne sont pas dépensables.
+  typesBudgetSigneRequis    TypeBudget[] @default([CAMPAGNE, MENSUEL])
+  updatedAt                 DateTime     @updatedAt
 }
 
 model Client {

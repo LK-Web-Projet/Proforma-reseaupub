@@ -1,22 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireCanManageUsers } from "@/lib/authz";
 import { getEntrepriseConfig } from "@/lib/entreprise";
 
-// Paramètres du circuit budget (plafond de validation déléguée). Lecture et modification
-// réservées aux administrateurs (même garde que la page Rôles, où ce réglage est affiché).
+// Paramètres du circuit budget, réservés aux administrateurs (même garde que la page Rôles, où
+// ils sont affichés) :
+// - plafond de validation déléguée ;
+// - types de budget dont le scan signé est exigé (sans lui, la validation n'est pas complète et
+//   les lignes accordées ne sont pas dépensables — lib/budgetSuivi.ts).
+const reponse = (config: { plafondValidationDeleguee: unknown; typesBudgetSigneRequis: TypeBudget[] }) => ({
+  plafondValidationDeleguee: Number(config.plafondValidationDeleguee),
+  typesBudgetSigneRequis: config.typesBudgetSigneRequis,
+});
+
 export async function GET() {
   const authError = await requireCanManageUsers();
   if (authError) return authError;
 
-  const config = await getEntrepriseConfig();
-  return NextResponse.json({ plafondValidationDeleguee: Number(config.plafondValidationDeleguee) });
+  return NextResponse.json(reponse(await getEntrepriseConfig()));
 }
 
-const schema = z.object({
-  plafondValidationDeleguee: z.number().min(0, "Le plafond ne peut pas être négatif."),
-});
+const schema = z
+  .object({
+    plafondValidationDeleguee: z.number().min(0, "Le plafond ne peut pas être négatif.").optional(),
+    typesBudgetSigneRequis: z.array(z.nativeEnum(TypeBudget)).optional(),
+  })
+  .refine((d) => d.plafondValidationDeleguee !== undefined || d.typesBudgetSigneRequis !== undefined, {
+    message: "Aucun réglage à enregistrer.",
+  });
 
 export async function PUT(request: NextRequest) {
   const authError = await requireCanManageUsers();
@@ -26,11 +39,15 @@ export async function PUT(request: NextRequest) {
   if (!validation.success) {
     return NextResponse.json({ error: validation.error.issues[0]?.message ?? "Valeur invalide." }, { status: 400 });
   }
+  const { plafondValidationDeleguee, typesBudgetSigneRequis } = validation.data;
 
   await getEntrepriseConfig(); // garantit l'existence de la ligne singleton
   const config = await prisma.entrepriseConfig.update({
     where: { id: "singleton" },
-    data: { plafondValidationDeleguee: validation.data.plafondValidationDeleguee },
+    data: {
+      ...(plafondValidationDeleguee !== undefined ? { plafondValidationDeleguee } : {}),
+      ...(typesBudgetSigneRequis !== undefined ? { typesBudgetSigneRequis: Array.from(new Set(typesBudgetSigneRequis)) } : {}),
+    },
   });
-  return NextResponse.json({ plafondValidationDeleguee: Number(config.plafondValidationDeleguee) });
+  return NextResponse.json(reponse(config));
 }

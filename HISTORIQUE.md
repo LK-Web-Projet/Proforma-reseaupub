@@ -22,6 +22,65 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-18 — Budget signé après la décision de la DG (paramétrable) et correctif « Tout valider »
+
+**Demande / Contexte**
+- « Tout valider » plantait (erreur 500 `P2028 Transaction not found`), alors que la validation ligne par ligne marchait.
+- Nouveau circuit demandé :
+  - la DG valide d'abord les lignes ;
+  - le demandeur reçoit alors une notification pour joindre la version papier signée ;
+  - la section est en rouge sur la fiche ;
+  - le budget passe « Validé » seulement quand toutes les lignes sont validées et que le scan signé est joint, sinon il reste « Validation partielle ».
+- Choix de l'utilisateur :
+  - (A) **aucune dépense** tant que le scan manque ;
+  - (B) scan exigé pour les budgets de **campagne et mensuels**, réglable dans les paramètres pour l'étendre aux autres types.
+
+**Modifications apportées**
+- Cause du plantage : « Tout valider » accordait les lignes une par une dans une transaction. Avec Supabase, cela dépassait les 5 s par défaut de Prisma.
+  - Correctif : une seule requête (`updateMany`) dans `app/api/demandes-budget/[id]/valider/route.ts`.
+  - Délai porté à 30 s (attente de connexion 10 s) pour toutes les transactions, dans `lib/prisma.ts` (`transactionOptions`), et explicitement sur les routes de validation.
+- Migration `20261118100000_budget_signe_parametrable` (appliquée, ajout d'une colonne seulement) : `EntrepriseConfig.typesBudgetSigneRequis TypeBudget[]`, par défaut `[CAMPAGNE, MENSUEL]`.
+- `lib/budgetSuivi.ts` :
+  - nouvelles fonctions `typesBudgetSigneRequis`, `budgetSigneJoint`, `signatureAttendue`, `etatDepensable` (budget ouvert ET scan joint s'il est exigé) ;
+  - `refusBudgetSigneManquant` est supprimé, car le scan n'est plus exigé avant d'accorder ;
+  - `majStatutApresDecision` :
+    - VALIDEE seulement si toutes les lignes sont décidées ET le scan est joint (ou n'est pas exigé) ;
+    - renvoie `signatureDemandee`, à la première ligne accordée puis quand toutes les lignes sont décidées ;
+    - nouvelle option `declencheur: "SIGNATURE"` ;
+    - le valideur enregistré (`validatedByEmail`) est celui qui a décidé la dernière ligne, jamais le demandeur qui joint le scan ou retire une ligne.
+- Routes :
+  - décision de ligne et « Tout valider » : plus de blocage sur le scan, et notification au demandeur ;
+  - `documents` : joindre un BUDGET_SIGNE pendant la validation recalcule le statut, qui passe Validé si tout est décidé, et envoie la notification « Budget validé » ;
+  - `GET /api/demandes-budget/[id]` renvoie `budgetSigneRequis`.
+- Dépenses : `controlerLigneBudget` (`lib/depenses/enregistrerDepense.ts`) utilise `etatDepensable`. Les dépenses sont donc refusées sans scan, depuis le budget, la proforma, le rattachement ou CampTrack.
+  - La liste des lignes de la proforma (`/api/factures/[id]/lignes-depense`) et celle de CampTrack (`/api/integration/budgets/lignes`) ne proposent plus ces lignes.
+  - `ChoixLigneBudgetDialog` affiche le motif.
+- Notification `BUDGET_SIGNE_A_JOINDRE` (au demandeur, canal réglable) : `lib/notifications/evenements.ts` et `sendBudgetSigneDemandeNotification` dans `lib/email/demandeBudget.ts`.
+- Fiche budget :
+  - carte rouge « Budget signé à joindre », avec Imprimer et Joindre, dès qu'une ligne est accordée ;
+  - boutons Accorder, Ajuster et Tout valider débloqués ;
+  - bouton Dépense masqué tant que le scan manque.
+- Paramètres → Rôles : carte « Budget signé exigé », avec un interrupteur par type de budget (`/api/budget-config`, champ `typesBudgetSigneRequis`).
+- Documentation : guide des équipes (section 2 et messages) et document CampTrack (nouveau message de refus).
+
+**Ce qui ne change pas**
+- La séparation des tâches, le plafond, les dépassements, les corrections de ligne et le rejet.
+- Les budgets ponctuels et pour tiers, tant qu'ils ne sont pas cochés : validés sans scan, comme avant.
+- **Les budgets déjà validés ne sont jamais bloqués**, par exemple le budget mensuel validé sans scan qui existe en base.
+
+**Tests**
+- Nouveau test en base (transaction annulée) : 26/26. Il couvre le partiel sans scan, le refus de dépense, la notification, le passage à Validé au dépôt du scan avec la DG comme valideur, le scan joint avant la fin des décisions, le ponctuel sans scan, l'ancien budget validé, le réglage coché ou décoché, « Tout valider » sur 12 lignes et le rejet.
+- Non-régression : budget (logique 89, base 37), Lot A 15, Lot C (19, 8 et 5), service de dépense 18, factures de prestataires 11, routes CampTrack 16 : tout passe. Deux anciens tests ont été adaptés à la nouvelle règle (plus de scan exigé avant d'accorder), et le délai du test c2 a été allongé (Supabase lent).
+- `tsc` et lint OK.
+
+**Erreurs rencontrées & solutions**
+- `prisma generate` en EPERM, car le serveur de dev tient le moteur. Les types sont bien générés. **Il faut redémarrer le serveur de dev** pour qu'il voie la nouvelle colonne.
+
+**À tester / points d'attention**
+- Tester sur un vrai budget : la DG accorde (le demandeur reçoit la notification, la carte est rouge), puis le demandeur joint le scan (le budget passe Validé et les comptables sont prévenus).
+
+---
+
 ## 2026-11-17 (suite 4) — Vérification de non-régression de toute la logique métier
 
 **Demande / Contexte**

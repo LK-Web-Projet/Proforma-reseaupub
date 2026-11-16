@@ -3,8 +3,8 @@ import { z } from "zod";
 import { ActionBudget, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, refusValidation } from "@/lib/budgetAuth";
-import { BUDGET_EPSILON, logBudget, majStatutApresDecision, refusBudgetSigneManquant } from "@/lib/budgetSuivi";
-import { sendDemandeValideeNotification, sendLigneACorrigerNotification } from "@/lib/email/demandeBudget";
+import { BUDGET_EPSILON, logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
+import { sendBudgetSigneDemandeNotification, sendDemandeValideeNotification, sendLigneACorrigerNotification } from "@/lib/email/demandeBudget";
 
 class DecisionError extends Error {}
 
@@ -24,8 +24,9 @@ const schema = z
  *    jamais au-dessus : au-delà, c'est un dépassement ;
  *  - CORRIGER : la ligne revient au demandeur avec un motif (ouvre aussi un fil de commentaire sur
  *    la ligne), qui la modifiera ou la retirera (PATCH /lignes/[ligneId]).
- * Une ligne accordée est dépensable immédiatement (statut VALIDATION_PARTIELLE) ; le budget passe
- * VALIDEE quand plus aucune ligne n'est en attente ni à corriger.
+ * Une ligne accordée est dépensable dès que le budget signé est joint (s'il est exigé pour ce type,
+ * Paramètres → Rôles) ; le budget passe VALIDEE quand plus aucune ligne n'est en attente ni à
+ * corriger ET que ce scan est joint. Sinon il reste en VALIDATION_PARTIELLE.
  */
 export async function POST(
   request: NextRequest,
@@ -51,12 +52,8 @@ export async function POST(
       }
       const refus = refusValidation(caps, demande);
       if (refus) throw new DecisionError(refus);
-      // Accorder engage la dépense : le budget de campagne doit d'abord être signé par la DG.
-      // (Demander une correction reste possible sans le scan.)
-      if (decision === "ACCORDER") {
-        const refusSigne = await refusBudgetSigneManquant(tx, demande);
-        if (refusSigne) throw new DecisionError(refusSigne);
-      }
+      // Le scan signé n'est plus exigé pour décider : la DG décide d'abord, le demandeur joint
+      // ensuite le budget signé (sans lui, les lignes accordées ne sont pas dépensables).
 
       const ligne = demande.lignes.find((l) => l.id === ligneId);
       if (!ligne) throw new DecisionError("Cette ligne n'appartient pas à ce budget.");
@@ -123,7 +120,7 @@ export async function POST(
       const resultat = await majStatutApresDecision(tx, id, caps);
       const demandeAJour = await tx.demandeBudget.findUniqueOrThrow({ where: { id }, include: { lignes: true } });
       return { resultat, demande: demandeAJour, ligne };
-    });
+    }, { maxWait: 10_000, timeout: 30_000 });
 
     if (decision === "CORRIGER") {
       sendLigneACorrigerNotification(demande, { designation: ligne.designation, motif: motif!, auteur: caps.name || caps.email }).catch((err) =>
@@ -132,6 +129,11 @@ export async function POST(
     }
     if (resultat?.devenuValide) {
       sendDemandeValideeNotification(demande).catch((err) => console.error("Erreur lors de l'envoi de la notification de validation:", err));
+    }
+    if (resultat?.signatureDemandee) {
+      sendBudgetSigneDemandeNotification(demande, resultat.signatureDemandee).catch((err) =>
+        console.error("Erreur lors de la demande du budget signé:", err)
+      );
     }
 
     return NextResponse.json({ success: true, statut: resultat?.statut });

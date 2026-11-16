@@ -20,6 +20,8 @@ export interface BudgetDepenseOption {
   statut: string;
   modePaiement: string;
   depensable: boolean;
+  /** Pourquoi le budget n'accepte pas de dépense (non validé, clôturé, budget signé manquant). */
+  motif?: string | null;
   lignes: LigneDepenseOption[];
 }
 
@@ -55,8 +57,9 @@ export function ChoixLigneBudgetDialog({
             <div key={b.id} className="space-y-2">
               <div className="flex items-center justify-between">
                 <Link href={`/budget/demandes/${b.id}`} className="text-sm font-semibold text-primary hover:underline">Budget {b.numero}</Link>
-                {!b.depensable && <span className="text-xs text-amber-700">pas encore validé ou clôturé — aucune dépense possible</span>}
+                {!b.depensable && <span className="text-xs text-red-700">aucune dépense possible</span>}
               </div>
+              {!b.depensable && <p className="text-xs text-red-700">{b.motif ?? "Budget pas encore validé ou clôturé."}</p>}
               {b.depensable && b.lignes.length === 0 && <p className="text-xs text-muted-foreground">Aucune ligne accordée.</p>}
               {b.lignes.map((l) => (
                 <div key={l.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">

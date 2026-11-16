@@ -22,6 +22,7 @@ interface EvenementMeta {
 
 export const EVENEMENTS_NOTIFICATION = {
   BUDGET_SOUMIS: { groupe: "Budgets", libelle: "Budget soumis à validation", destinataires: "Valideurs compétents (selon le type et le plafond)" },
+  BUDGET_SIGNE_A_JOINDRE: { groupe: "Budgets", libelle: "Budget signé à joindre (lignes accordées)", destinataires: "Demandeur" },
   BUDGET_VALIDE: { groupe: "Budgets", libelle: "Budget validé", destinataires: "Comptables" },
   BUDGET_REJETE: { groupe: "Budgets", libelle: "Budget rejeté", destinataires: "Demandeur" },
   LIGNE_A_CORRIGER: { groupe: "Budgets", libelle: "Ligne renvoyée en correction", destinataires: "Demandeur" },

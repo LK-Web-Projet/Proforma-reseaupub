@@ -137,6 +137,8 @@ interface DemandeBudgetDetail {
   historique: BudgetHistoriqueEntry[];
   depensesARattacher: DepenseARattacher[];
   facturesPrestataires: FacturePrestataire[];
+  /** Scan du budget signé exigé pour ce type (Paramètres → Rôles). */
+  budgetSigneRequis?: boolean;
 }
 
 const sameEmail = (a: string | null | undefined, b: string | null | undefined) =>
@@ -441,7 +443,12 @@ export default function DemandeBudgetDetailPage() {
 
   // Séparation des tâches : qui a validé le budget n'en enregistre pas les dépenses.
   const estValideur = sameEmail(role.email, demande.validatedByEmail);
-  const peutEnregistrerDepense = budgetOuvert && role.canPay && !estValideur;
+  // Budget signé : exigé selon le type (Paramètres → Rôles). La DG décide d'abord les lignes, le
+  // demandeur joint ensuite le scan ; tant qu'il manque, la validation n'est pas complète et
+  // aucune dépense n'est possible (le serveur le refuse aussi).
+  const budgetSigneJoint = demande.attachments.some((a) => !a.depenseId && a.kind === 'BUDGET_SIGNE');
+  const signatureAttendue = enValidation && !!demande.budgetSigneRequis && !budgetSigneJoint;
+  const peutEnregistrerDepense = budgetOuvert && role.canPay && !estValideur && !signatureAttendue;
   // Dépassement : budget ouvert, ou entièrement consommé mais pas clôturé.
   const peutDemanderDepassement =
     (role.canPay || estDemandeur) &&
@@ -449,9 +456,6 @@ export default function DemandeBudgetDetailPage() {
   const nbDepassementsEnAttente = demande.depassements.filter((d) => d.statut === 'EN_ATTENTE').length;
   const lignesParId = new Map(demande.lignes.map((l) => [l.id, l.designation]));
   const documentsDemande = demande.attachments.filter((a) => !a.depenseId);
-  // Budget de campagne : le scan du budget signé par la DG est exigé avant toute ligne accordée.
-  const budgetSigneManquant = demande.type === 'CAMPAGNE' && !documentsDemande.some((a) => a.kind === 'BUDGET_SIGNE');
-  const blocageSignature = enValidation && budgetSigneManquant;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -541,21 +545,23 @@ export default function DemandeBudgetDetailPage() {
               <p className="font-medium text-amber-800">{nbLignesACorriger} ligne(s) à corriger</p>
               <p className="text-muted-foreground">
                 Le valideur a laissé un commentaire sur chacune. Modifiez-la (elle repartira en validation) ou retirez-la du budget.
-                {nbLignesAccordees > 0 ? ' Les lignes déjà accordées sont utilisables dès maintenant.' : ''}
+                {nbLignesAccordees > 0 && !signatureAttendue ? ' Les lignes déjà accordées sont utilisables dès maintenant.' : ''}
               </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {blocageSignature && (role.isImplique || estDemandeur) && (
-        <Card className="border-t-4 border-t-indigo-500 shadow-sm">
+      {signatureAttendue && nbLignesAccordees > 0 && (role.isImplique || estDemandeur) && (
+        <Card className="border-2 border-red-500 bg-red-50 shadow-sm">
           <CardContent className="pt-6 flex flex-col sm:flex-row sm:items-center gap-4">
-            <FileSignature className="h-6 w-6 text-indigo-600 shrink-0" />
+            <FileSignature className="h-6 w-6 text-red-600 shrink-0" />
             <div className="text-sm flex-1">
-              <p className="font-medium text-indigo-900">Budget signé par la DG requis</p>
-              <p className="text-muted-foreground">
-                Imprimez le budget, faites-le signer par la Direction générale, puis joignez le scan signé. Les lignes ne peuvent être accordées qu&apos;ensuite.
+              <p className="font-semibold text-red-800">Budget signé à joindre</p>
+              <p className="text-red-900/80">
+                {estDemandeur ? 'Imprimez' : 'Le demandeur doit imprimer'} le budget, le faire signer par la Direction générale, puis joindre le scan signé.
+                {' '}Tant qu&apos;il manque, le budget reste en « Validation partielle » et <strong>aucune dépense n&apos;est possible</strong>.
+                {nbLignesEnAttente + nbLignesACorriger === 0 ? ' Toutes les lignes sont décidées : le budget passera « Validé » dès que le scan sera joint.' : ''}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -588,12 +594,8 @@ export default function DemandeBudgetDetailPage() {
               <div className="flex gap-3">
                 <Button
                   onClick={handleValider}
-                  disabled={isSubmitting || nbLignesEnAttente === 0 || nbLignesACorriger > 0 || blocageSignature}
-                  title={
-                    blocageSignature
-                      ? "Joignez d'abord le scan du budget signé par la DG"
-                      : nbLignesACorriger > 0 ? 'Des lignes attendent une correction du demandeur' : undefined
-                  }
+                  disabled={isSubmitting || nbLignesEnAttente === 0 || nbLignesACorriger > 0}
+                  title={nbLignesACorriger > 0 ? 'Des lignes attendent une correction du demandeur' : undefined}
                   className="gap-2 bg-green-600 hover:bg-green-700"
                 >
                   <CheckCircle2 className="h-4 w-4" /> Tout valider
@@ -813,13 +815,12 @@ export default function DemandeBudgetDetailPage() {
                             <Button
                               size="sm"
                               className="gap-1 bg-green-600 hover:bg-green-700"
-                              disabled={isSubmitting || blocageSignature}
-                              title={blocageSignature ? "Joignez d'abord le scan du budget signé par la DG" : undefined}
+                              disabled={isSubmitting}
                               onClick={() => handleAccorderLigne(l.id)}
                             >
                               <Check className="h-3.5 w-3.5" /> Accorder
                             </Button>
-                            <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs" disabled={blocageSignature} onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'AJUSTER' })}>
+                            <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs" onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'AJUSTER' })}>
                               <Scale className="h-3 w-3" /> Ajuster
                             </Button>
                             <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs text-amber-700" onClick={() => setDecisionLigne({ id: l.id, designation: l.designation, montant: l.demandeLigne, mode: 'CORRIGER' })}>

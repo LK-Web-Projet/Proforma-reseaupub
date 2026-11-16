@@ -47,10 +47,20 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
 ## 2. Le budget de campagne
 
 1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à la proforma du client. Pour chaque ligne, il indique la désignation, la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche.
-2. Il **imprime** le budget (bouton *Imprimer*) et le fait **signer par la DG**.
-3. Il **joint le scan signé** (*Joindre le budget signé*). Tant que ce scan manque, aucune ligne ne peut être accordée.
-4. Le valideur décide **ligne par ligne** : **Accorder**, **Ajuster** (un montant plus bas, avec un motif) ou **Demander une correction**. Le demandeur corrige ou retire la ligne. Une ligne accordée est **dépensable tout de suite**.
-5. Si une ligne ne suffit plus, le comptable ou le demandeur fait une **demande de dépassement**, que la DG approuve. Sans cette approbation, aucune dépense ne peut dépasser le plafond.
+2. La **DG (ou le valideur) décide d'abord sur la plateforme**, ligne par ligne : **Accorder**, **Ajuster** (un montant plus bas, avec un motif) ou **Demander une correction**. Le bouton *Tout valider* accorde d'un coup toutes les lignes en attente. Le demandeur corrige ou retire les lignes renvoyées.
+3. Dès qu'une ligne est accordée, **le demandeur reçoit une notification** « Budget signé à joindre ». Sur la fiche du budget, la section **Budget signé à joindre** s'affiche **en rouge**.
+4. Le demandeur **imprime** le budget (bouton *Imprimer*), le fait **signer par la DG**, puis **joint le scan signé** (*Joindre le budget signé*).
+5. Le statut du budget :
+
+   | Situation | Statut | Dépenses |
+   |---|---|---|
+   | Toutes les lignes décidées **et** scan signé joint | **Validé** | Possibles sur les lignes accordées |
+   | Scan signé joint, mais des lignes encore en attente ou à corriger | Validation partielle | Possibles sur les lignes déjà accordées |
+   | Scan signé manquant | Validation partielle | **Aucune** dépense possible |
+
+6. Si une ligne ne suffit plus, le comptable ou le demandeur fait une **demande de dépassement**, que la DG approuve. Sans cette approbation, aucune dépense ne peut dépasser le plafond.
+
+**Quels budgets doivent être signés ?** Par défaut, les budgets de **campagne** et les budgets **mensuels**. L'administrateur peut en ajouter ou en retirer dans **Paramètres → Rôles**, carte « Budget signé exigé ». Pour les types non cochés, le budget passe « Validé » dès que toutes les lignes sont décidées. Un budget déjà validé n'est jamais bloqué après coup.
 
 ---
 
@@ -168,3 +178,4 @@ Les prestataires sont payés **par lots**, un lot par campagne : un état de pai
 | « Solde impossible : la liasse … est incomplète » | Joindre les pièces manquantes indiquées : bordereau ou attestation, facture, rapport |
 | « Vous avez validé ce budget … séparation des tâches » | Une autre personne enregistre la dépense |
 | « Le budget … n'est pas ouvert aux dépenses » | Faire valider le budget, ou en créer un nouveau s'il est clôturé |
+| « Le budget signé n'est pas encore joint » | Le demandeur imprime le budget, le fait signer par la DG et joint le scan sur la fiche du budget |

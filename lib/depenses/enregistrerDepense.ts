@@ -4,13 +4,12 @@ import {
   NatureDepense,
   Prisma,
   SourceDepense,
-  StatutDemandeBudget,
   StatutFactureFournisseur,
   StatutLigneBudget,
 } from "@prisma/client";
 import { isSameEmail } from "@/lib/budgetAuth";
 import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
-import { BUDGET_EPSILON, getLigneDisponible, logBudget, recalculerStatutBudget } from "@/lib/budgetSuivi";
+import { BUDGET_EPSILON, etatDepensable, getLigneDisponible, logBudget, recalculerStatutBudget } from "@/lib/budgetSuivi";
 import {
   controlerPaiementCommande,
   controlerPaiementFacture,
@@ -65,12 +64,6 @@ export interface EntreeDepense {
   reference?: string | null;
 }
 
-const STATUTS_DEPENSABLES: StatutDemandeBudget[] = [
-  StatutDemandeBudget.VALIDEE,
-  StatutDemandeBudget.EN_COURS,
-  StatutDemandeBudget.VALIDATION_PARTIELLE,
-];
-
 /** Budgets liés à une proforma (pour la règle « avec budget, la ligne est obligatoire »). */
 export async function budgetsDeLaProforma(db: Db, invoiceId: string) {
   return db.demandeBudget.findMany({
@@ -96,9 +89,9 @@ export async function controlerLigneBudget(
   if (!ligne) throw new DepenseError("Ligne de budget introuvable.");
   const demande = ligne.demandeBudget;
   if (opts.demandeBudgetId && demande.id !== opts.demandeBudgetId) throw new DepenseError("Cette ligne n'appartient pas à ce budget.");
-  if (!STATUTS_DEPENSABLES.includes(demande.statut)) {
-    throw new DepenseError(`Le budget ${demande.numero} n'est pas ouvert aux dépenses (il doit être validé et non clôturé).`);
-  }
+  // Budget ouvert, et budget signé joint s'il est exigé (lib/budgetSuivi.ts, etatDepensable).
+  const etat = await etatDepensable(tx, demande);
+  if (!etat.depensable) throw new DepenseError(etat.motif!);
   if (isSameEmail(demande.validatedByEmail, opts.auteurEmail)) {
     throw new DepenseError("Vous avez validé ce budget : ses dépenses doivent être enregistrées par une autre personne (séparation des tâches).");
   }

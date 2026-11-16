@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAuth";
 import { facturesPrestatairesPayables } from "@/lib/commandeFournisseurSuivi";
+import { typesBudgetSigneRequis } from "@/lib/budgetSuivi";
 
 export async function GET(
   _request: NextRequest,
@@ -79,7 +80,10 @@ export async function GET(
     // Factures de prestataires internes / externes payables sur les lignes de ce budget.
     const facturesPrestataires = await facturesPrestatairesPayables(prisma, demande.lignes.map((l) => l.id));
 
-    return NextResponse.json({ ...demande, depensesARattacher, facturesPrestataires });
+    // Scan du budget signé exigé pour ce type (réglage Paramètres → Rôles).
+    const budgetSigneRequis = (await typesBudgetSigneRequis(prisma)).includes(demande.type);
+
+    return NextResponse.json({ ...demande, depensesARattacher, facturesPrestataires, budgetSigneRequis });
   } catch (error) {
     console.error(`Erreur lors de la récupération de la demande ${id}:`, error);
     return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 });

@@ -20,6 +20,14 @@ import { toast } from "sonner";
 import { ChevronLeft, ShieldCheck, Plus, Pencil } from "lucide-react";
 import { PAGE_KEYS, PAGE_LABELS, PageKey } from "@/lib/permissions";
 
+type TypeBudgetValue = "MENSUEL" | "PONCTUEL" | "CAMPAGNE" | "TIERS";
+const TYPES_BUDGET: { value: TypeBudgetValue; label: string }[] = [
+  { value: "CAMPAGNE", label: "Budgets de campagne" },
+  { value: "MENSUEL", label: "Budgets mensuels" },
+  { value: "PONCTUEL", label: "Budgets ponctuels" },
+  { value: "TIERS", label: "Budgets pour un tiers" },
+];
+
 interface Role {
   id: string;
   nom: string;
@@ -82,13 +90,42 @@ export default function RolesPage() {
   const [forbidden, setForbidden] = useState(false);
   const [plafond, setPlafond] = useState("");
   const [isSavingPlafond, setIsSavingPlafond] = useState(false);
+  const [typesSigne, setTypesSigne] = useState<TypeBudgetValue[]>([]);
+  const [isSavingTypesSigne, setIsSavingTypesSigne] = useState(false);
 
   useEffect(() => {
     fetch("/api/budget-config")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => data && setPlafond(String(data.plafondValidationDeleguee)))
+      .then((data) => {
+        if (!data) return;
+        setPlafond(String(data.plafondValidationDeleguee));
+        setTypesSigne(data.typesBudgetSigneRequis ?? []);
+      })
       .catch(() => undefined);
   }, []);
+
+  const handleSaveTypesSigne = async (types: TypeBudgetValue[]) => {
+    const precedent = typesSigne;
+    setTypesSigne(types);
+    setIsSavingTypesSigne(true);
+    try {
+      const res = await fetch("/api/budget-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ typesBudgetSigneRequis: types }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === "string" ? err.error : "Erreur lors de l'enregistrement.");
+      }
+      toast.success("Réglage du budget signé enregistré !");
+    } catch (error) {
+      setTypesSigne(precedent);
+      toast.error(error instanceof Error ? error.message : "Erreur.");
+    } finally {
+      setIsSavingTypesSigne(false);
+    }
+  };
 
   const handleSavePlafond = async () => {
     const value = Number(plafond);
@@ -291,6 +328,33 @@ export default function RolesPage() {
             <Button onClick={handleSavePlafond} disabled={isSavingPlafond}>
               {isSavingPlafond ? "..." : "Enregistrer"}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardContent className="pt-6 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Budget signé exigé</p>
+            <p className="text-xs text-muted-foreground">
+              Pour les types cochés, la Direction décide d&apos;abord les lignes, puis le demandeur imprime le budget, le fait signer et joint
+              le scan. Tant que ce scan manque, le budget reste en « Validation partielle » et aucune dépense n&apos;est possible. Les budgets
+              déjà validés ne sont pas concernés.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+            {TYPES_BUDGET.map((t) => (
+              <label key={t.value} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                <span>{t.label}</span>
+                <Switch
+                  checked={typesSigne.includes(t.value)}
+                  disabled={isSavingTypesSigne}
+                  onCheckedChange={(on) =>
+                    handleSaveTypesSigne(on ? [...typesSigne, t.value] : typesSigne.filter((x) => x !== t.value))
+                  }
+                />
+              </label>
+            ))}
           </div>
         </CardContent>
       </Card>

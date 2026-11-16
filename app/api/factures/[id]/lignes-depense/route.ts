@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser } from "@/lib/budgetAuth";
-import { getLigneDisponible } from "@/lib/budgetSuivi";
+import { etatDepensable, getLigneDisponible } from "@/lib/budgetSuivi";
 import { facturesPrestatairesPayables } from "@/lib/commandeFournisseurSuivi";
-
-const STATUTS_DEPENSABLES = ["VALIDEE", "EN_COURS", "VALIDATION_PARTIELLE"];
 
 const commandeSelect = {
   id: true,
@@ -40,6 +38,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       select: {
         id: true,
         numero: true,
+        type: true,
         statut: true,
         modePaiement: true,
         lignes: {
@@ -52,7 +51,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const budgetsAvecReste = [];
     for (const b of budgets) {
-      const depensable = STATUTS_DEPENSABLES.includes(b.statut);
+      // Budget ouvert ET budget signé joint s'il est exigé (sinon aucune ligne n'est proposée).
+      const { depensable, motif } = await etatDepensable(prisma, b);
       const lignes = [];
       if (depensable) {
         for (const l of b.lignes) {
@@ -60,7 +60,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           lignes.push({ id: l.id, designation: l.designation, modePaiement: l.modePaiement, reste: Math.max(d.reste, 0), commandes: l.commandes });
         }
       }
-      budgetsAvecReste.push({ id: b.id, numero: b.numero, statut: b.statut, modePaiement: b.modePaiement, depensable, lignes });
+      budgetsAvecReste.push({ id: b.id, numero: b.numero, statut: b.statut, modePaiement: b.modePaiement, depensable, motif, lignes });
     }
 
     const commandesSansBudget = budgets.length
