@@ -2,7 +2,8 @@ import type { Prisma } from "@prisma/client";
 import { escapeHtml } from "./sendEmail";
 import { notifier, texteBrut } from "@/lib/notifications/notifier";
 import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
-import { getBudgetRecipients } from "@/lib/budgetAuth";
+import { getBudgetRecipients } from "@/lib/budgetDestinataires";
+import prisma from "@/lib/prisma";
 
 export type CommandeFournisseurForEmail = Prisma.CommandeFournisseurGetPayload<{
   include: { lignes: true; fournisseur: true };
@@ -116,6 +117,70 @@ export async function sendCommandeFournisseurValideeNotification(commande: Comma
     to: recipients,
     subject: `Bon de commande ${commande.numero} validé`,
     html: buildBaseHtml({ title: "✅ Bon de commande validé", intro, commande }),
+    message: texteBrut(intro),
+    lien: `/fournisseur/${commande.fournisseurId}/commandes/${commande.id}`,
+  });
+}
+
+/** Contexte budgétaire d'un bon rattaché à une ligne : budget, demandeur et proforma(s) de la campagne. */
+async function contexteBudgetCommande(commande: CommandeFournisseurForEmail) {
+  if (!commande.ligneBudgetId) return null;
+  const ligne = await prisma.demandeBudgetLigne.findUnique({
+    where: { id: commande.ligneBudgetId },
+    select: {
+      designation: true,
+      demandeBudget: {
+        select: {
+          numero: true,
+          requesterEmail: true,
+          proformas: { select: { invoice: { select: { numero: true, objet: true, client: { select: { nom: true } } } } } },
+        },
+      },
+    },
+  });
+  if (!ligne) return null;
+  const proformas = ligne.demandeBudget.proformas.map((p) => `${p.invoice.numero} (${p.invoice.client.nom} — ${p.invoice.objet})`);
+  return { ligne: ligne.designation, budget: ligne.demandeBudget.numero, demandeur: ligne.demandeBudget.requesterEmail, proformas };
+}
+
+/**
+ * Bon de commande rattaché à une ligne de budget accordée : validé d'office et « émis pour
+ * exécution ». Prévient le demandeur du budget, les comptables et la direction.
+ */
+export async function sendCommandeEmiseNotification(commande: CommandeFournisseurForEmail) {
+  const ctx = await contexteBudgetCommande(commande);
+  const [comptables, direction] = await Promise.all([getBudgetRecipients("canPayBudget"), getBudgetRecipients("canValidateBudgetMensuel")]);
+  const to = Array.from(new Set([...(ctx ? [ctx.demandeur] : []), ...comptables, ...direction].map((e) => e.toLowerCase())));
+  if (to.length === 0) return;
+  const activite = ctx?.proformas.length
+    ? ` pour l'exécution de l'activité liée à la proforma ${escapeHtml(ctx.proformas.join(", "))}`
+    : ctx ? ` pour l'exécution de la ligne « ${escapeHtml(ctx.ligne)} » du budget ${escapeHtml(ctx.budget)}` : "";
+  const intro = `Le bon de commande ${escapeHtml(commande.numero)} a été émis${activite} (${escapeHtml(commande.fournisseur.entreprise)}). Il est validé : la ligne de budget est accordée.`;
+  await notifier("BC_EMIS", {
+    to,
+    subject: `Bon de commande ${commande.numero} émis${ctx?.proformas.length ? ` — proforma ${ctx.proformas.map((p) => p.split(" ")[0]).join(", ")}` : ""}`,
+    html: buildBaseHtml({
+      title: "📤 Bon de commande émis",
+      intro,
+      commande,
+      footer: "Le scan du bon de commande signé n'est pas encore joint : aucun paiement ne sera possible avant.",
+    }),
+    message: texteBrut(intro),
+    lien: `/fournisseur/${commande.fournisseurId}/commandes/${commande.id}`,
+  });
+}
+
+/** Bon validé d'office mais scan signé manquant : à imprimer, faire signer et joindre. */
+export async function sendCommandeScanAJoindreNotification(commande: CommandeFournisseurForEmail) {
+  const ctx = await contexteBudgetCommande(commande);
+  const direction = await getBudgetRecipients("canValidateBudgetMensuel");
+  const to = Array.from(new Set([...(ctx ? [ctx.demandeur] : []), ...direction].map((e) => e.toLowerCase())));
+  if (to.length === 0) return;
+  const intro = `Le bon de commande ${escapeHtml(commande.numero)} (${escapeHtml(commande.fournisseur.entreprise)}) est émis mais son scan signé n'est pas joint. Imprimez-le, faites-le signer par la Direction générale, puis joignez le scan sur la fiche du bon. Aucun paiement n'est possible avant.`;
+  await notifier("BC_SCAN_A_JOINDRE", {
+    to,
+    subject: `Bon de commande ${commande.numero} : scan signé à joindre`,
+    html: buildBaseHtml({ title: "✍️ Scan du bon de commande signé à joindre", intro, commande }),
     message: texteBrut(intro),
     lien: `/fournisseur/${commande.fournisseurId}/commandes/${commande.id}`,
   });

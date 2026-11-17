@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { ModePaiementDemande, NatureDepense, Prisma, SourceDepense } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { requireBudgetUser } from "@/lib/budgetAuth";
+import { refusPetiteDepense, requireBudgetUser } from "@/lib/budgetAuth";
 import { saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { cloturerBudgetsMensuelsEchus, seuilsFranchis } from "@/lib/budgetSuivi";
 import { sendAlerteConsommationNotification } from "@/lib/email/demandeBudget";
@@ -49,7 +49,9 @@ export async function POST(
 ) {
   const caps = await requireBudgetUser();
   if (caps instanceof NextResponse) return caps;
-  if (!caps.canPay) {
+  // Comptable (canPay), ou accueil (canPetiteDepense : petites dépenses en espèces, plafonnées —
+  // contrôlées plus bas, une fois le montant connu).
+  if (!caps.canPay && !caps.canPetiteDepense) {
     return NextResponse.json({ error: "Réservé au comptable habilité à enregistrer les dépenses." }, { status: 403 });
   }
 
@@ -83,6 +85,9 @@ export async function POST(
       return NextResponse.json({ error: validation.error.issues[0]?.message ?? "Données invalides." }, { status: 400 });
     }
     const data = validation.data;
+
+    const refusPetite = refusPetiteDepense(caps, data);
+    if (refusPetite) return NextResponse.json({ error: refusPetite }, { status: 403 });
 
     // Justificatif : un fichier, OU une absence déclarée avec motif — jamais un oubli silencieux.
     if (preuves.length === 0 && !data.sansJustificatif) {

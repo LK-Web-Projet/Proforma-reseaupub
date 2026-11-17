@@ -9,7 +9,7 @@ export async function GET() {
   if (!caps) {
     return NextResponse.json({
       email: null, isAdmin: false, isComptable: false,
-      canValidateMensuel: false, canValidate: false, canPay: false, canSaisirCaisse: false, isImplique: false, plafond: 0,
+      canValidateMensuel: false, canValidate: false, canPay: false, canSaisirCaisse: false, canPetiteDepense: false, isImplique: false, plafond: 0, plafondPetiteDepense: 0,
     });
   }
   return NextResponse.json({
@@ -20,6 +20,8 @@ export async function GET() {
     canValidate: caps.canValidate,
     canPay: caps.canPay,
     canSaisirCaisse: caps.canSaisirCaisse,
+    canPetiteDepense: caps.canPetiteDepense,
+    plafondPetiteDepense: caps.plafondPetiteDepense,
     isImplique: isImpliqueBudget(caps),
     plafond: caps.plafond,
   });

@@ -23,7 +23,8 @@ interface FournisseurCommandesProps {
 }
 
 export default function FournisseurCommandes({ fournisseurId }: FournisseurCommandesProps) {
-    const [commandes, setCommandes] = useState<CommandeFournisseur[]>([]);
+    // documents : scans du BC signé seulement (pastille « scan signé manquant »).
+    const [commandes, setCommandes] = useState<(CommandeFournisseur & { documents?: { id: string }[] })[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -126,7 +127,19 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
                         ) : (
                             commandes.map((cmd) => (
                                 <TableRow key={cmd.id}>
-                                    <TableCell className="font-medium">{cmd.numero}</TableCell>
+                                    <TableCell className="font-medium">
+                                        <div className="flex items-center gap-2">
+                                            {cmd.numero}
+                                            {(cmd.statut === "VALIDEE" || cmd.statut === "LIVREE") && (cmd.documents?.length ?? 0) === 0 && (
+                                                <span
+                                                    className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700"
+                                                    title="Le scan du bon de commande signé n'est pas joint : aucun paiement possible."
+                                                >
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Scan signé manquant
+                                                </span>
+                                            )}
+                                        </div>
+                                    </TableCell>
                                     <TableCell>{format(new Date(cmd.dateCommande), "dd/MM/yyyy")}</TableCell>
                                     <TableCell>
                                         <CommandeStatutControl

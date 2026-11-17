@@ -36,11 +36,12 @@ interface Role {
   canValidateBudget: boolean;
   canPayBudget: boolean;
   canSaisirCaisse: boolean;
+  canSaisirPetiteDepense: boolean;
   pages: PageKey[];
   nombreUtilisateurs: number;
 }
 
-type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget" | "canSaisirCaisse";
+type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudget" | "canSaisirCaisse" | "canSaisirPetiteDepense";
 
 // Droits du circuit budget : cochables sur n'importe quel rôle (aucun nom de rôle codé en dur).
 const BUDGET_FLAGS: { key: BudgetFlag; label: string; short: string; description: string }[] = [
@@ -68,6 +69,12 @@ const BUDGET_FLAGS: { key: BudgetFlag; label: string; short: string; description
     short: "Caisse",
     description: "Opérations manuelles, transferts entre caisses, création de caisses, dépenses imputées à une proforma. Sans ce droit, l'argent ne sort que par le circuit budget.",
   },
+  {
+    key: "canSaisirPetiteDepense",
+    label: "Saisir les petites dépenses (espèces, plafonnées)",
+    short: "Petites dép.",
+    description: "Accueil : réparations, imprévus… sur une ligne de budget, en espèces, jusqu'au maximum réglé ci-dessous. Ne paie ni bon de commande ni facture.",
+  },
 ];
 
 const emptyForm = {
@@ -78,6 +85,7 @@ const emptyForm = {
   canValidateBudget: false,
   canPayBudget: false,
   canSaisirCaisse: false,
+  canSaisirPetiteDepense: false,
 };
 
 export default function RolesPage() {
@@ -91,6 +99,9 @@ export default function RolesPage() {
   const [plafond, setPlafond] = useState("");
   const [isSavingPlafond, setIsSavingPlafond] = useState(false);
   const [typesSigne, setTypesSigne] = useState<TypeBudgetValue[]>([]);
+  const [plafondPetite, setPlafondPetite] = useState("");
+  const [liasseExigee, setLiasseExigee] = useState(true);
+  const [isSavingDepenses, setIsSavingDepenses] = useState(false);
   const [isSavingTypesSigne, setIsSavingTypesSigne] = useState(false);
 
   useEffect(() => {
@@ -100,9 +111,34 @@ export default function RolesPage() {
         if (!data) return;
         setPlafond(String(data.plafondValidationDeleguee));
         setTypesSigne(data.typesBudgetSigneRequis ?? []);
+        setPlafondPetite(String(data.plafondPetiteDepense ?? ""));
+        setLiasseExigee(data.liasseExigeePourSolde ?? true);
       })
       .catch(() => undefined);
   }, []);
+
+  const enregistrerReglagesDepenses = async (reglages: { plafondPetiteDepense?: number; liasseExigeePourSolde?: boolean }) => {
+    setIsSavingDepenses(true);
+    try {
+      const res = await fetch("/api/budget-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reglages),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === "string" ? err.error : "Erreur lors de l'enregistrement.");
+      }
+      const data = await res.json();
+      setPlafondPetite(String(data.plafondPetiteDepense));
+      setLiasseExigee(data.liasseExigeePourSolde);
+      toast.success("Réglage enregistré !");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erreur.");
+    } finally {
+      setIsSavingDepenses(false);
+    }
+  };
 
   const handleSaveTypesSigne = async (types: TypeBudgetValue[]) => {
     const precedent = typesSigne;
@@ -189,6 +225,7 @@ export default function RolesPage() {
       canValidateBudget: role.canValidateBudget,
       canPayBudget: role.canPayBudget,
       canSaisirCaisse: role.canSaisirCaisse,
+      canSaisirPetiteDepense: role.canSaisirPetiteDepense,
     });
     setIsModalOpen(true);
   };
@@ -356,6 +393,43 @@ export default function RolesPage() {
               </label>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardContent className="pt-6 space-y-5">
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-medium">Maximum d&apos;une petite dépense (FCFA)</p>
+              <p className="text-xs text-muted-foreground">
+                Avec le droit « Saisir les petites dépenses » (accueil), une dépense hors bon de commande, en espèces, peut être enregistrée
+                jusqu&apos;à ce montant. Au-delà, elle passe par le comptable.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 max-w-sm">
+              <Input type="number" min={0} step="1000" value={plafondPetite} onChange={(e) => setPlafondPetite(e.target.value)} />
+              <Button
+                onClick={() => {
+                  const v = Number(plafondPetite);
+                  if (!Number.isFinite(v) || v < 0) return void toast.error("Montant invalide.");
+                  enregistrerReglagesDepenses({ plafondPetiteDepense: v });
+                }}
+                disabled={isSavingDepenses}
+              >
+                {isSavingDepenses ? "..." : "Enregistrer"}
+              </Button>
+            </div>
+          </div>
+          <label className="flex items-start justify-between gap-4 max-w-xl">
+            <span>
+              <span className="block text-sm font-medium">Exiger la liasse complète pour payer un bon de commande</span>
+              <span className="block text-xs text-muted-foreground">
+                Activé : le solde d&apos;un bon exige le bordereau de livraison (ou l&apos;attestation de service fait) et le rapport, en plus de la
+                facture. Désactivé : la facture suffit. Le scan du bon signé reste toujours exigé.
+              </span>
+            </span>
+            <Switch checked={liasseExigee} disabled={isSavingDepenses} onCheckedChange={(on) => enregistrerReglagesDepenses({ liasseExigeePourSolde: on })} />
+          </label>
         </CardContent>
       </Card>
 

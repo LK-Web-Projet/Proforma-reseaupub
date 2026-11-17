@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { BudgetDepenseDialog, type BudgetDepenseDialogLigne, type CommandeDeLigne, type FacturePrestataire } from "@/components/budget/BudgetDepenseDialog";
 import { ChoixLigneBudgetDialog, type BudgetDepenseOption } from "@/components/depenses/ChoixLigneBudgetDialog";
+import { RentabiliteCampagneCard } from "@/components/proforma/RentabiliteCampagneCard";
 import { etatLiasse, partsLignesCommande, payeSurCommande } from "@/lib/commandeFournisseurLiasse";
 
 type Campagne = {
@@ -63,14 +64,58 @@ type Paiement = {
   reference?: string | null;
   notes?: string | null;
   type: 'PAIEMENT' | 'DEPENSE';
+  /** Dépense reçue de CampTrack sans ligne de budget, sur une campagne qui a un budget. */
+  aRattacherBudget?: boolean;
   cashJournalEntry?: {
     attachments: {
       id: string;
       url: string;
       fileName: string;
     }[];
+    // Origine de la dépense : la même écriture de caisse porte la dépense de budget et le lot.
+    budgetDepense?: {
+      id: string;
+      nature: string;
+      source: string;
+      annuleeAt: string | null;
+      demandeBudget: { id: string; numero: string };
+      ligne: { designation: string };
+      commande: { id: string; numero: string; fournisseurId: string } | null;
+      factureFournisseur: { reference: string } | null;
+      _count: { attachments: number };
+    } | null;
+    lotPaiement?: { reference: string; nbBeneficiaires: number } | null;
   } | null;
 };
+
+/** D'où vient une dépense de la proforma : budget (ligne, bon, facture), CampTrack, ou hors budget. */
+function OrigineDepense({ p }: { p: Paiement }) {
+  if (p.type !== 'DEPENSE') return null;
+  const bd = p.cashJournalEntry?.budgetDepense;
+  const lot = p.cashJournalEntry?.lotPaiement;
+  const pastille = 'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium';
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {bd ? (
+        <a href={`/budget/demandes/${bd.demandeBudget.id}`} className={`${pastille} bg-indigo-50 text-indigo-700 hover:underline`}>
+          Budget {bd.demandeBudget.numero} · {bd.ligne.designation}
+        </a>
+      ) : p.aRattacherBudget ? (
+        <span className={`${pastille} bg-orange-100 text-orange-800`}>À rattacher au budget</span>
+      ) : (
+        <span className={`${pastille} bg-slate-100 text-slate-600`}>Hors budget</span>
+      )}
+      {bd?.commande && (
+        <a href={`/fournisseur/${bd.commande.fournisseurId}/commandes/${bd.commande.id}`} className={`${pastille} bg-blue-50 text-blue-700 hover:underline`}>
+          {bd.nature === 'AVANCE' ? 'Avance' : bd.nature === 'SOLDE' ? 'Solde' : 'BC'} {bd.commande.numero}
+        </a>
+      )}
+      {bd?.factureFournisseur && <span className={`${pastille} bg-blue-50 text-blue-700`}>Facture {bd.factureFournisseur.reference}</span>}
+      {lot && <span className={`${pastille} bg-emerald-50 text-emerald-700`}>CampTrack · lot {lot.reference} ({lot.nbBeneficiaires} bénéf.)</span>}
+      {bd?.annuleeAt && <span className={`${pastille} bg-red-100 text-red-700`}>Annulée</span>}
+    </span>
+  );
+}
 
 type Facture = {
   id: string;
@@ -183,6 +228,9 @@ export default function FactureDetailPage() {
   // les dépenses de budget » (dépense d'une campagne avec budget, sur une de ses lignes).
   const [peutSaisirCaisse, setPeutSaisirCaisse] = useState(false);
   const [peutPayerBudget, setPeutPayerBudget] = useState(false);
+  // Accueil : petites dépenses en espèces, plafonnées (sans le droit comptable).
+  const [plafondPetiteDepense, setPlafondPetiteDepense] = useState<number | null>(null);
+  const [droitsCharges, setDroitsCharges] = useState(false);
   // Dépense : avec budget → choix de la ligne puis même fenêtre que la fiche budget ; sans budget →
   // sortie directe, bon de commande facultatif.
   const [budgetsDepense, setBudgetsDepense] = useState<BudgetDepenseOption[]>([]);
@@ -200,22 +248,54 @@ export default function FactureDetailPage() {
       .then((data) => {
         setPeutSaisirCaisse(!!data?.canSaisirCaisse);
         setPeutPayerBudget(!!data?.canPay);
+        setPlafondPetiteDepense(!data?.canPay && data?.canPetiteDepense ? Number(data.plafondPetiteDepense) : null);
       })
-      .catch(() => setPeutSaisirCaisse(false));
+      .catch(() => setPeutSaisirCaisse(false))
+      .finally(() => setDroitsCharges(true));
   }, []);
 
-  const ouvrirDepense = async () => {
+  // Arrivée depuis la fiche budget (« Saisir sur la proforma ») : ?depense=<ligneId> ouvre
+  // directement la saisie sur cette ligne. Une seule fois.
+  const depenseDemandeeRef = useRef(false);
+  useEffect(() => {
+    if (!droitsCharges || depenseDemandeeRef.current || typeof window === 'undefined') return;
+    const ligneId = new URLSearchParams(window.location.search).get('depense');
+    if (!ligneId) return;
+    depenseDemandeeRef.current = true;
+    void ouvrirDepense(ligneId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [droitsCharges]);
+
+  const ouvrirDepense = async (ligneIdVisee?: string) => {
     try {
       const res = await fetch(`/api/factures/${id}/lignes-depense`);
       const data = res.ok ? await res.json() : null;
       if (!data) throw new Error();
       if (data.aBudget) {
-        if (!peutPayerBudget) {
+        if (!peutPayerBudget && plafondPetiteDepense == null) {
           toast.error("Cette campagne a un budget : ses dépenses sont enregistrées par le comptable (droit « Enregistrer les dépenses de budget »).");
           return;
         }
         setBudgetsDepense(data.budgets);
         setFacturesPrestataires(data.facturesPrestataires ?? []);
+        const budgetsListe = data.budgets as BudgetDepenseOption[];
+        const budgetVise = ligneIdVisee ? budgetsListe.find((b) => b.lignes.some((l) => l.id === ligneIdVisee)) : undefined;
+        const ligneVisee = budgetVise?.lignes.find((l) => l.id === ligneIdVisee);
+        if (budgetVise && ligneVisee) {
+          setDepenseBudget({
+            demandeId: budgetVise.id,
+            modePaiement: budgetVise.modePaiement,
+            ligne: {
+              id: ligneVisee.id,
+              designation: `${ligneVisee.designation} (budget ${budgetVise.numero})`,
+              reste: ligneVisee.reste,
+              modePaiement: ligneVisee.modePaiement,
+              commandes: ligneVisee.commandes,
+              facturesPrestataires: (data.facturesPrestataires ?? []).filter((f: FacturePrestataire) => !f.ligneBudgetId || f.ligneBudgetId === ligneVisee.id),
+            },
+          });
+          return;
+        }
         setChoixLigneOuvert(true);
         return;
       }
@@ -756,8 +836,8 @@ export default function FactureDetailPage() {
                                 <PlusCircle className="w-4 h-4 mr-2" /> Paiement
                             </Button>
                         )}
-                        {(peutSaisirCaisse || peutPayerBudget) && (
-                            <Button size="sm" variant="outline" onClick={ouvrirDepense}>
+                        {(peutSaisirCaisse || peutPayerBudget || plafondPetiteDepense != null) && (
+                            <Button size="sm" variant="outline" onClick={() => ouvrirDepense()}>
                                 <PlusCircle className="w-4 h-4 mr-2" /> Dépense
                             </Button>
                         )}
@@ -794,6 +874,7 @@ export default function FactureDetailPage() {
                                                     </Tooltip>
                                                 </TooltipProvider>
                                                 <span className="text-[10px] text-muted-foreground uppercase">{p.methode || "-"}</span>
+                                                <OrigineDepense p={p} />
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right font-bold text-green-600 whitespace-nowrap">{p.type === 'PAIEMENT' ? formatMoney(p.montant) : ""}</TableCell>
@@ -954,6 +1035,9 @@ export default function FactureDetailPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Rentabilité : toutes les dépenses de la campagne, quelle que soit leur origine. */}
+            {!isEditing && <RentabiliteCampagneCard invoiceId={facture.id} version={facture.paiements?.length ?? 0} />}
 
             {/* Financial Summary */}
             <Card className="border-none shadow-lg bg-primary text-white overflow-hidden relative">
@@ -1186,6 +1270,7 @@ export default function FactureDetailPage() {
         proformas={[{ id: facture.id, numero: facture.numero, objet: facture.objet }]}
         defaultModePaiement={depenseBudget?.modePaiement ?? 'VIREMENT'}
         depuisProforma
+        plafondPetiteDepense={plafondPetiteDepense}
         onClose={() => setDepenseBudget(null)}
         onSuccess={fetchFacture}
       />

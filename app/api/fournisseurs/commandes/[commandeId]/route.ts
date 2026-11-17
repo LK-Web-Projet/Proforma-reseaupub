@@ -5,9 +5,13 @@ import { getBudgetCapabilities } from "@/lib/budgetAuth";
 import { requirePage } from "@/lib/authz";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import { StatutCommandeFournisseur } from "@prisma/client";
-import { refusLigneBudgetCommande, TRANSITIONS_COMMANDE } from "@/lib/commandeFournisseurSuivi";
+import { refusLigneBudgetCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
 import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
-import { sendCommandeFournisseurValideeNotification } from "@/lib/email/commandeFournisseur";
+import {
+    sendCommandeEmiseNotification,
+    sendCommandeFournisseurValideeNotification,
+    sendCommandeScanAJoindreNotification,
+} from "@/lib/email/commandeFournisseur";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
@@ -118,8 +122,9 @@ const patchSchema = z.object({
 
 // PATCH /api/fournisseurs/commandes/[commandeId] — statut et/ou ligne de budget, section
 // « Prestataires » requise. Statut : BROUILLON → VALIDEE → LIVREE, ANNULEE depuis BROUILLON ou
-// VALIDEE (sans paiement), jamais de retour en arrière. VALIDEE = signé par la DG : réservé au
-// droit « Valider les budgets mensuels » et seulement une fois le scan du BC signé joint.
+// VALIDEE (sans paiement), jamais de retour en arrière. Un brouillon rattaché à une ligne de budget
+// ACCORDÉE est validé d'office (validationAutomatiqueCommande) ; sinon, VALIDEE = signé par la DG :
+// réservé au droit « Valider les budgets mensuels » et seulement une fois le scan du BC signé joint.
 export async function PATCH(
     request: Request,
     { params }: { params: Promise<{ commandeId: string }> }
@@ -149,6 +154,7 @@ export async function PATCH(
         }
 
         const data: { statut?: StatutCommandeFournisseur; ligneBudgetId?: string | null } = {};
+        let emisSurBudget = false;
 
         if (ligneBudgetId !== undefined && ligneBudgetId !== actuelle.ligneBudgetId) {
             if (actuelle.imputations.length > 0) {
@@ -157,6 +163,13 @@ export async function PATCH(
             const refusLigne = await refusLigneBudgetCommande(prisma, ligneBudgetId);
             if (refusLigne) return NextResponse.json({ error: refusLigne }, { status: 400 });
             data.ligneBudgetId = ligneBudgetId;
+            // Ligne accordée : contrôle de l'engagement, et un brouillon est validé d'office.
+            const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId, montantNet: Number(actuelle.montantNet), commandeIdExclu: actuelle.id });
+            if (auto.refus) return NextResponse.json({ error: auto.refus }, { status: 400 });
+            if (auto.valider && actuelle.statut === StatutCommandeFournisseur.BROUILLON && !nouveauStatut) {
+                data.statut = StatutCommandeFournisseur.VALIDEE;
+                emisSurBudget = true;
+            }
         }
 
         if (nouveauStatut && nouveauStatut !== actuelle.statut) {
@@ -186,7 +199,16 @@ export async function PATCH(
             include: commandeInclude,
         });
 
-        if (data.statut === StatutCommandeFournisseur.VALIDEE) {
+        if (emisSurBudget) {
+            sendCommandeEmiseNotification(updatedCommande).catch((err) =>
+                console.error("Erreur lors de la notification de bon de commande émis:", err)
+            );
+            if (!etatLiasse(actuelle.documents).bcSigne) {
+                sendCommandeScanAJoindreNotification(updatedCommande).catch((err) =>
+                    console.error("Erreur lors du rappel de scan du bon de commande:", err)
+                );
+            }
+        } else if (data.statut === StatutCommandeFournisseur.VALIDEE) {
             sendCommandeFournisseurValideeNotification(updatedCommande).catch((err) =>
                 console.error("Erreur lors de la notification de bon de commande validé:", err)
             );
@@ -215,7 +237,7 @@ export async function PUT(
     try {
         const commandeActuelle = await prisma.commandeFournisseur.findUnique({
             where: { id: commandeId },
-            select: { statut: true },
+            select: { statut: true, ligneBudgetId: true, documents: { select: { kind: true } } },
         });
         if (!commandeActuelle) {
             return NextResponse.json({ error: "Bon de commande introuvable" }, { status: 404 });
@@ -285,6 +307,13 @@ export async function PUT(
             validatedData.appliquerAib
         );
 
+        // Ligne de budget accordée : contrôle de l'engagement, et le brouillon est validé d'office.
+        const ligneVisee = validatedData.ligneBudgetId !== undefined ? validatedData.ligneBudgetId : commandeActuelle.ligneBudgetId;
+        const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId: ligneVisee, montantNet, commandeIdExclu: commandeId });
+        if (auto.refus) {
+            return NextResponse.json({ error: auto.refus }, { status: 400 });
+        }
+
         const updatedCommande = await prisma.$transaction(async (tx) => {
             await tx.ligneCommandeFournisseur.deleteMany({ where: { commandeId } });
             await tx.commandeFournisseurProforma.deleteMany({ where: { commandeId } });
@@ -294,6 +323,7 @@ export async function PUT(
                 data: {
                     dateCommande: validatedData.dateCommande || undefined,
                     ...(validatedData.ligneBudgetId !== undefined ? { ligneBudgetId: validatedData.ligneBudgetId } : {}),
+                    ...(auto.valider ? { statut: StatutCommandeFournisseur.VALIDEE } : {}),
                     totalHT,
                     appliquerTva: validatedData.appliquerTva,
                     tva,
@@ -309,6 +339,17 @@ export async function PUT(
                 include: commandeInclude,
             });
         });
+
+        if (auto.valider) {
+            sendCommandeEmiseNotification(updatedCommande).catch((err) =>
+                console.error("Erreur lors de la notification de bon de commande émis:", err)
+            );
+            if (!etatLiasse(commandeActuelle.documents).bcSigne) {
+                sendCommandeScanAJoindreNotification(updatedCommande).catch((err) =>
+                    console.error("Erreur lors du rappel de scan du bon de commande:", err)
+                );
+            }
+        }
 
         return NextResponse.json(updatedCommande);
     } catch (error) {

@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
+import { PayerFactureDialog, type CiblePaiement } from '@/components/fournisseurs/PayerFactureDialog';
 import { cn } from '@/lib/utils';
 import {
   etatLiasse,
@@ -93,6 +94,8 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
   const [pieceType, setPieceType] = useState<TypeDocumentCommandeValue | null>(null);
   const [factureOuverte, setFactureOuverte] = useState(false);
   const [ligneOuverte, setLigneOuverte] = useState(false);
+  const [paiement, setPaiement] = useState<CiblePaiement | null>(null);
+  const payable = (commande.statut === 'VALIDEE' || commande.statut === 'LIVREE') && !!commande.ligneBudget && reste > 0.004;
 
   const pieces: { libelle: string; ok: boolean; kind: TypeDocumentCommandeValue }[] = [
     { libelle: 'Bon de commande signé (DG)', ok: liasse.bcSigne, kind: 'BC_SIGNE' },
@@ -130,6 +133,22 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
             </Button>
           )}
         </div>
+
+        {/* Bon émis sans son scan signé : en rouge, rien n'est payable avant. */}
+        {!liasse.bcSigne && (commande.statut === 'VALIDEE' || commande.statut === 'LIVREE') && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-md border-2 border-red-500 bg-red-50 p-3">
+            <div className="flex-1">
+              <p className="font-semibold text-red-800">Scan du bon de commande signé à joindre</p>
+              <p className="text-xs text-red-900/80">
+                Ce bon est émis (ligne de budget accordée), mais le scan signé par la Direction générale n&apos;est pas joint. Aucune
+                avance ni aucun solde ne peut être payé avant.
+              </p>
+            </div>
+            <Button size="sm" className="gap-1 shrink-0" onClick={() => setPieceType('BC_SIGNE')}>
+              <Paperclip className="h-3.5 w-3.5" /> Joindre le BC signé
+            </Button>
+          </div>
+        )}
 
         {/* Liasse */}
         <div className="space-y-2">
@@ -185,6 +204,11 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                     {f.status === 'PAYEE' ? 'Payée' : f.status === 'ANNULEE' ? 'Annulée' : 'À payer'}
                   </Badge>
                   {f.pieceJointe ? <AttachmentPreviewButton url={f.pieceJointe} title={f.reference} /> : <span className="text-[11px] text-amber-700">sans pièce</span>}
+                  {f.status === 'EN_ATTENTE' && payable && (
+                    <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => setPaiement({ type: 'facture', id: f.id })}>
+                      <Wallet className="h-3 w-3" /> Payer
+                    </Button>
+                  )}
                 </span>
               </div>
             ))
@@ -193,7 +217,14 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
 
         {/* Paiements */}
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground uppercase">Paiements (depuis le budget)</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground uppercase">Paiements (depuis le budget)</p>
+            {payable && (
+              <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => setPaiement({ type: 'avance', id: commande.id })}>
+                <Wallet className="h-3 w-3" /> Verser une avance
+              </Button>
+            )}
+          </div>
           <div className="grid grid-cols-3 gap-2">
             <div><p className="text-[11px] text-muted-foreground">Montant net</p><p className="font-semibold">{fcfa(Number(commande.montantNet))}</p></div>
             <div><p className="text-[11px] text-muted-foreground">Payé</p><p className="font-semibold">{fcfa(paye)}</p></div>
@@ -244,7 +275,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
           })}
           {paiements.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              L&apos;avance et le solde se paient depuis la fiche du budget (bouton « Dépense » sur la ligne), une fois le bon validé et signé.
+              L&apos;avance se verse ici (« Verser une avance ») ; le solde se paie depuis la facture (« Payer », ou liste des factures → « Appliquer le paiement »), une fois le scan du bon signé joint.
             </p>
           )}
         </div>
@@ -253,6 +284,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
       <PieceDialog commandeId={commande.id} kind={pieceType} onClose={() => setPieceType(null)} onSuccess={onChange} />
       <FactureDialog commande={commande} open={factureOuverte} onClose={() => setFactureOuverte(false)} onSuccess={onChange} />
       <LigneBudgetDialog commande={commande} open={ligneOuverte} onClose={() => setLigneOuverte(false)} onSuccess={onChange} />
+      <PayerFactureDialog cible={paiement} open={!!paiement} onClose={() => setPaiement(null)} onPaye={onChange} />
     </Card>
   );
 }

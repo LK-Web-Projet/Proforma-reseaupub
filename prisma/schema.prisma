@@ -20,6 +20,9 @@ model Role {
   // création de caisses, dépenses imputées à une proforma. Sans ce droit, aucun argent ne sort
   // autrement que par le circuit budget (procédure de paiement, règle d'or n° 2).
   canSaisirCaisse          Boolean    @default(false)
+  // Petites dépenses hors bon (accueil) : sur une ligne de budget, en espèces seulement, jusqu'à
+  // EntrepriseConfig.plafondPetiteDepense. Ne permet ni de payer un BC ni une facture.
+  canSaisirPetiteDepense   Boolean    @default(false)
   createdAt                DateTime   @default(now())
   pages                    RolePage[]
   users                    User[]
@@ -70,6 +73,10 @@ model EntrepriseConfig {
   // Types de budget dont le scan signé (document BUDGET_SIGNE) est exigé : tant qu’il manque, le
   // budget reste en VALIDATION_PARTIELLE et ses lignes accordées ne sont pas dépensables.
   typesBudgetSigneRequis    TypeBudget[] @default([CAMPAGNE, MENSUEL])
+  // Montant maximum d'une petite dépense saisie avec le droit canSaisirPetiteDepense.
+  plafondPetiteDepense      Decimal      @default(50000) @db.Decimal(12, 2)
+  // Solde d'un bon de commande : exiger la liasse complète (bordereau ou attestation + rapport).
+  liasseExigeePourSolde     Boolean      @default(true)
   updatedAt                 DateTime     @updatedAt
 }
 

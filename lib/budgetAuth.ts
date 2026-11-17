@@ -24,7 +24,10 @@ export interface BudgetCapabilities {
   canValidate: boolean;
   canPay: boolean;
   canSaisirCaisse: boolean;
+  /** Petites dépenses hors bon (accueil) : espèces, jusqu'à plafondPetiteDepense. */
+  canPetiteDepense: boolean;
   plafond: number;
+  plafondPetiteDepense: number;
 }
 
 export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null> {
@@ -55,7 +58,9 @@ export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null
     canValidate: !!role?.canValidateBudget,
     canPay: !!role?.canPayBudget,
     canSaisirCaisse: !!role?.canSaisirCaisse,
+    canPetiteDepense: !!role?.canSaisirPetiteDepense,
     plafond: Number(config.plafondValidationDeleguee),
+    plafondPetiteDepense: Number(config.plafondPetiteDepense),
   };
 }
 
@@ -70,7 +75,26 @@ export async function getCurrentUserIdentity(): Promise<{ email: string | null; 
 
 /** Vrai si l'utilisateur intervient dans le circuit (voit toutes les demandes, pas seulement les siennes). */
 export function isImpliqueBudget(caps: BudgetCapabilities): boolean {
-  return caps.canValidateMensuel || caps.canValidate || caps.canPay;
+  return caps.canValidateMensuel || caps.canValidate || caps.canPay || caps.canPetiteDepense;
+}
+
+/**
+ * Petite dépense (droit « accueil », sans le droit comptable) : hors bon de commande et hors
+ * facture, en espèces, au plus plafondPetiteDepense. Renvoie le motif de refus, sinon null.
+ * Le comptable (canPay) n'est pas concerné.
+ */
+export function refusPetiteDepense(
+  caps: BudgetCapabilities,
+  d: { montant: number; modePaiement: string; commandeId?: string | null; factureFournisseurId?: string | null }
+): string | null {
+  if (caps.canPay) return null;
+  if (!caps.canPetiteDepense) return "Réservé au comptable habilité à enregistrer les dépenses.";
+  if (d.commandeId || d.factureFournisseurId) return "Le paiement d'un bon de commande ou d'une facture est réservé au comptable.";
+  if (d.modePaiement !== "ESPECES") return "Les petites dépenses se règlent en espèces.";
+  if (d.montant > caps.plafondPetiteDepense + 0.005) {
+    return `Montant au-dessus du maximum des petites dépenses (${caps.plafondPetiteDepense.toLocaleString("fr-FR")} FCFA) : faites-la enregistrer par le comptable.`;
+  }
+  return null;
 }
 
 export function isSameEmail(a: string | null | undefined, b: string | null | undefined): boolean {

@@ -70,12 +70,20 @@ export async function GET(
       return NextResponse.json({ error: "Accès refusé à cette demande." }, { status: 403 });
     }
 
-    // Dépenses reçues de Camptrack (ancien appel, sans ligne) sur une proforma de ce budget : à rattacher.
-    const depensesARattacher = await prisma.paiement.findMany({
-      where: { aRattacherBudget: true, invoiceId: { in: demande.proformas.map((p) => p.invoiceId) } },
-      orderBy: { datePaiement: "asc" },
-      select: { id: true, montant: true, datePaiement: true, reference: true, invoice: { select: { numero: true } }, cashJournalEntry: { select: { id: true, libelle: true, cashRegister: { select: { name: true } } } } },
-    });
+    // Dépenses d'une proforma de ce budget qui ne sont sur aucun budget : reçues de Camptrack par
+    // l'ancien appel (sans ligne), ou saisies sur la proforma avant le budget. À rattacher.
+    const depensesARattacher = (
+      await prisma.paiement.findMany({
+        where: {
+          type: "DEPENSE",
+          montant: { gt: 0 },
+          invoiceId: { in: demande.proformas.map((p) => p.invoiceId) },
+          cashJournalEntry: { is: { budgetDepense: { is: null } } },
+        },
+        orderBy: { datePaiement: "asc" },
+        select: { id: true, montant: true, datePaiement: true, reference: true, aRattacherBudget: true, invoice: { select: { numero: true } }, cashJournalEntry: { select: { id: true, libelle: true, cashRegister: { select: { name: true } } } } },
+      })
+    ).map(({ aRattacherBudget, ...p }) => ({ ...p, origine: aRattacherBudget ? ("CAMPTRACK" as const) : ("PROFORMA" as const) }));
 
     // Factures de prestataires internes / externes payables sur les lignes de ce budget.
     const facturesPrestataires = await facturesPrestatairesPayables(prisma, demande.lignes.map((l) => l.id));

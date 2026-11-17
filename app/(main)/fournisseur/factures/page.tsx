@@ -12,6 +12,7 @@ import { FournisseurCombobox, Fournisseur } from '@/components/FournisseurCombob
 import { FournisseurModal } from '@/components/FournisseurModal';
 import { FactureFournisseurModal } from '@/components/FactureFournisseurModal';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
+import { PayerFactureDialog } from '@/components/fournisseurs/PayerFactureDialog';
 import { FactureFournisseurStatusBadge, StatusDot } from '@/components/FactureFournisseurStatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -72,6 +73,9 @@ export default function FacturesListPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isFournisseurModalOpen, setIsFournisseurModalOpen] = useState(false);
   const [editingFacture, setEditingFacture] = useState<FactureFournisseur | null>(null);
+  // « Appliquer le paiement » : c'est ici que se paient les factures (fournisseur via son BC,
+  // prestataire interne / externe via une ligne de budget).
+  const [factureAPayer, setFactureAPayer] = useState<string | null>(null);
 
   // Fetch all suppliers for the filter dropdown and the add-invoice modal
   const fetchFournisseurs = useCallback(async () => {
@@ -214,6 +218,7 @@ export default function FacturesListPage() {
         onClose={() => setIsFournisseurModalOpen(false)}
         onSuccess={handleFournisseurCreated}
       />
+      <PayerFactureDialog cible={factureAPayer ? { type: 'facture', id: factureAPayer } : null} open={!!factureAPayer} onClose={() => setFactureAPayer(null)} onPaye={fetchFactures} />
       <FactureFournisseurModal
         isOpen={!!editingFacture}
         onClose={() => setEditingFacture(null)}
@@ -405,6 +410,12 @@ export default function FacturesListPage() {
                     <AttachmentPreviewButton url={facture.pieceJointe} title={`Facture ${facture.reference}`} />
                   </TableCell>
                   <TableCell className="text-center">
+                    <div className="flex items-center justify-center gap-2">
+                    {facture.status === 'EN_ATTENTE' && (
+                      <Button size="sm" className="h-8 gap-1" onClick={() => setFactureAPayer(facture.id)}>
+                        <Wallet className="h-3.5 w-3.5" /> Appliquer le paiement
+                      </Button>
+                    )}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -415,6 +426,7 @@ export default function FacturesListPage() {
                         <TooltipContent>{isLocked ? 'Voir la facture' : 'Modifier la facture'}</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
+                    </div>
                   </TableCell>
                 </TableRow>
               );})

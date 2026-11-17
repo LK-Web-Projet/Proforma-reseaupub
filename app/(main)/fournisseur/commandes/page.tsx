@@ -34,7 +34,13 @@ interface CommandeFournisseur {
   fournisseurId: string;
   fournisseur: Fournisseur;
   lignes: LigneCommande[];
+  /** Scans du BC signé (seuls ceux-là sont renvoyés par la liste). */
+  documents?: { id: string }[];
 }
+
+// Bon émis (validé, livré) dont le scan signé n'est pas joint : aucun paiement possible avant.
+const scanSigneManquant = (c: CommandeFournisseur) =>
+  (c.statut === 'VALIDEE' || c.statut === 'LIVREE') && (c.documents?.length ?? 0) === 0;
 
 const formatMontant = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value);
@@ -286,7 +292,19 @@ export default function CommandesFournisseursListPage() {
                         <span className="truncate max-w-[160px]">{commande.fournisseur.entreprise}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-sm">{commande.numero}</TableCell>
+                    <TableCell className="font-mono text-sm">
+                      <div className="flex items-center gap-2">
+                        {commande.numero}
+                        {scanSigneManquant(commande) && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 font-sans text-[10px] font-semibold text-red-700"
+                            title="Le scan du bon de commande signé n'est pas joint : aucun paiement possible."
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Scan signé manquant
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">{format(new Date(commande.dateCommande), 'dd/MM/yyyy')}</TableCell>
                     <TableCell className="text-center">{commande.lignes.length}</TableCell>
                     <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(commande.montantNet))}</TableCell>

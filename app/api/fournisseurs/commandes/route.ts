@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { sendCommandeFournisseurCreeeNotification } from "@/lib/email/commandeFournisseur";
+import {
+    sendCommandeEmiseNotification,
+    sendCommandeFournisseurCreeeNotification,
+    sendCommandeScanAJoindreNotification,
+} from "@/lib/email/commandeFournisseur";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import { requirePage } from "@/lib/authz";
 import { Prisma } from "@prisma/client";
-import { prochainNumeroCommande, refusLigneBudgetCommande } from "@/lib/commandeFournisseurSuivi";
+import { prochainNumeroCommande, refusLigneBudgetCommande, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
@@ -45,6 +49,8 @@ export async function GET(request: Request) {
                 fournisseur: true,
                 lignes: true,
                 proformas: { include: { invoice: { include: { client: true } } } },
+                // Pastille « scan signé manquant » dans la liste.
+                documents: { where: { kind: "BC_SIGNE" }, select: { id: true } },
             },
             orderBy: {
                 dateCommande: "desc",
@@ -138,6 +144,13 @@ export async function POST(request: Request) {
             validatedData.appliquerAib
         );
 
+        // 3ter. Rattaché à une ligne de budget accordée : validé d'office (la ligne accordée vaut
+        // accord de dépense), s'il tient dans ce qui reste à engager sur la ligne.
+        const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId: validatedData.ligneBudgetId, montantNet });
+        if (auto.refus) {
+            return NextResponse.json({ error: auto.refus }, { status: 400 });
+        }
+
         // 4. Création — numéro attribué dans la transaction ; un doublon simultané (contrainte
         // d'unicité) relance l'attribution.
         const creer = () => prisma.$transaction(async (tx) => tx.commandeFournisseur.create({
@@ -146,7 +159,7 @@ export async function POST(request: Request) {
                 ligneBudgetId: validatedData.ligneBudgetId || null,
                 dateCommande: validatedData.dateCommande || new Date(),
                 fournisseurId: validatedData.fournisseurId,
-                statut: "BROUILLON",
+                statut: auto.valider ? "VALIDEE" : "BROUILLON",
                 totalHT: totalHT,
                 appliquerTva: validatedData.appliquerTva,
                 tva,
@@ -178,9 +191,19 @@ export async function POST(request: Request) {
         }
         if (!commande) throw new Error("Impossible d'attribuer un numéro au bon de commande.");
 
-        sendCommandeFournisseurCreeeNotification(commande).catch((err) =>
-            console.error("Erreur lors de l'envoi de la notification de bon de commande créé:", err)
-        );
+        if (auto.valider) {
+            // Émis pour exécution ; le scan signé reste à joindre (pas de paiement sans lui).
+            sendCommandeEmiseNotification(commande).catch((err) =>
+                console.error("Erreur lors de l'envoi de la notification de bon de commande émis:", err)
+            );
+            sendCommandeScanAJoindreNotification(commande).catch((err) =>
+                console.error("Erreur lors de l'envoi du rappel de scan du bon de commande:", err)
+            );
+        } else {
+            sendCommandeFournisseurCreeeNotification(commande).catch((err) =>
+                console.error("Erreur lors de l'envoi de la notification de bon de commande créé:", err)
+            );
+        }
 
         return NextResponse.json(commande, { status: 201 });
 

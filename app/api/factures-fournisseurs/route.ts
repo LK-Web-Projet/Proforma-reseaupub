@@ -5,7 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
 import { safeCreatedById } from "@/lib/authz";
 import { exigeBonDeCommande } from "@/lib/typeFournisseur";
-import { refusLigneBudgetCommande } from "@/lib/commandeFournisseurSuivi";
+import { refusLigneBudgetCommande, refusMontantFactureCommande } from "@/lib/commandeFournisseurSuivi";
 
 // GET /api/factures-fournisseurs - Récupérer toutes les factures fournisseurs
 export async function GET(req: NextRequest) {
@@ -178,6 +178,12 @@ export async function POST(req: NextRequest) {
         { message: "La date saisie est invalide." },
         { status: 400 },
       );
+    }
+
+    // Facture d'un bon de commande : même montant que le bon, une seule facture active par bon.
+    if (commandeId) {
+      const refusMontant = await refusMontantFactureCommande(prisma, { commandeId, montant: montantNumber });
+      if (refusMontant) return NextResponse.json({ message: refusMontant }, { status: 400 });
     }
 
     const existing = await prisma.factureFournisseur.findUnique({

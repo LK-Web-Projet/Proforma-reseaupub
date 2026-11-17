@@ -37,6 +37,8 @@ export const EVENEMENTS_NOTIFICATION = {
   PROFORMA_ENCAISSEMENT: { groupe: "Proformas", libelle: "Encaissement sur une proforma", destinataires: "Administrateurs" },
   BC_CREE: { groupe: "Fournisseurs", libelle: "Bon de commande créé (à signer)", destinataires: "Direction (valide les budgets mensuels)" },
   BC_VALIDE: { groupe: "Fournisseurs", libelle: "Bon de commande signé et validé", destinataires: "Comptables" },
+  BC_EMIS: { groupe: "Fournisseurs", libelle: "Bon de commande émis sur une ligne de budget (validé d'office)", destinataires: "Demandeur du budget, comptables et direction" },
+  BC_SCAN_A_JOINDRE: { groupe: "Fournisseurs", libelle: "Scan du bon de commande signé à joindre", destinataires: "Demandeur du budget et direction" },
 } as const satisfies Record<string, EvenementMeta>;
 
 export type EvenementNotification = keyof typeof EVENEMENTS_NOTIFICATION;

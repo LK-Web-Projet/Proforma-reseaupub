@@ -87,6 +87,9 @@ interface BudgetRole {
   canValidateMensuel: boolean;
   canValidate: boolean;
   canPay: boolean;
+  /** Petites dépenses (accueil) : espèces, jusqu'à plafondPetiteDepense. */
+  canPetiteDepense?: boolean;
+  plafondPetiteDepense?: number;
   isImplique: boolean;
   plafond: number;
 }
@@ -448,7 +451,9 @@ export default function DemandeBudgetDetailPage() {
   // aucune dépense n'est possible (le serveur le refuse aussi).
   const budgetSigneJoint = demande.attachments.some((a) => !a.depenseId && a.kind === 'BUDGET_SIGNE');
   const signatureAttendue = enValidation && !!demande.budgetSigneRequis && !budgetSigneJoint;
-  const peutEnregistrerDepense = budgetOuvert && role.canPay && !estValideur && !signatureAttendue;
+  // Comptable, ou accueil (petites dépenses en espèces, plafonnées).
+  const peutEnregistrerDepense = budgetOuvert && (role.canPay || !!role.canPetiteDepense) && !estValideur && !signatureAttendue;
+  const plafondPetiteDepense = !role.canPay && role.canPetiteDepense ? role.plafondPetiteDepense ?? 0 : null;
   // Dépassement : budget ouvert, ou entièrement consommé mais pas clôturé.
   const peutDemanderDepassement =
     (role.canPay || estDemandeur) &&
@@ -838,7 +843,15 @@ export default function DemandeBudgetDetailPage() {
                             </Button>
                           </>
                         )}
-                        {peutEnregistrerDepense && l.statutValidation === 'ACCORDEE' && (
+                        {/* Budget lié à une proforma : les dépenses se saisissent sur la proforma (un seul chemin). */}
+                        {peutEnregistrerDepense && l.statutValidation === 'ACCORDEE' && demande.proformas.length > 0 && (
+                          <Button size="sm" variant="outline" className="gap-1" asChild>
+                            <Link href={`/facture/${demande.proformas[0].invoice.id}?depense=${l.id}`} title="Les dépenses de cette campagne se saisissent sur sa proforma">
+                              <Wallet className="h-3.5 w-3.5" /> Saisir sur la proforma
+                            </Link>
+                          </Button>
+                        )}
+                        {peutEnregistrerDepense && l.statutValidation === 'ACCORDEE' && demande.proformas.length === 0 && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -1166,6 +1179,7 @@ export default function DemandeBudgetDetailPage() {
         ligne={depenseLigne}
         proformas={proformasOptions}
         defaultModePaiement={demande.modePaiement}
+        plafondPetiteDepense={plafondPetiteDepense}
         onClose={() => setDepenseLigne(null)}
         onSuccess={fetchDemande}
       />

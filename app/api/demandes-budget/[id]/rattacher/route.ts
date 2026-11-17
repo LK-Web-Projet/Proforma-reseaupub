@@ -15,7 +15,8 @@ const schema = z.object({
 
 /**
  * POST /api/demandes-budget/[id]/rattacher — le comptable rattache à une ligne de ce budget une
- * dépense reçue de Camptrack par l'ancien appel (sans ligne de budget) sur une proforma du budget.
+ * dépense d'une proforma du budget qui n'est sur aucun budget : reçue de Camptrack par l'ancien appel
+ * (sans ligne), ou saisie sur la proforma avant que le budget n'existe.
  * Crée la dépense de budget à partir de l'écriture de caisse EXISTANTE (aucun nouveau mouvement de
  * caisse), avec les contrôles habituels (ligne accordée, plafond, séparation des tâches).
  */
@@ -37,12 +38,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await tx.$queryRaw`SELECT id FROM "paiements" WHERE id = ${data.paiementId} FOR UPDATE`;
       const paiement = await tx.paiement.findUnique({
         where: { id: data.paiementId },
-        include: { cashJournalEntry: { select: { id: true, cashRegisterId: true, libelle: true } } },
+        include: { cashJournalEntry: { select: { id: true, cashRegisterId: true, libelle: true, budgetDepense: { select: { id: true } }, _count: { select: { attachments: true } } } } },
       });
       if (!paiement || paiement.type !== PaiementType.DEPENSE || !paiement.cashJournalEntry) {
         throw new DepenseError("Dépense introuvable.");
       }
-      if (!paiement.aRattacherBudget) throw new DepenseError("Cette dépense est déjà rattachée à un budget.");
+      if (paiement.cashJournalEntry.budgetDepense || Number(paiement.montant) <= 0) {
+        throw new DepenseError("Cette dépense est déjà rattachée à un budget.");
+      }
+      const camptrack = paiement.aRattacherBudget;
 
       const { ligne, demande } = await controlerLigneBudget(tx, {
         ligneBudgetId: data.ligneId,
@@ -61,16 +65,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           ligneId: ligne.id,
           montant: paiement.montant,
           dateDepense: paiement.datePaiement,
-          nomReceveur: data.nomReceveur || "Prestataires (Camptrack)",
+          nomReceveur: data.nomReceveur || (camptrack ? "Prestataires (Camptrack)" : paiement.reference || "Dépense de la proforma"),
           modePaiement: data.modePaiement,
           notes: paiement.cashJournalEntry.libelle,
           cashRegisterId: paiement.cashJournalEntry.cashRegisterId,
           cashJournalEntryId: paiement.cashJournalEntry.id,
           invoiceId: paiement.invoiceId,
-          source: SourceDepense.CAMPTRACK,
-          referenceExterne: paiement.reference,
-          // Les états signés et l'historique des transferts sont tenus dans Camptrack.
-          sansJustificatif: false,
+          source: camptrack ? SourceDepense.CAMPTRACK : SourceDepense.PROFORMA,
+          referenceExterne: camptrack ? paiement.reference : null,
+          // Camptrack : états signés et historique des transferts tenus dans Camptrack. Dépense de la
+          // proforma : son justificatif éventuel est déjà sur l'écriture de caisse.
+          sansJustificatif: !camptrack && paiement.cashJournalEntry._count.attachments === 0,
+          motifSansJustificatif:
+            !camptrack && paiement.cashJournalEntry._count.attachments === 0 ? "Dépense saisie sur la proforma avant le budget, sans justificatif." : null,
           createdByEmail: caps.email,
         },
       });
@@ -86,7 +93,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         auteurEmail: caps.email,
         auteurNom: caps.name,
         montant: Number(paiement.montant),
-        details: `${ligne.designation} — dépense Camptrack rattachée (écriture n° ${paiement.cashJournalEntry.id})`,
+        details: `${ligne.designation} — dépense ${camptrack ? "Camptrack" : "de la proforma (antérieure au budget)"} rattachée (écriture n° ${paiement.cashJournalEntry.id})`,
       });
       await recalculerStatutBudget(tx, demande.id);
       return created;

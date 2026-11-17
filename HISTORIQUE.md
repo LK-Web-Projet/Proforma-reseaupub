@@ -22,6 +22,83 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-19 — Tout passe par le budget : qui saisit quoi, où, sans doublon
+
+**Demande / Contexte**
+L'utilisateur a rappelé le processus complet :
+1. la proforma est validée ;
+2. le budget est lié à la proforma ;
+3. un bon de commande est émis sur une ligne du budget ;
+4. la facture du fournisseur arrive, du même montant que le bon ;
+5. le comptable applique le paiement, qui consomme le budget, passe l'écriture de caisse et passe la facture « payée » ;
+6. l'accueil saisit les petites dépenses en espèces ;
+7. les prestataires internes sont payés sur le budget mensuel ;
+8. CampTrack passe par la proforma.
+
+Objectif : centraliser les dépenses d'une campagne sur sa proforma (marge, rentabilité), avec **un seul chemin de saisie par cas** et **aucun doublon**.
+
+Décisions de l'utilisateur :
+- BC rattaché à une ligne de budget : validé dès sa création. La partie « scan signé » est en rouge, une notification part, et une pastille s'affiche dans la liste.
+- Facture = montant du BC.
+- Accueil : droit plafonné, en espèces.
+- Budget lié à une proforma : consultation sur la fiche budget, saisie sur la proforma.
+- Paiement des factures depuis la liste des factures.
+- Liasse à confirmer, d'où un réglage.
+- Preuve de paiement obligatoire au paiement.
+
+**Modifications apportées**
+- Migration `20261119100000_paiements_centralises` (appliquée, ajouts seulement) : `Role.canSaisirPetiteDepense`, `EntrepriseConfig.plafondPetiteDepense` (50 000 par défaut) et `EntrepriseConfig.liasseExigeePourSolde` (vrai par défaut).
+- **F1 — BC validé d'office** :
+  - nouvelles fonctions `engagementLigne` (plafond − consommé − autres BC en cours) et `validationAutomatiqueCommande` dans `lib/commandeFournisseurSuivi.ts` ;
+  - routes BC POST, PATCH (rattachement à une ligne) et PUT (brouillon) : ligne accordée et budget ouvert → VALIDEE, refus au-delà du reste non engagé. Sans ligne accordée, le circuit DG est inchangé ;
+  - notifications `BC_EMIS` (« BC X émis pour l'exécution de l'activité liée à la proforma Y » : demandeur du budget, comptables, direction) et `BC_SCAN_A_JOINDRE`, dans `lib/email/commandeFournisseur.ts`, qui passe sur `budgetDestinataires` ;
+  - carte rouge « Scan du bon de commande signé à joindre » sur la fiche du BC, et pastille « Scan signé manquant » dans la liste des BC et sur la fiche du prestataire ;
+  - les paiements restent bloqués sans le scan (règle existante).
+- **F2 — Factures** :
+  - `refusMontantFactureCommande` : montant = montant net du BC à 1 F près, une seule facture active par BC (création et modification) ;
+  - route `POST/GET /api/factures-fournisseurs/[id]/payer`, « Appliquer le paiement » :
+    - le montant est fixé au reste (facture − avances) et la preuve de paiement est obligatoire ;
+    - la ligne vient du BC ou de la facture, ou est choisie pour un prestataire interne ou externe, puis rattachée à la facture ;
+    - blocages indiqués : scan, liasse, budget, ancienne facture de fournisseur sans BC ;
+  - route `POST/GET /api/fournisseurs/commandes/[commandeId]/avance` (« Verser une avance ») ;
+  - fenêtre `components/fournisseurs/PayerFactureDialog.tsx`, utilisée dans la liste des factures, sur la fiche du prestataire et sur la fiche du BC ;
+  - liasse : `controlerPaiementCommande` lit `liasseExigeePourSolde`. La facture reste exigée ;
+  - `BudgetDepenseDialog` ne sert plus qu'aux dépenses hors bon : les choix BC et facture sont remplacés par un lien vers la liste des factures. Les routes acceptent toujours ces champs, pour CampTrack et la compatibilité.
+- **F3 — Accueil** :
+  - le droit est branché dans `getBudgetCapabilities` (`canPetiteDepense`, `plafondPetiteDepense`), dans les routes des rôles, sur la page Rôles et dans `me-role` ;
+  - `refusPetiteDepense` (`lib/budgetAuth.ts`) est appliqué dans la route des dépenses de budget : hors bon, espèces, ≤ plafond ;
+  - la fenêtre fixe Espèces et affiche le maximum ;
+  - Paramètres → Rôles : carte « Maximum d'une petite dépense » et interrupteur de la liasse.
+- **F4 — Un seul chemin** : sur la fiche d'un budget lié à une proforma, le bouton devient « Saisir sur la proforma » (`/facture/[id]?depense=<ligneId>` ouvre directement la saisie sur la ligne).
+- **F5 — Centralisation sur la proforma** :
+  - pastilles d'origine sur chaque dépense : Budget/ligne, Avance/Solde BC, Facture, Lot CampTrack, À rattacher, Hors budget, Annulée ;
+  - carte « Rentabilité de la campagne » (`/api/factures/[id]/rentabilite`, CA HT après remise) avec un contrôle de cohérence budget/proforma ;
+  - `/rattacher` est étendu aux dépenses saisies sur la proforma avant le budget (source PROFORMA, sans nouveau mouvement de caisse). Le bandeau devient « dépenses hors budget à rattacher ».
+- Guide des équipes : principe, section « Qui saisit quoi, et où », rôle de l'accueil, sections 3 à 5 réécrites et nouveaux messages.
+
+**Tests**
+- Nouveau test en base (transaction annulée) : **31/31**. Il couvre :
+  - le BC validé d'office, l'engagement et le refus au-delà ;
+  - le paiement bloqué sans scan ;
+  - la facture ≠ BC et la deuxième facture ;
+  - l'avance puis le solde (avance déduite), avec facture et BC « payés » ;
+  - la liasse, réglage activé puis désactivé ;
+  - la facture interne payée sur le budget mensuel ;
+  - les 6 règles de l'accueil ;
+  - le refus d'une dépense directe sur une proforma qui a un budget ;
+  - le rattachement d'une dépense antérieure sans nouvelle écriture ;
+  - la cohérence (budget vu par la proforma = dépenses de budget, aucun doublon, une écriture par dépense).
+
+**Erreurs rencontrées & solutions**
+- `onClick={ouvrirDepense}` aurait passé l'événement comme identifiant de ligne : corrigé en `() => ouvrirDepense()`.
+
+**À tester / points d'attention**
+- **Redémarrer le serveur de dev** (nouvelles colonnes).
+- Cocher « Saisir les petites dépenses » sur le rôle de l'accueil, et lui ouvrir la section Budget (pages).
+- Confirmer la règle de la liasse (Paramètres → Rôles).
+
+---
+
 ## 2026-11-18 — Budget signé après la décision de la DG (paramétrable) et correctif « Tout valider »
 
 **Demande / Contexte**

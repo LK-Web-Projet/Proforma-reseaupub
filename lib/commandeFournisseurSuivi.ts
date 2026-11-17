@@ -1,5 +1,5 @@
 import { NatureDepense, Prisma, StatutCommandeFournisseur, StatutFactureFournisseur } from "@prisma/client";
-import { BUDGET_EPSILON } from "@/lib/budgetSuivi";
+import { BUDGET_EPSILON, getLigneDisponible } from "@/lib/budgetSuivi";
 import { etatLiasse, partsLignesCommande, payeSurCommande, repartirAuProrata } from "@/lib/commandeFournisseurLiasse";
 import { exigeBonDeCommande } from "@/lib/typeFournisseur";
 
@@ -78,7 +78,11 @@ export async function controlerPaiementCommande(
   }
   let facture: { id: string } | null = null;
   if (opts.nature === NatureDepense.SOLDE) {
-    if (!liasse.complete) {
+    // Liasse complète (bordereau ou attestation + rapport) exigée par défaut ; réglable dans
+    // Paramètres → Rôles. La facture du bon reste exigée dans tous les cas (ci-dessous).
+    const config = await tx.entrepriseConfig.findUnique({ where: { id: "singleton" }, select: { liasseExigeePourSolde: true } });
+    const liasseExigee = config?.liasseExigeePourSolde ?? true;
+    if (liasseExigee && !liasse.complete) {
       throw new PaiementCommandeError(
         `Solde impossible : la liasse du bon de commande ${commande.numero} est incomplète (manque : ${liasse.manquantes.join(", ")}).`
       );
@@ -213,6 +217,92 @@ export async function refusLigneBudgetCommande(db: Db, ligneBudgetId: string | n
     return "Le budget de cette ligne est rejeté ou clôturé.";
   }
   return null;
+}
+
+/**
+ * Facture d'un bon de commande : son montant est celui du bon (montant net, à 1 F près) et un bon n'a
+ * qu'une facture active (non annulée). Renvoie le motif de refus, sinon null. Les avances déjà
+ * versées sont déduites au paiement (on ne paie que le reste).
+ */
+export async function refusMontantFactureCommande(
+  db: Db,
+  opts: { commandeId: string; montant: number; factureIdExclu?: string | null }
+): Promise<string | null> {
+  const commande = await db.commandeFournisseur.findUnique({
+    where: { id: opts.commandeId },
+    select: {
+      numero: true,
+      montantNet: true,
+      factures: { where: { status: { not: StatutFactureFournisseur.ANNULEE } }, select: { id: true, reference: true } },
+    },
+  });
+  if (!commande) return "Bon de commande introuvable.";
+  const autre = commande.factures.find((f) => f.id !== opts.factureIdExclu);
+  if (autre) {
+    return `Le bon de commande ${commande.numero} a déjà une facture (${autre.reference}). Annulez-la d'abord si elle doit être remplacée.`;
+  }
+  if (Math.abs(opts.montant - Number(commande.montantNet)) > 1) {
+    return `Le montant de la facture (${fmt(opts.montant)}) doit être celui du bon de commande ${commande.numero} : ${fmt(Number(commande.montantNet))}.`;
+  }
+  return null;
+}
+
+const STATUTS_BUDGET_OUVERT = ["VALIDEE", "EN_COURS", "VALIDATION_PARTIELLE"];
+const STATUTS_COMMANDE_ENGAGEE: StatutCommandeFournisseur[] = [
+  StatutCommandeFournisseur.BROUILLON,
+  StatutCommandeFournisseur.VALIDEE,
+  StatutCommandeFournisseur.LIVREE,
+];
+
+/**
+ * Engagement d'une ligne de budget : plafond, consommé (dépenses), et ce qui reste à payer sur ses
+ * bons de commande en cours (brouillon, validés, livrés), hors `commandeIdExclu`. Le payé des bons
+ * est déjà dans le consommé. `reste` = ce qui peut encore être engagé par un nouveau bon.
+ */
+export async function engagementLigne(db: Db, ligneBudgetId: string, commandeIdExclu?: string | null) {
+  const ligne = await db.demandeBudgetLigne.findUniqueOrThrow({
+    where: { id: ligneBudgetId },
+    select: { id: true, montant: true, montantAccorde: true, statutValidation: true },
+  });
+  const dispo = await getLigneDisponible(db, ligne);
+  const commandes = await db.commandeFournisseur.findMany({
+    where: { ligneBudgetId, statut: { in: STATUTS_COMMANDE_ENGAGEE }, ...(commandeIdExclu ? { id: { not: commandeIdExclu } } : {}) },
+    select: { montantNet: true, imputations: { where: { annuleeAt: null }, select: { montant: true } } },
+  });
+  const engage = commandes.reduce(
+    (s, c) => s + Math.max(Number(c.montantNet) - c.imputations.reduce((a, i) => a + Number(i.montant), 0), 0),
+    0
+  );
+  return { plafond: dispo.plafond, consomme: dispo.consomme, engage, reste: dispo.reste - engage };
+}
+
+/**
+ * Bon de commande rattaché à une ligne ACCORDÉE d'un budget ouvert : il est validé d'office (la
+ * ligne accordée vaut accord de dépense). Le scan du BC signé reste à joindre : sans lui, aucun
+ * paiement (controlerPaiementCommande). Refus si le bon dépasse ce qui reste à engager sur la ligne.
+ * Ligne non accordée ou budget pas ouvert : le bon reste en brouillon (circuit de validation par la DG).
+ */
+export async function validationAutomatiqueCommande(
+  db: Db,
+  opts: { ligneBudgetId: string | null | undefined; montantNet: number; commandeIdExclu?: string | null }
+): Promise<{ valider: boolean; refus: string | null }> {
+  if (!opts.ligneBudgetId) return { valider: false, refus: null };
+  const ligne = await db.demandeBudgetLigne.findUnique({
+    where: { id: opts.ligneBudgetId },
+    select: { statutValidation: true, designation: true, demandeBudget: { select: { statut: true, clotureeAt: true } } },
+  });
+  if (!ligne || ligne.statutValidation !== "ACCORDEE") return { valider: false, refus: null };
+  if (!STATUTS_BUDGET_OUVERT.includes(ligne.demandeBudget.statut) || ligne.demandeBudget.clotureeAt) return { valider: false, refus: null };
+  const e = await engagementLigne(db, opts.ligneBudgetId, opts.commandeIdExclu);
+  if (opts.montantNet > e.reste + BUDGET_EPSILON) {
+    return {
+      valider: false,
+      refus:
+        `Ce bon de commande (${fmt(opts.montantNet)}) dépasse ce qui reste à engager sur la ligne « ${ligne.designation} » : ${fmt(e.reste)} ` +
+        `(déjà dépensé ${fmt(e.consomme)}, autres bons en cours ${fmt(e.engage)}). Réduisez le bon ou demandez un dépassement.`,
+    };
+  }
+  return { valider: true, refus: null };
 }
 
 /**

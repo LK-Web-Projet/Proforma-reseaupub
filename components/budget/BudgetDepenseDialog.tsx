@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,13 +73,19 @@ interface BudgetDepenseDialogProps {
   onSuccess: () => void;
   /** Saisie lancée depuis la fiche proforma (origine tracée dans l'historique). */
   depuisProforma?: boolean;
+  /**
+   * Petite dépense (droit « accueil », sans le droit comptable) : maximum en FCFA. Le moyen de
+   * paiement est fixé à Espèces ; le serveur applique les mêmes règles.
+   */
+  plafondPetiteDepense?: number | null;
 }
 
 /**
  * Saisie d'une dépense réelle sur une ligne de budget par le comptable. La dépense crée une
  * écriture DEPENSE dans la caisse choisie (voir app/api/demandes-budget/[id]/depenses/route.ts).
  */
-export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePaiement, onClose, onSuccess, depuisProforma }: BudgetDepenseDialogProps) {
+export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePaiement, onClose, onSuccess, depuisProforma, plafondPetiteDepense }: BudgetDepenseDialogProps) {
+  const petite = plafondPetiteDepense != null;
   const [cashRegisters, setCashRegisters] = useState<CashRegisterOption[]>([]);
   const [montant, setMontant] = useState('');
   const [dateDepense, setDateDepense] = useState(new Date().toISOString().split('T')[0]);
@@ -96,8 +103,9 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
   const [ligneCommandeId, setLigneCommandeId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Paiement : dépense simple, "<commandeId>|AVANCE|SOLDE", ou "FACT|<factureId>" (facture de
-  // prestataire interne / externe réglée directement sur la ligne).
+  // Cette fenêtre ne saisit plus que des dépenses hors bon (PAIEMENT_SIMPLE) : avances et factures se
+  // paient depuis la fiche du bon et la liste des factures (PayerFactureDialog). Le reste du calcul
+  // est conservé tel quel, la route acceptant toujours ces champs (CampTrack, compatibilité).
   const factureDirecte = paiement.startsWith('FACT|') ? ligne?.facturesPrestataires?.find((f) => f.id === paiement.slice(5)) ?? null : null;
   const [commandeChoisieId, natureChoisie] = paiement === PAIEMENT_SIMPLE || factureDirecte ? [null, 'NORMALE'] : paiement.split('|');
   const commandeChoisie = ligne?.commandes?.find((c) => c.id === commandeChoisieId) ?? null;
@@ -105,31 +113,6 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
   const resteCommande = commandeChoisie ? Number(commandeChoisie.montantNet) - payeSurCommande(commandeChoisie.imputations) : 0;
   const partsCommande = commandeChoisie ? partsLignesCommande(commandeChoisie) : [];
   const partChoisie = partsCommande.find((p) => p.id === ligneCommandeId) ?? null;
-  const facturesAPayer = commandeChoisie?.factures.filter((f) => f.status === 'EN_ATTENTE') ?? [];
-  const commandePayable = (c: CommandeDeLigne) => (c.statut === 'VALIDEE' || c.statut === 'LIVREE') && etatLiasse(c.documents).bcSigne;
-
-  const choisirPaiement = (valeur: string) => {
-    setPaiement(valeur);
-    setFactureFournisseurId('');
-    setLigneCommandeId('');
-    if (valeur === PAIEMENT_SIMPLE || !ligne) return;
-    if (valeur.startsWith('FACT|')) {
-      const f = ligne.facturesPrestataires?.find((x) => x.id === valeur.slice(5));
-      if (f) {
-        setMontant(String(Math.max(Math.min(ligne.reste, f.reste), 0)));
-        setNomReceveur(f.fournisseur.entreprise);
-      }
-      return;
-    }
-    const [cid] = valeur.split('|');
-    const c = ligne.commandes?.find((x) => x.id === cid);
-    if (!c) return;
-    const resteC = Number(c.montantNet) - payeSurCommande(c.imputations);
-    setMontant(String(Math.max(Math.min(ligne.reste, resteC), 0)));
-    setNomReceveur(c.fournisseur.entreprise);
-    const enAttente = c.factures.filter((f) => f.status === 'EN_ATTENTE');
-    if (enAttente.length === 1) setFactureFournisseurId(enAttente[0].id);
-  };
 
   useEffect(() => {
     fetch('/api/cash-registers')
@@ -144,7 +127,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
     setMontant(ligne.reste > 0 ? String(ligne.reste) : '');
     setDateDepense(new Date().toISOString().split('T')[0]);
     setNomReceveur('');
-    setModePaiement(ligne?.modePaiement || defaultModePaiement);
+    setModePaiement(petite ? 'ESPECES' : ligne?.modePaiement || defaultModePaiement);
     setInvoiceId(proformas.length === 1 ? proformas[0].id : '');
     setNotes('');
     setPreuves([]);
@@ -153,7 +136,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
     setPaiement(PAIEMENT_SIMPLE);
     setFactureFournisseurId('');
     setLigneCommandeId('');
-  }, [ligne, proformas, defaultModePaiement]);
+  }, [ligne, proformas, defaultModePaiement, petite]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,6 +144,9 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
 
     const montantNum = Number(montant);
     if (!montantNum || montantNum <= 0) return void toast.error('Indiquez un montant valide.');
+    if (petite && montantNum > plafondPetiteDepense! + 0.005) {
+      return void toast.error(`Maximum d'une petite dépense : ${formatMontant(plafondPetiteDepense!)}. Au-delà, le comptable l'enregistre.`);
+    }
     if (montantNum > ligne.reste + 0.005) {
       return void toast.error(`Budget de la ligne atteint : il reste ${formatMontant(ligne.reste)}.`);
     }
@@ -240,89 +226,20 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
             <div className="rounded-md bg-muted/50 p-3 text-sm">
               <p className="font-medium">{ligne.designation}</p>
               <p className="text-muted-foreground">Reste disponible : <strong>{formatMontant(ligne.reste)}</strong></p>
+              {petite && (
+                <p className="mt-1 text-xs text-amber-800">
+                  Petite dépense : en espèces, maximum <strong>{formatMontant(plafondPetiteDepense!)}</strong>. Au-delà, ou pour un bon de commande, voir le comptable.
+                </p>
+              )}
             </div>
 
+            {/* Paiements de bons de commande et de factures : depuis les factures (un seul endroit). */}
             {((ligne.commandes?.length ?? 0) > 0 || (ligne.facturesPrestataires?.length ?? 0) > 0) && (
-              <div className="space-y-2">
-                <Label>Paiement</Label>
-                <Select value={paiement} onValueChange={choisirPaiement}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={PAIEMENT_SIMPLE}>Dépense simple (hors bon de commande)</SelectItem>
-                    {(ligne.facturesPrestataires ?? []).map((f) => (
-                      <SelectItem key={f.id} value={`FACT|${f.id}`}>
-                        Facture {f.reference} — {f.fournisseur.entreprise} (reste {formatMontant(f.reste)})
-                      </SelectItem>
-                    ))}
-                    {(ligne.commandes ?? []).map((c) => (
-                      <React.Fragment key={c.id}>
-                        <SelectItem value={`${c.id}|AVANCE`} disabled={!commandePayable(c)}>
-                          Avance — {c.numero} ({c.fournisseur.entreprise})
-                        </SelectItem>
-                        <SelectItem value={`${c.id}|SOLDE`} disabled={!commandePayable(c) || !etatLiasse(c.documents, c.factures).complete}>
-                          Solde — {c.numero} ({c.fournisseur.entreprise})
-                        </SelectItem>
-                      </React.Fragment>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {factureDirecte && (
-                  <p className="text-xs rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
-                    Facture {factureDirecte.reference} ({factureDirecte.fournisseur.entreprise}) : reste à régler <strong>{formatMontant(factureDirecte.reste)}</strong> sur {formatMontant(factureDirecte.montant)}. Elle passera « payée » une fois entièrement réglée.
-                  </p>
-                )}
-                {(ligne.commandes ?? []).some((c) => !commandePayable(c)) && (
-                  <p className="text-xs text-muted-foreground">Un bon non validé ou sans scan signé ne peut pas être payé.</p>
-                )}
-                {commandeChoisie && liasse && (
-                  <div className={`rounded-md border p-3 text-xs space-y-1 ${liasse.complete ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
-                    <p>
-                      Bon de commande <strong>{commandeChoisie.numero}</strong> : reste à payer <strong>{formatMontant(resteCommande)}</strong> sur {formatMontant(Number(commandeChoisie.montantNet))}.
-                    </p>
-                    <p>
-                      Liasse {liasse.nbPieces}/4{liasse.complete ? ' — complète' : ` — manque : ${liasse.manquantes.join(', ')}`}
-                      {natureChoisie === 'AVANCE' && !liasse.complete ? ". L'avance restera « non justifiée » jusqu'à la liasse complète." : ''}
-                    </p>
-                  </div>
-                )}
-                {commandeChoisie && partsCommande.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Ligne de produit du bon</Label>
-                    <Select
-                      value={ligneCommandeId || '__TOUT__'}
-                      onValueChange={(v) => {
-                        const id = v === '__TOUT__' ? '' : v;
-                        setLigneCommandeId(id);
-                        const p = partsCommande.find((x) => x.id === id);
-                        if (p) setMontant(String(Math.max(Math.min(p.reste, resteCommande, ligne.reste), 0)));
-                      }}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__TOUT__">Tout le bon (réparti au prorata des lignes)</SelectItem>
-                        {partsCommande.map((p) => (
-                          <SelectItem key={p.id} value={p.id} disabled={p.reste <= 0.004}>
-                            {p.designation} — reste {formatMontant(Math.max(p.reste, 0))}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                {natureChoisie === 'SOLDE' && (
-                  <div className="space-y-2">
-                    <Label>Facture fournisseur réglée *</Label>
-                    <Select value={factureFournisseurId} onValueChange={setFactureFournisseurId}>
-                      <SelectTrigger><SelectValue placeholder={facturesAPayer.length ? 'Choisir la facture' : 'Aucune facture en attente sur ce bon'} /></SelectTrigger>
-                      <SelectContent>
-                        {facturesAPayer.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>{f.reference} — {formatMontant(Number(f.montant))}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
+              <p className="text-xs rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+                Cette fenêtre sert aux <strong>dépenses hors bon de commande</strong>. Pour payer une facture :{' '}
+                <Link href="/fournisseur/factures" className="text-primary underline">liste des factures</Link> → « Appliquer le paiement ». Une avance
+                se verse depuis la fiche du bon de commande.
+              </p>
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -349,7 +266,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
               </div>
               <div className="space-y-2">
                 <Label>Mode de paiement *</Label>
-                <Select value={modePaiement} onValueChange={setModePaiement}>
+                <Select value={modePaiement} onValueChange={setModePaiement} disabled={petite}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {MODE_PAIEMENT_OPTIONS.map((o) => (

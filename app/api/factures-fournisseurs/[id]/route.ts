@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
+import { refusMontantFactureCommande } from "@/lib/commandeFournisseurSuivi";
 
 /**
  * Procédure de paiement : une facture rattachée à un bon de commande ou à une ligne de budget passe
@@ -148,6 +149,11 @@ export async function PATCH(
         { message: "Le montant saisi est invalide." },
         { status: 400 },
       );
+    }
+    // Facture d'un bon de commande : son montant reste celui du bon.
+    if (existing.commandeId && Math.abs(montantNumber - Number(existing.montant)) > 0.005) {
+      const refusMontant = await refusMontantFactureCommande(prisma, { commandeId: existing.commandeId, montant: montantNumber, factureIdExclu: existing.id });
+      if (refusMontant) return NextResponse.json({ message: refusMontant }, { status: 400 });
     }
 
     const dateValue = new Date(date);

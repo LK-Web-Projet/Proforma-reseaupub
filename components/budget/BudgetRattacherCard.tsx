@@ -17,6 +17,8 @@ export interface DepenseARattacher {
   montant: number | string;
   datePaiement: string;
   reference: string | null;
+  /** CAMPTRACK : reçue sans ligne de budget ; PROFORMA : saisie sur la proforma avant le budget. */
+  origine?: 'CAMPTRACK' | 'PROFORMA';
   invoice: { numero: string };
   cashJournalEntry: { id: number; libelle: string; cashRegister: { name: string } } | null;
 }
@@ -24,8 +26,9 @@ export interface DepenseARattacher {
 const fcfa = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n);
 
 /**
- * Dépenses reçues de Camptrack par l'ancien appel (sans ligne de budget) sur une proforma de ce
- * budget : le comptable les rattache à une ligne (plafond contrôlé, aucun nouveau mouvement de caisse).
+ * Dépenses d'une proforma de ce budget qui ne sont sur aucun budget — reçues de Camptrack sans ligne
+ * de budget, ou saisies sur la proforma avant le budget : le comptable les rattache à une ligne
+ * (plafond contrôlé, aucun nouveau mouvement de caisse).
  */
 export function BudgetRattacherCard({
   demandeId,
@@ -51,8 +54,8 @@ export function BudgetRattacherCard({
   const ouvrir = (d: DepenseARattacher) => {
     setCible(d);
     setLigneId('');
-    setModePaiement('MOBILE_MONEY');
-    setNomReceveur('Prestataires (Camptrack)');
+    setModePaiement(d.origine === 'PROFORMA' ? 'ESPECES' : 'MOBILE_MONEY');
+    setNomReceveur(d.origine === 'PROFORMA' ? d.reference ?? '' : 'Prestataires (Camptrack)');
   };
 
   const rattacher = async () => {
@@ -82,18 +85,24 @@ export function BudgetRattacherCard({
     <Card className="border-t-4 border-t-amber-500">
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2 text-amber-800">
-          <AlertTriangle className="h-4 w-4" /> {depenses.length} dépense(s) Camptrack à rattacher au budget
+          <AlertTriangle className="h-4 w-4" /> {depenses.length} dépense(s) hors budget à rattacher
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Paiements de prestataires reçus de Camptrack sans ligne de budget. Rattachez chacun à la ligne concernée : le plafond est
-          contrôlé, la caisse n&apos;est pas touchée une seconde fois.
+          Dépenses de la campagne qui ne sont sur aucune ligne : paiements reçus de Camptrack sans ligne de budget, ou dépenses saisies
+          sur la proforma avant le budget. Rattachez chacune à sa ligne : le plafond est contrôlé, la caisse n&apos;est pas touchée une
+          seconde fois.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
         {depenses.map((d) => (
           <div key={d.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
             <div className="min-w-0">
-              <p className="font-medium truncate">{d.cashJournalEntry?.libelle ?? d.reference ?? 'Dépense Camptrack'}</p>
+              <p className="font-medium truncate">
+                <span className="mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                  {d.origine === 'PROFORMA' ? 'Avant le budget' : 'Camptrack'}
+                </span>
+                {d.cashJournalEntry?.libelle ?? d.reference ?? 'Dépense'}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {format(new Date(d.datePaiement), 'dd/MM/yyyy')} · proforma {d.invoice.numero}
                 {d.cashJournalEntry ? ` · ${d.cashJournalEntry.cashRegister.name} · écriture n° ${d.cashJournalEntry.id}` : ''}

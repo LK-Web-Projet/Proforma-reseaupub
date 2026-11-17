@@ -16,6 +16,8 @@ export const DEFAULT_ENTREPRISE: Omit<EntrepriseConfig, "updatedAt"> = {
     logoPath: "rplogo.png",
     plafondValidationDeleguee: new Prisma.Decimal(500000),
     typesBudgetSigneRequis: [TypeBudget.CAMPAGNE, TypeBudget.MENSUEL],
+    plafondPetiteDepense: new Prisma.Decimal(50000),
+    liasseExigeePourSolde: true,
 };
 
 /**
