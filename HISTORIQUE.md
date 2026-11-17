@@ -25,6 +25,55 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 4) — Une seule proforma par bon de commande et par budget ; ligne de budget proposée selon la proforma
+
+**Demande / Contexte**
+- Un bon de commande (BC) n'est désormais associé qu'à **une seule** proforma, et un budget aussi.
+- Avant ce changement, la création d'un BC ne proposait pas de ligne de budget. Le bon restait en brouillon jusqu'à un rattachement manuel, et la fenêtre de rattachement listait les lignes de **tous** les budgets ouverts, sans le reste à engager.
+- Rien ne vérifiait que la ligne appartenait au budget de la proforma du bon.
+
+**Modifications apportées**
+- `lib/commandeFournisseurSuivi.ts`, deux nouvelles fonctions :
+  - `lignesBudgetPourCommande({ proformaId, commandeIdExclu })` renvoie les lignes proposées, avec plafond, dépensé, autres BC en cours et reste à engager :
+    - proforma liée à un budget non rejeté → `aBudget`, et uniquement les lignes **accordées** de ce budget s'il est ouvert ;
+    - sinon → les lignes accordées des budgets ouverts **sans proforma** (mensuel, ponctuel…).
+  - `refusCoherenceLigneProforma({ ligneBudgetId, proformaId })` applique trois règles :
+    - proforma avec budget → ligne **obligatoire**, et elle doit appartenir à ce budget ;
+    - ligne d'un budget lié à une proforma → le BC doit avoir cette proforma ;
+    - sans budget → ligne facultative (processus de base).
+- `app/api/fournisseurs/commandes/lignes-budget/route.ts` (nouveau) : `GET ?proformaId=&commandeId=`, protégé par la section « Prestataires ».
+- Routes BC (`commandes/route.ts` POST, `commandes/[commandeId]/route.ts` PUT et PATCH) :
+  - plus d'une proforma → 400 « Un bon de commande n'est associé qu'à une seule proforma » ;
+  - la cohérence ligne / proforma est contrôlée à la création, à la modification et au changement de ligne. Un PATCH qui ne touche que le statut ne la contrôle pas, donc les BC existants ne sont pas bloqués.
+- `lib/budgetSchema.ts` : `proformaIds` limité à **1** (« Un budget n'est associé qu'à une seule proforma »). Un budget de campagne doit avoir **sa** proforma.
+- `components/InvoiceCombobox.tsx` (nouveau) : choix d'**une** proforma, avec recherche et croix pour retirer. `components/InvoiceMultiCombobox.tsx` est **supprimé** (plus utilisé).
+- `components/fournisseurs/LigneBudgetCommandeField.tsx` (nouveau) : champ « Ligne de budget » selon la proforma.
+  - Il est obligatoire avec un astérisque rouge quand la proforma a un budget, et présélectionne la ligne s'il n'y en a qu'une.
+  - Les lignes trop justes pour le montant du bon sont désactivées.
+  - Il rappelle : « validé dès son enregistrement ; joignez le scan signé ».
+  - Il affiche un message rouge si le budget n'a encore aucune ligne accordée.
+  - En modification, il conserve une ligne déjà rattachée mais pas encore accordée.
+- Formulaires de BC :
+  - `components/fournisseurs/NewCommandeForm.tsx`, `components/CommandeFournisseurModal.tsx` et `components/fournisseurs/EditCommandeFournisseurModal.tsx` : une seule proforma, plus le champ ligne de budget ;
+  - le message d'erreur du serveur est maintenant affiché tel quel. `NewCommandeForm` affichait toujours « Impossible de créer la commande ».
+- `components/fournisseurs/CommandeLiasseCard.tsx` : la fenêtre « Rattacher / Changer de ligne » utilise le même champ, avec les mêmes règles, la proforma du bon et le reste à engager.
+- `components/DemandeBudgetForm.tsx` : une seule proforma (« Proforma associée »).
+- `public/docs/procedure-paiement-plateforme.md` : budget et BC avec une seule proforma, choix de la ligne selon la proforma, deux nouveaux messages d'erreur.
+
+**Erreurs rencontrées & solutions**
+- La base Supabase était momentanément injoignable (P1001), puis lente. Le délai de la transaction du test a été allongé, et les lignes proposées sont calculées en parallèle (`Promise.all`).
+- Dans mon test de schéma, une ligne n'avait pas de catégorie : c'était une donnée de test incomplète, et non un bug.
+
+**À tester / points d'attention**
+- Test en base (transaction annulée), 24/24 :
+  - lignes proposées selon la proforma (avec budget, sans budget, sans proforma, budget seulement soumis, budget rejeté) ;
+  - reste à engager, y compris en modification ;
+  - cohérence (9 cas) ;
+  - validation d'office et dépassement ;
+  - budget avec une seule proforma.
+- Données existantes : aucun BC ni budget n'avait plusieurs proformas. Les 3 BC avec une proforma ne sont contrôlés que lorsqu'on les modifie.
+- Une proforma peut toujours avoir plusieurs budgets (un cas en base). Les lignes de tous ses budgets ouverts sont alors proposées.
+
 ## 2026-11-19 (suite 3) — Proforma : le bouton « Dépense » toujours visible
 
 **Demande / Contexte**

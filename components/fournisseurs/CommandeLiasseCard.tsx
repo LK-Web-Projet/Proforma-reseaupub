@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { PayerFactureDialog, type CiblePaiement } from '@/components/fournisseurs/PayerFactureDialog';
+import { LigneBudgetCommandeField } from '@/components/fournisseurs/LigneBudgetCommandeField';
 import { cn } from '@/lib/utils';
 import {
   etatLiasse,
@@ -44,6 +45,8 @@ export interface CommandeSuivi {
     cashJournalEntry: { date_operation: string; libelle: string; budgetDepense: { demandeBudgetId: string } | null; paiement: { invoiceId: string } | null };
   }[];
   ligneBudget: { id: string; designation: string; demandeBudget: { id: string; numero: string; type: string; statut: string } } | null;
+  /** Proforma du bon (une seule) : détermine les lignes de budget proposées. */
+  proformas?: { invoice: { id: string } }[];
   documents: { id: string; kind: string; url: string; fileName: string; createdAt: string; createdByEmail: string }[];
   factures: { id: string; reference: string; montant: number | string; date: string; status: string; pieceJointe: string | null }[];
   depenses: {
@@ -60,11 +63,6 @@ export interface CommandeSuivi {
 }
 
 const fcfa = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n);
-
-interface LigneCandidate {
-  id: string;
-  label: string;
-}
 
 /**
  * Suivi d'un bon de commande (procédure de paiement, section 4) : ligne de budget qui le finance,
@@ -429,40 +427,14 @@ function FactureDialog({ commande, open, onClose, onSuccess }: { commande: Comma
   );
 }
 
-interface DemandeListe {
-  id: string;
-  numero: string;
-  statut: string;
-  type: string;
-  pourLeCompteDe: string | null;
-  lignes: { id: string; designation: string; statutValidation: string }[];
-}
-
 function LigneBudgetDialog({ commande, open, onClose, onSuccess }: { commande: CommandeSuivi; open: boolean; onClose: () => void; onSuccess: () => void }) {
-  const [demandes, setDemandes] = useState<DemandeListe[]>([]);
   const [ligneId, setLigneId] = useState('');
   const [envoi, setEnvoi] = useState(false);
+  const proformaId = commande.proformas?.[0]?.invoice.id ?? '';
 
   useEffect(() => {
-    if (!open) return;
-    setLigneId(commande.ligneBudget?.id ?? '');
-    fetch('/api/demandes-budget')
-      .then((res) => (res.ok ? res.json() : []))
-      .then(setDemandes)
-      .catch(() => setDemandes([]));
+    if (open) setLigneId(commande.ligneBudget?.id ?? '');
   }, [open, commande.ligneBudget?.id]);
-
-  const lignes: LigneCandidate[] = useMemo(
-    () =>
-      demandes
-        .filter((d) => ['SOUMISE', 'VALIDATION_PARTIELLE', 'VALIDEE', 'EN_COURS'].includes(d.statut))
-        .flatMap((d) =>
-          d.lignes
-            .filter((l) => l.statutValidation !== 'RETIREE')
-            .map((l) => ({ id: l.id, label: `${d.numero}${d.type === 'CAMPAGNE' ? ' (campagne)' : ''} — ${l.designation}` }))
-        ),
-    [demandes]
-  );
 
   const enregistrer = async () => {
     if (!ligneId) return void toast.error('Choisissez une ligne de budget.');
@@ -492,17 +464,15 @@ function LigneBudgetDialog({ commande, open, onClose, onSuccess }: { commande: C
       <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Ligne de budget qui finance {commande.numero}</DialogTitle></DialogHeader>
         <div className="space-y-2">
-          <Select value={ligneId} onValueChange={setLigneId}>
-            <SelectTrigger><SelectValue placeholder={lignes.length ? 'Choisir la ligne' : 'Aucun budget ouvert visible'} /></SelectTrigger>
-            <SelectContent>
-              {lignes.map((l) => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {/* Proposées selon la proforma du bon : celles de son budget, sinon celles des budgets sans proforma. */}
+          {open && (
+            <LigneBudgetCommandeField proformaId={proformaId} commandeId={commande.id} montantNet={Number(commande.montantNet)} value={ligneId} onChange={setLigneId} />
+          )}
           <p className="text-xs text-muted-foreground">L&apos;avance et le solde seront payés sur cette ligne, dans la limite de son plafond.</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={enregistrer} disabled={envoi}>{envoi ? 'Enregistrement…' : 'Rattacher'}</Button>
+          <Button onClick={enregistrer} disabled={envoi || !ligneId}>{envoi ? 'Enregistrement…' : 'Rattacher'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

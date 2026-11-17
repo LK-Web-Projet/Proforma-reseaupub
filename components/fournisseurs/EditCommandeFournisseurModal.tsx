@@ -25,7 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { InvoiceMultiCombobox, InvoiceOption } from '@/components/InvoiceMultiCombobox';
+import { InvoiceCombobox, InvoiceOption } from '@/components/InvoiceCombobox';
+import { LigneBudgetCommandeField } from '@/components/fournisseurs/LigneBudgetCommandeField';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Building2 } from 'lucide-react';
@@ -59,6 +60,7 @@ export interface CommandeToEdit {
     produitFournisseur: { id: string; designation: string; typeUnite: string };
   }[];
   proformas: { invoice: { id: string } }[];
+  ligneBudgetId?: string | null;
 }
 
 interface EditCommandeFournisseurModalProps {
@@ -80,7 +82,9 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
   const [appliquerTva, setAppliquerTva] = useState(false);
   const [appliquerAib, setAppliquerAib] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-  const [proformaIds, setProformaIds] = useState<string[]>([]);
+  // Une seule proforma par bon ; si elle a un budget, la ligne de ce budget est obligatoire.
+  const [proformaId, setProformaId] = useState('');
+  const [ligneBudgetId, setLigneBudgetId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -89,7 +93,8 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
     setDateCommande(new Date(commande.dateCommande).toISOString().split('T')[0]);
     setAppliquerTva(commande.appliquerTva);
     setAppliquerAib(commande.appliquerAib);
-    setProformaIds(commande.proformas.map((p) => p.invoice.id));
+    setProformaId(commande.proformas[0]?.invoice.id ?? '');
+    setLigneBudgetId(commande.ligneBudgetId ?? '');
     setLignes(
       commande.lignes.map((l) => ({
         produitFournisseurId: l.produitFournisseur.id,
@@ -196,7 +201,8 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
         })),
         appliquerTva,
         appliquerAib,
-        proformaIds,
+        proformaIds: proformaId ? [proformaId] : [],
+        ligneBudgetId: ligneBudgetId || null,
       };
 
       const res = await fetch(`/api/fournisseurs/commandes/${commande.id}`, {
@@ -207,7 +213,7 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Erreur lors de la modification du bon de commande.');
+        throw new Error(typeof errorData.error === 'string' ? errorData.error : 'Erreur lors de la modification du bon de commande.');
       }
 
       toast.success('Bon de commande modifié avec succès !');
@@ -250,12 +256,16 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
           </div>
 
           <div className="space-y-2">
-            <label>Proforma(s) associée(s)</label>
-            <InvoiceMultiCombobox invoices={invoices} value={proformaIds} onChange={setProformaIds} />
+            <label>Proforma associée</label>
+            <InvoiceCombobox invoices={invoices} value={proformaId} onChange={setProformaId} />
             <p className="text-[11px] text-muted-foreground">
-              Seules les proformas validées, payées ou soldées peuvent être associées.
+              Une seule proforma par bon de commande : validée, payée ou soldée.
             </p>
           </div>
+
+          {commande && (
+            <LigneBudgetCommandeField proformaId={proformaId} commandeId={commande.id} montantNet={montantNet} value={ligneBudgetId} onChange={setLigneBudgetId} />
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">

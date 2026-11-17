@@ -23,7 +23,8 @@ import { Plus, Trash2 } from "lucide-react";
 import { ProduitFournisseur } from "@prisma/client";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { InvoiceMultiCombobox, InvoiceOption } from "@/components/InvoiceMultiCombobox";
+import { InvoiceCombobox, InvoiceOption } from "@/components/InvoiceCombobox";
+import { LigneBudgetCommandeField } from "@/components/fournisseurs/LigneBudgetCommandeField";
 
 const TAUX_TVA = 0.18;
 const TAUX_AIB = 0.03;
@@ -55,7 +56,9 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
     const [appliquerTva, setAppliquerTva] = useState(false);
     const [appliquerAib, setAppliquerAib] = useState(false);
     const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-    const [proformaIds, setProformaIds] = useState<string[]>([]);
+    // Une seule proforma par bon ; si elle a un budget, la ligne de ce budget est obligatoire.
+    const [proformaId, setProformaId] = useState('');
+    const [ligneBudgetId, setLigneBudgetId] = useState('');
 
     // Charger le catalogue
     useEffect(() => {
@@ -179,7 +182,8 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                 })),
                 appliquerTva,
                 appliquerAib,
-                proformaIds,
+                proformaIds: proformaId ? [proformaId] : [],
+                ligneBudgetId: ligneBudgetId || undefined,
             };
 
             const res = await fetch("/api/fournisseurs/commandes", {
@@ -190,14 +194,14 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
 
             if (!res.ok) {
                 const errorData = await res.json();
-                throw new Error(errorData.error || "Erreur création commande");
+                throw new Error(typeof errorData.error === "string" ? errorData.error : "Impossible de créer la commande.");
             }
 
             toast.success("Bon de commande créé avec succès !");
             onSuccess();
         } catch (error) {
             console.error(error);
-            toast.error("Impossible de créer la commande.");
+            toast.error(error instanceof Error ? error.message : "Impossible de créer la commande.");
         } finally {
             setSubmitting(false);
         }
@@ -216,12 +220,14 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
             </div>
 
             <div className="space-y-2">
-                <label className="text-sm font-medium">Proforma(s) associée(s)</label>
-                <InvoiceMultiCombobox invoices={invoices} value={proformaIds} onChange={setProformaIds} />
+                <label className="text-sm font-medium">Proforma associée</label>
+                <InvoiceCombobox invoices={invoices} value={proformaId} onChange={setProformaId} />
                 <p className="text-[11px] text-muted-foreground">
-                    Seules les proformas validées, payées ou soldées peuvent être associées.
+                    Une seule proforma par bon de commande : validée, payée ou soldée.
                 </p>
             </div>
+
+            <LigneBudgetCommandeField proformaId={proformaId} montantNet={montantNet} value={ligneBudgetId} onChange={setLigneBudgetId} />
 
             <div className="rounded-md border">
                 <Table>

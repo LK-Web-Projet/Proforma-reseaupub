@@ -69,7 +69,7 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
 
 ## 2. Le budget de campagne
 
-1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à la proforma du client. Pour chaque ligne, il indique la désignation, la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche.
+1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche.
 2. La **DG (ou le valideur) décide d'abord sur la plateforme**, ligne par ligne : **Accorder**, **Ajuster** (un montant plus bas, avec un motif) ou **Demander une correction**. Le bouton *Tout valider* accorde d'un coup toutes les lignes en attente. Le demandeur corrige ou retire les lignes renvoyées.
 3. Dès qu'une ligne est accordée, **le demandeur reçoit une notification** « Budget signé à joindre ». Sur la fiche du budget, la section **Budget signé à joindre** s'affiche **en rouge**.
 4. Le demandeur **imprime** le budget (bouton *Imprimer*), le fait **signer par la DG**, puis **joint le scan signé** (*Joindre le budget signé*).
@@ -89,7 +89,12 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
 
 ## 3. Le bon de commande
 
-1. Le bon est créé dans **Prestataires → Bons de commande**, **sur une ligne de budget** (ou rattaché ensuite depuis sa fiche : *Rattacher à une ligne de budget*).
+1. Le bon est créé dans **Prestataires → Bons de commande**, avec **une seule proforma** et **sur une ligne de budget** :
+   - **proforma liée à un budget** : le formulaire ne propose **que les lignes accordées de ce budget**, avec ce qui reste à engager sur chacune. Le choix est **obligatoire** (la ligne est présélectionnée s'il n'y en a qu'une). Si le budget n'a encore aucune ligne accordée, le bon ne peut pas être émis : attendre la validation de la DG ;
+   - **pas de proforma** (achat interne) : on peut choisir une ligne d'un budget sans proforma (mensuel, ponctuel…), ou aucune ;
+   - **proforma sans budget** : processus de base, sans ligne ; le bon suit le circuit de validation de la DG.
+
+   La ligne peut aussi être choisie ou changée ensuite depuis la fiche du bon (*Rattacher à une ligne de budget*), selon les mêmes règles. Une ligne d'un autre budget est refusée.
 2. **Ligne accordée = bon validé d'office.** Si la ligne est accordée et que le bon tient dans ce qui reste à engager sur elle (plafond − déjà dépensé − autres bons en cours), il passe **« Validé »** tout de suite. Une notification part : « Le bon de commande X a été émis pour l'exécution de l'activité liée à la proforma Y » (demandeur du budget, comptables, direction). Au-delà du reste, le bon est refusé : réduire le bon ou demander un dépassement.
 3. **Scan du bon signé** : on l'imprime, la DG le signe, on **joint le scan** sur la fiche du bon. Tant qu'il manque :
    - la partie « Scan du bon de commande signé à joindre » est **en rouge** sur la fiche ;
@@ -205,6 +210,8 @@ Les prestataires sont payés **par lots**, un lot par campagne : un état de pai
 | « Joignez d'abord le scan du bon de commande signé » | Faire signer le BC par la DG et joindre le scan sur la fiche du bon |
 | « Le montant de la facture … doit être celui du bon de commande » | Vérifier la facture : elle doit correspondre au montant net du bon |
 | « Ce bon de commande … dépasse ce qui reste à engager sur la ligne » | Réduire le bon, ou demander un dépassement sur la ligne |
+| « Cette proforma a un budget … : choisissez la ligne de ce budget » | Choisir, dans le bon, la ligne du budget de sa proforma |
+| « La ligne … n'appartient pas au budget de la proforma de ce bon » | Choisir une ligne du budget de la proforma du bon, ou changer de proforma |
 | « Joignez la preuve de paiement » | Joindre le reçu Mobile Money, l'ordre de virement ou la décharge |
 | « Montant au-dessus du maximum des petites dépenses » | Faire enregistrer la dépense par le comptable |
 | « Solde impossible : la liasse … est incomplète » | Joindre les pièces manquantes indiquées : bordereau ou attestation, facture, rapport |

@@ -1,4 +1,4 @@
-import { NatureDepense, Prisma, StatutCommandeFournisseur, StatutFactureFournisseur } from "@prisma/client";
+import { NatureDepense, Prisma, StatutCommandeFournisseur, StatutDemandeBudget, StatutFactureFournisseur } from "@prisma/client";
 import { BUDGET_EPSILON, getLigneDisponible } from "@/lib/budgetSuivi";
 import { etatLiasse, partsLignesCommande, payeSurCommande, repartirAuProrata } from "@/lib/commandeFournisseurLiasse";
 import { exigeBonDeCommande } from "@/lib/typeFournisseur";
@@ -303,6 +303,112 @@ export async function validationAutomatiqueCommande(
     };
   }
   return { valider: true, refus: null };
+}
+
+/** Une ligne de budget proposée pour financer un bon de commande, avec ce qui reste à engager. */
+export interface LigneBudgetCommande {
+  id: string;
+  designation: string;
+  budgetId: string;
+  budgetNumero: string;
+  budgetType: string;
+  plafond: number;
+  consomme: number;
+  engage: number;
+  reste: number;
+}
+
+/** Budgets d'une proforma qui comptent pour ses bons de commande : tous ceux qui ne sont pas rejetés. */
+async function budgetsDeLaProforma(db: Db, proformaId: string) {
+  return db.demandeBudget.findMany({
+    where: { proformas: { some: { invoiceId: proformaId } }, statut: { not: "REJETEE" } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, numero: true, statut: true, clotureeAt: true },
+  });
+}
+
+/**
+ * Lignes de budget proposées pour un bon de commande, selon sa proforma (une seule par bon) :
+ * - la proforma a un budget (`aBudget`) → uniquement les lignes ACCORDÉES de ce(s) budget(s) ouvert(s),
+ *   et la ligne est obligatoire ;
+ * - sinon (pas de proforma, ou proforma sans budget) → les lignes accordées des budgets ouverts qui ne
+ *   sont liés à aucune proforma (mensuel, ponctuel…), au choix.
+ * `reste` = ce qui peut encore être engagé (plafond − dépensé − autres bons en cours, hors `commandeIdExclu`).
+ */
+export async function lignesBudgetPourCommande(
+  db: Db,
+  opts: { proformaId?: string | null; commandeIdExclu?: string | null }
+): Promise<{ aBudget: boolean; budgets: { id: string; numero: string; statut: string; ouvert: boolean }[]; lignes: LigneBudgetCommande[] }> {
+  const budgetsProforma = opts.proformaId ? await budgetsDeLaProforma(db, opts.proformaId) : [];
+  const aBudget = budgetsProforma.length > 0;
+  const ouvert = (b: { statut: string; clotureeAt: Date | null }) => STATUTS_BUDGET_OUVERT.includes(b.statut) && !b.clotureeAt;
+
+  const budgets = await db.demandeBudget.findMany({
+    where: aBudget
+      ? { id: { in: budgetsProforma.filter(ouvert).map((b) => b.id) } }
+      : { statut: { in: STATUTS_BUDGET_OUVERT as StatutDemandeBudget[] }, clotureeAt: null, proformas: { none: {} } },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      numero: true,
+      type: true,
+      lignes: { where: { statutValidation: "ACCORDEE" }, orderBy: { designation: "asc" }, select: { id: true, designation: true } },
+    },
+  });
+
+  const lignes: LigneBudgetCommande[] = await Promise.all(
+    budgets.flatMap((b) =>
+      b.lignes.map(async (l) => {
+        const e = await engagementLigne(db, l.id, opts.commandeIdExclu);
+        return { id: l.id, designation: l.designation, budgetId: b.id, budgetNumero: b.numero, budgetType: b.type, plafond: e.plafond, consomme: e.consomme, engage: e.engage, reste: Math.max(e.reste, 0) };
+      })
+    )
+  );
+  return {
+    aBudget,
+    budgets: budgetsProforma.map((b) => ({ id: b.id, numero: b.numero, statut: b.statut, ouvert: ouvert(b) })),
+    lignes,
+  };
+}
+
+/**
+ * Cohérence entre la proforma d'un bon de commande et la ligne de budget qui le finance :
+ * - proforma liée à un budget (non rejeté) → la ligne est obligatoire et doit appartenir à ce budget ;
+ * - ligne d'un budget lié à une proforma → le bon doit être associé à cette proforma ;
+ * - proforma sans budget, ou pas de proforma → ligne facultative (budget sans proforma : mensuel…).
+ * Renvoie le motif du refus, ou null.
+ */
+export async function refusCoherenceLigneProforma(
+  db: Db,
+  opts: { ligneBudgetId: string | null | undefined; proformaId: string | null | undefined }
+): Promise<string | null> {
+  const budgetsProforma = opts.proformaId ? await budgetsDeLaProforma(db, opts.proformaId) : [];
+  const numeros = budgetsProforma.map((b) => b.numero).join(", ");
+  if (!opts.ligneBudgetId) {
+    return budgetsProforma.length
+      ? `Cette proforma a un budget (${numeros}) : choisissez la ligne de ce budget qui finance le bon de commande.`
+      : null;
+  }
+  const ligne = await db.demandeBudgetLigne.findUnique({
+    where: { id: opts.ligneBudgetId },
+    select: {
+      designation: true,
+      demandeBudgetId: true,
+      demandeBudget: { select: { numero: true, proformas: { select: { invoiceId: true, invoice: { select: { numero: true } } } } } },
+    },
+  });
+  if (!ligne) return "Ligne de budget introuvable.";
+  if (budgetsProforma.length) {
+    return budgetsProforma.some((b) => b.id === ligne.demandeBudgetId)
+      ? null
+      : `La ligne « ${ligne.designation} » n'appartient pas au budget de la proforma de ce bon (${numeros}) : choisissez une ligne de ce budget.`;
+  }
+  const proformasDuBudget = ligne.demandeBudget.proformas;
+  if (proformasDuBudget.length) {
+    const p = proformasDuBudget.map((x) => x.invoice.numero).join(", ");
+    return `La ligne « ${ligne.designation} » appartient au budget ${ligne.demandeBudget.numero} de la proforma ${p} : associez le bon de commande à cette proforma.`;
+  }
+  return null;
 }
 
 /**
