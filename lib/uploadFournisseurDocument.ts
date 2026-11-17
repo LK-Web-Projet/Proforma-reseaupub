@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 
 export interface SavedDocument {
   url: string;
@@ -15,6 +16,7 @@ export async function saveFournisseurDocuments(fournisseurId: string, files: Fil
   if (files.length === 0) return [];
 
   for (const file of files) {
+    assertAllowedUpload(file);
     if (file.size > MAX_FOURNISSEUR_DOCUMENT_SIZE_BYTES) {
       throw new Error(`Le fichier "${file.name}" dépasse la taille maximale autorisée (10 Mo).`);
     }
@@ -26,7 +28,7 @@ export async function saveFournisseurDocuments(fournisseurId: string, files: Fil
   const saved: SavedDocument[] = [];
   for (const file of files) {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const filename = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
+    const filename = `${Date.now()}-${safeUploadFileName(file.name)}`;
     await writeFile(path.join(uploadDir, filename), buffer);
     saved.push({
       url: `/Upload/FournisseurDocument/${fournisseurId}/${filename}`,

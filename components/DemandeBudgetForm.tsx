@@ -24,6 +24,15 @@ import {
 import { InvoiceMultiCombobox, InvoiceOption } from '@/components/InvoiceMultiCombobox';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { DOCUMENT_UPLOAD_TYPES, DocumentUploadType, ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
+import {
+  TYPE_BUDGET_VALUES,
+  TYPE_BUDGET_META,
+  TypeBudgetValue,
+  CATEGORIE_DEPENSE_VALUES,
+  CATEGORIE_DEPENSE_LABELS,
+  MODE_PAIEMENT_OPTIONS,
+  totauxParModePaiement,
+} from '@/lib/budgetTypes';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -35,6 +44,11 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 interface Ligne {
   designation: string;
   montant: string;
+  categorie: string;
+  // Moyen de paiement prévu ; '' = celui de la demande (« moyen principal »).
+  modePaiement: string;
+  // Reconduction : prévu / plafond / réalisé de la même ligne sur le budget d'origine (lecture seule).
+  precedent?: { prevu: number; plafond: number; realise: number };
 }
 
 interface CommandeFournisseurOption {
@@ -55,13 +69,8 @@ interface DocumentRow {
   file: File | null;
 }
 
-const MODE_PAIEMENT_OPTIONS = [
-  { value: 'VIREMENT', label: 'Virement bancaire' },
-  { value: 'CHEQUE', label: 'Chèque' },
-  { value: 'ESPECES', label: 'Espèces' },
-  { value: 'MOBILE_MONEY', label: 'Mobile Money' },
-  { value: 'AUTRE', label: 'Autre' },
-];
+// Valeur du sélecteur « moyen de la ligne » qui signifie « comme la demande » (Radix refuse '').
+const MODE_LIGNE_DEFAUT = '__DEFAUT__';
 
 const TYPE_DEPENSE_OPTIONS = [
   'Achat de matériel',
@@ -82,7 +91,15 @@ const DEPARTEMENT_OPTIONS = [
   'Autre',
 ];
 
-const emptyLigne: Ligne = { designation: '', montant: '' };
+// Même règle que le serveur (lib/budgetSchema.ts, moisMensuelAccepte) : mois en cours ou à venir,
+// ou le mois précédent pendant les 5 premiers jours (délai de grâce de clôture).
+function moisMensuelMinimum(): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - (now.getDate() <= 5 ? 1 : 0), 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: '' };
 
 const emptyForm = {
   departement: '',
@@ -100,6 +117,8 @@ const RESEAUPUB_PREFIX = 'RESEAUPUB (';
 const CAMPAGNE_CLIENT_PREFIX = 'CAMPAGNE/CLIENT (';
 
 export interface DemandeBudgetInitialData {
+  type: string;
+  periodeMois: string | null;
   departement: string | null;
   contexteMotivation: string;
   modePaiement: string;
@@ -108,7 +127,13 @@ export interface DemandeBudgetInitialData {
   dateLimiteSouhaitee: string | null;
   bonCommandeId: string | null;
   proformaIds: string[];
-  lignes: { designation: string; montant: number }[];
+  lignes: {
+    designation: string;
+    montant: number;
+    categorie?: string | null;
+    modePaiement?: string | null;
+    precedent?: { prevu: number; plafond: number; realise: number };
+  }[];
   existingAttachments: ExistingAttachment[];
 }
 
@@ -131,7 +156,11 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     'Moi';
 
   const [form, setForm] = useState(emptyForm);
-  const [beneficiaireType, setBeneficiaireType] = useState<BeneficiaireType>('CAMPAGNE_CLIENT');
+  const [typeBudget, setTypeBudget] = useState<TypeBudgetValue>('PONCTUEL');
+  const [periodeMois, setPeriodeMois] = useState(() => new Date().toISOString().slice(0, 7));
+  // Le bénéficiaire découle du type : campagne / tiers → un client ou une entreprise externe ;
+  // mensuel / ponctuel → RESEAUPUB (dépense interne).
+  const beneficiaireType: BeneficiaireType = typeBudget === 'CAMPAGNE' || typeBudget === 'TIERS' ? 'CAMPAGNE_CLIENT' : 'RESEAUPUB';
   const [nomCampagneClient, setNomCampagneClient] = useState('');
   const [receveurChoix, setReceveurChoix] = useState<'MOI' | 'AUTRE'>('MOI');
   const [receveurAutreNom, setReceveurAutreNom] = useState('');
@@ -169,28 +198,48 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       dateLimiteSouhaitee: initialData.dateLimiteSouhaitee ? initialData.dateLimiteSouhaitee.split('T')[0] : '',
       bonCommandeId: initialData.bonCommandeId ?? '',
     });
-    setLignes(initialData.lignes.map((l) => ({ designation: l.designation, montant: String(l.montant) })));
+    setLignes(
+      initialData.lignes.map((l) => ({
+        designation: l.designation,
+        montant: String(l.montant),
+        categorie: l.categorie ?? '',
+        // Une ligne au même moyen que la demande suit le moyen principal s'il change.
+        modePaiement: l.modePaiement && l.modePaiement !== initialData.modePaiement ? l.modePaiement : '',
+        precedent: l.precedent,
+      }))
+    );
     setProformaIds(initialData.proformaIds);
 
     // "Pour le compte de" est reconstruit à partir de la chaîne déjà enregistrée
     // (ex: "RESEAUPUB (Jean Dupont)" ou "CAMPAGNE/CLIENT (Client X - RP-PRO-25/09-0001)").
     const pcd = initialData.pourLeCompteDe ?? '';
+    const typeInitial = (TYPE_BUDGET_VALUES as readonly string[]).includes(initialData.type)
+      ? (initialData.type as TypeBudgetValue)
+      : 'PONCTUEL';
+    if (initialData.periodeMois) setPeriodeMois(initialData.periodeMois.slice(0, 7));
     if (pcd.startsWith(RESEAUPUB_PREFIX) && pcd.endsWith(')')) {
-      setBeneficiaireType('RESEAUPUB');
+      setTypeBudget(typeInitial === 'CAMPAGNE' || typeInitial === 'TIERS' ? 'PONCTUEL' : typeInitial);
       setReceveurChoix('AUTRE');
       setReceveurAutreNom(pcd.slice(RESEAUPUB_PREFIX.length, -1));
-    } else if (pcd.startsWith(CAMPAGNE_CLIENT_PREFIX) && pcd.endsWith(')')) {
-      setBeneficiaireType('CAMPAGNE_CLIENT');
-      setNomCampagneClient(pcd.slice(CAMPAGNE_CLIENT_PREFIX.length, -1).split(' - ')[0]);
     } else {
-      setBeneficiaireType('CAMPAGNE_CLIENT');
-      setNomCampagneClient(pcd);
+      // Demande antérieure aux types (enregistrée "PONCTUEL") mais faite pour un client : on
+      // la propose en "Tiers" (ou "Campagne" si elle a des proformas) pour ne pas perdre le bénéficiaire.
+      const typeExterne: TypeBudgetValue =
+        typeInitial === 'CAMPAGNE' || typeInitial === 'TIERS'
+          ? typeInitial
+          : initialData.proformaIds.length > 0 ? 'CAMPAGNE' : 'TIERS';
+      setTypeBudget(typeExterne);
+      setNomCampagneClient(
+        pcd.startsWith(CAMPAGNE_CLIENT_PREFIX) && pcd.endsWith(')')
+          ? pcd.slice(CAMPAGNE_CLIENT_PREFIX.length, -1).split(' - ')[0]
+          : pcd
+      );
     }
   }, [initialData]);
 
   const addLigne = () => setLignes((prev) => [...prev, { ...emptyLigne }]);
   const removeLigne = (index: number) => setLignes((prev) => prev.filter((_, i) => i !== index));
-  const updateLigne = (index: number, field: keyof Ligne, value: string) => {
+  const updateLigne = (index: number, field: 'designation' | 'montant' | 'categorie' | 'modePaiement', value: string) => {
     setLignes((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -216,6 +265,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   };
 
   const total = lignes.reduce((sum, l) => sum + (Number(l.montant) || 0), 0);
+  const totauxParMode = totauxParModePaiement(
+    lignes.map((l) => ({ montant: Number(l.montant) || 0, modePaiement: l.modePaiement })),
+    form.modePaiement
+  ).filter((t) => t.demande > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,6 +281,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     const lignesValides = lignes.filter((l) => l.designation.trim() && Number(l.montant) > 0);
     if (lignesValides.length === 0) {
       toast.error('Ajoutez au moins une ligne de dépense avec un montant valide.');
+      return;
+    }
+    if (lignesValides.some((l) => !l.categorie)) {
+      toast.error('Choisissez une catégorie pour chaque ligne.');
       return;
     }
 
@@ -246,6 +303,16 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         setIsSubmitting(false);
         return;
       }
+      if (typeBudget === 'MENSUEL' && (!departement || !periodeMois)) {
+        toast.error('Un budget mensuel nécessite un service et un mois.');
+        setIsSubmitting(false);
+        return;
+      }
+      if (typeBudget === 'CAMPAGNE' && proformaIds.length === 0) {
+        toast.error('Un budget de campagne doit être associé à au moins une proforma.');
+        setIsSubmitting(false);
+        return;
+      }
 
       let pourLeCompteDe: string;
       if (beneficiaireType === 'RESEAUPUB') {
@@ -258,7 +325,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         pourLeCompteDe = `${RESEAUPUB_PREFIX}${nomReceveur})`;
       } else {
         if (!nomCampagneClient.trim()) {
-          toast.error('Veuillez indiquer le nom du client ou de la campagne.');
+          toast.error(typeBudget === 'TIERS' ? "Veuillez indiquer l'entreprise ou le client bénéficiaire." : 'Veuillez indiquer le nom du client ou de la campagne.');
           setIsSubmitting(false);
           return;
         }
@@ -270,6 +337,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       }
 
       const data = new FormData();
+      data.append('type', typeBudget);
+      if (typeBudget === 'MENSUEL') data.append('periodeMois', periodeMois);
       data.append('departement', departement);
       data.append('contexteMotivation', form.contexteMotivation);
       data.append('modePaiement', form.modePaiement);
@@ -277,10 +346,17 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       data.append('pourLeCompteDe', pourLeCompteDe);
       if (form.dateLimiteSouhaitee) data.append('dateLimiteSouhaitee', new Date(form.dateLimiteSouhaitee).toISOString());
       if (form.bonCommandeId) data.append('bonCommandeId', form.bonCommandeId);
-      data.append('proformaIds', JSON.stringify(proformaIds));
+      data.append('proformaIds', JSON.stringify(beneficiaireType === 'CAMPAGNE_CLIENT' ? proformaIds : []));
       data.append(
         'lignes',
-        JSON.stringify(lignesValides.map((l) => ({ designation: l.designation, montant: Number(l.montant) })))
+        JSON.stringify(
+          lignesValides.map((l) => ({
+            designation: l.designation,
+            montant: Number(l.montant),
+            categorie: l.categorie,
+            modePaiement: l.modePaiement || form.modePaiement,
+          }))
+        )
       );
       documents.forEach((doc) => {
         if (doc.file) data.append(`documents_${doc.type}`, doc.file);
@@ -312,6 +388,40 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-2">
+        <label>Type de budget *</label>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          {TYPE_BUDGET_VALUES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTypeBudget(t)}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                typeBudget === t ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted/50'
+              )}
+            >
+              <p className="text-sm font-semibold">{TYPE_BUDGET_META[t].label}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{TYPE_BUDGET_META[t].description}</p>
+            </button>
+          ))}
+        </div>
+        {typeBudget === 'MENSUEL' && (
+          <div className="flex items-center gap-2 pt-1">
+            <label htmlFor="periodeMois" className="text-sm whitespace-nowrap">Mois concerné *</label>
+            <Input
+              id="periodeMois"
+              type="month"
+              className="max-w-[200px]"
+              min={moisMensuelMinimum()}
+              value={periodeMois}
+              onChange={(e) => setPeriodeMois(e.target.value)}
+              required
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
         <label>Contexte et motivation de la demande *</label>
         <Textarea
           value={form.contexteMotivation}
@@ -323,7 +433,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label>Département</label>
+          <label>Département{typeBudget === 'MENSUEL' ? ' *' : ''}</label>
           <Select value={form.departement} onValueChange={(v) => setForm((p) => ({ ...p, departement: v }))}>
             <SelectTrigger><SelectValue placeholder="Sélectionner un département" /></SelectTrigger>
             <SelectContent>
@@ -342,31 +452,22 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           )}
         </div>
         <div className="space-y-2">
-          <label>Pour le compte de *</label>
-          <Select
-            value={beneficiaireType}
-            onValueChange={(v) => {
-              const type = v as BeneficiaireType;
-              setBeneficiaireType(type);
-              if (type === 'RESEAUPUB') setProformaIds([]);
-            }}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="CAMPAGNE_CLIENT">Campagne / Client</SelectItem>
-              <SelectItem value="RESEAUPUB">RESEAUPUB</SelectItem>
-            </SelectContent>
-          </Select>
+          <label>
+            {typeBudget === 'CAMPAGNE'
+              ? 'Client / campagne *'
+              : typeBudget === 'TIERS'
+                ? 'Pour le compte de (entreprise ou client) *'
+                : 'Pour le compte de RESEAUPUB — receveur *'}
+          </label>
 
           {beneficiaireType === 'CAMPAGNE_CLIENT' ? (
             <Input
-              className="mt-2"
-              placeholder="Nom du client ou de la campagne"
+              placeholder={typeBudget === 'TIERS' ? "Nom de l'entreprise ou du client" : 'Nom du client ou de la campagne'}
               value={nomCampagneClient}
               onChange={(e) => setNomCampagneClient(e.target.value)}
             />
           ) : (
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2">
               <Select value={receveurChoix} onValueChange={(v) => setReceveurChoix(v as 'MOI' | 'AUTRE')}>
                 <SelectTrigger className="w-[160px] shrink-0"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -397,9 +498,11 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[65%]">Désignation</TableHead>
-                <TableHead className="w-[25%]">Montant (XOF)</TableHead>
-                <TableHead className="w-[10%]"></TableHead>
+                <TableHead className="w-[32%]">Désignation</TableHead>
+                <TableHead className="w-[22%] min-w-[160px]">Catégorie *</TableHead>
+                <TableHead className="w-[18%] min-w-[150px]">Moyen de paiement</TableHead>
+                <TableHead className="w-[20%] min-w-[130px]">Montant (XOF)</TableHead>
+                <TableHead className="w-[8%]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -413,12 +516,49 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                     />
                   </TableCell>
                   <TableCell>
+                    <Select value={ligne.categorie} onValueChange={(v) => updateLigne(index, 'categorie', v)}>
+                      <SelectTrigger><SelectValue placeholder="Catégorie" /></SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIE_DEPENSE_VALUES.map((c) => (
+                          <SelectItem key={c} value={c}>{CATEGORIE_DEPENSE_LABELS[c]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={ligne.modePaiement || MODE_LIGNE_DEFAUT}
+                      onValueChange={(v) => updateLigne(index, 'modePaiement', v === MODE_LIGNE_DEFAUT ? '' : v)}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={MODE_LIGNE_DEFAUT}>
+                          Principal ({MODE_PAIEMENT_OPTIONS.find((o) => o.value === form.modePaiement)?.label ?? form.modePaiement})
+                        </SelectItem>
+                        {MODE_PAIEMENT_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
                     <Input
                       type="number"
                       step="0.01"
                       value={ligne.montant}
                       onChange={(e) => updateLigne(index, 'montant', e.target.value)}
                     />
+                    {ligne.precedent && (
+                      <p
+                        className={cn(
+                          'text-[11px] mt-1 leading-tight',
+                          ligne.precedent.realise > ligne.precedent.prevu ? 'text-orange-700' : 'text-muted-foreground'
+                        )}
+                        title="Budget d'origine : prévu / dépensé réellement"
+                      >
+                        Précédent : {formatMontant(ligne.precedent.prevu)} prévu, {formatMontant(ligne.precedent.realise)} dépensé
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell>
                     {lignes.length > 1 && (
@@ -438,12 +578,23 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             </TableBody>
           </Table>
         </div>
-        <div className="flex justify-end text-lg font-bold">Total : {formatMontant(total)}</div>
+        <div className="flex flex-col items-end gap-1">
+          <div className="text-lg font-bold">Total : {formatMontant(total)}</div>
+          {totauxParMode.length > 1 && (
+            <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {totauxParMode.map((t) => (
+                <span key={t.mode}>
+                  {t.label} : <span className="font-medium text-foreground">{formatMontant(t.demande)}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label>Mode de paiement souhaité *</label>
+          <label>Moyen de paiement principal *</label>
           <Select value={form.modePaiement} onValueChange={(v) => setForm((p) => ({ ...p, modePaiement: v }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -500,7 +651,12 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
       {beneficiaireType === 'CAMPAGNE_CLIENT' && (
         <div className="space-y-2">
-          <label>Proforma(s) associée(s)</label>
+          <label>
+            Proforma(s) associée(s){typeBudget === 'CAMPAGNE' ? ' *' : ' (facultatif)'}
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Les dépenses de ce budget seront imputées à la proforma choisie et apparaîtront dans sa fiche.
+          </p>
           <InvoiceMultiCombobox invoices={invoices} value={proformaIds} onChange={setProformaIds} />
         </div>
       )}

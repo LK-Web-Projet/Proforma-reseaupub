@@ -10,11 +10,13 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import type { StatutCommandeFournisseur } from "@prisma/client";
+import { TRANSITIONS_COMMANDE } from "@/lib/commandeFournisseurLiasse";
 
 export const STATUT_LABELS: Record<StatutCommandeFournisseur, string> = {
     BROUILLON: "Brouillon",
     VALIDEE: "Validée",
     LIVREE: "Livrée",
+    PAYEE: "Payée",
     ANNULEE: "Annulée",
 };
 
@@ -22,12 +24,16 @@ export const STATUT_BADGE_VARIANT: Record<StatutCommandeFournisseur, "brouillon"
     BROUILLON: "brouillon",
     VALIDEE: "success",
     LIVREE: "success",
+    PAYEE: "success",
     ANNULEE: "annuler",
 };
 
 interface CommandeStatutControlProps {
     statut: StatutCommandeFournisseur;
+    /** Droit « Valider les budgets mensuels » (direction) : seul habilité à valider (signer) un bon. */
     isAdmin: boolean;
+    /** Scan du bon signé joint (connu sur la fiche) ; non renseigné : le serveur tranche. */
+    bcSigne?: boolean;
     onChange: (statut: StatutCommandeFournisseur) => void;
     triggerClassName?: string;
     badgeClassName?: string;
@@ -35,20 +41,22 @@ interface CommandeStatutControlProps {
 }
 
 /**
- * Contrôle de statut d'un bon de commande fournisseur, réutilisé partout où un statut
- * est affiché (liste globale, onglet d'un fournisseur, page de détail). Tout utilisateur
- * peut changer librement le statut tant que le bon n'est pas dans un état final
- * (LIVREE/ANNULEE), qui reste verrouillé. `isAdmin` n'est plus utilisé ici (conservé dans
- * les props pour ne pas casser les appelants) depuis que cette liberté a été étendue à
- * tout utilisateur, plus seulement aux admins.
+ * Contrôle de statut d'un bon de commande fournisseur (liste globale, onglet d'un fournisseur,
+ * fiche). Ne propose que les passages autorisés (BROUILLON → VALIDEE → LIVREE, ANNULEE) ;
+ * « Validée » (bon signé par la DG) seulement pour la direction et, sur la fiche, une fois le
+ * scan signé joint. Le serveur applique les mêmes règles (app/api/fournisseurs/commandes/[commandeId]).
  */
 export function CommandeStatutControl({
     statut,
+    isAdmin,
+    bcSigne,
     onChange,
     triggerClassName,
     badgeClassName,
 }: CommandeStatutControlProps) {
-    const isLocked = statut === "LIVREE" || statut === "ANNULEE";
+    const suivants = TRANSITIONS_COMMANDE[statut] ?? [];
+    const isLocked = suivants.length === 0;
+    const valideeImpossible = !isAdmin || bcSigne === false;
 
     if (!isLocked) {
         return (
@@ -61,10 +69,13 @@ export function CommandeStatutControl({
                     </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
-                    <SelectItem value="VALIDEE">Validée</SelectItem>
-                    <SelectItem value="LIVREE">Livrée</SelectItem>
-                    <SelectItem value="ANNULEE">Annulée</SelectItem>
+                    <SelectItem value={statut}>{STATUT_LABELS[statut]}</SelectItem>
+                    {suivants.map((s) => (
+                        <SelectItem key={s} value={s} disabled={s === "VALIDEE" && valideeImpossible}>
+                            {STATUT_LABELS[s as StatutCommandeFournisseur]}
+                            {s === "VALIDEE" && !isAdmin ? " (direction)" : s === "VALIDEE" && bcSigne === false ? " (joindre le BC signé)" : ""}
+                        </SelectItem>
+                    ))}
                 </SelectContent>
             </Select>
         );

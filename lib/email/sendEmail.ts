@@ -20,6 +20,12 @@ function getTransporter() {
 }
 
 export async function sendEmail({ to, cc, subject, html }: SendEmailOptions) {
+  // Interrupteur des tests locaux (base de production partagée) : EMAIL_DISABLED=true n'envoie
+  // rien et trace seulement l'email dans la console. Absent en production → aucun effet.
+  if (process.env.EMAIL_DISABLED === "true") {
+    console.info(`[email désactivé] « ${subject} » → ${[to, cc].flat().filter(Boolean).join(", ")}`);
+    return;
+  }
   const transporter = getTransporter();
   await transporter.sendMail({
     from: process.env.EMAIL_FROM,

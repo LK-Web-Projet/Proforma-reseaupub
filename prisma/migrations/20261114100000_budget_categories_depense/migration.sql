@@ -1,0 +1,6 @@
+-- CreateEnum
+CREATE TYPE "CategorieDepense" AS ENUM ('CARBURANT', 'TRANSPORT', 'LOYER_CHARGES', 'COMMUNICATION', 'FOURNITURES', 'EQUIPEMENT', 'MAINTENANCE', 'IMPRESSION', 'PRESTATION', 'PERSONNEL', 'RESTAURATION', 'AUTRE');
+
+-- AlterTable
+ALTER TABLE "DemandeBudgetLigne" ADD COLUMN     "categorie" "CategorieDepense";
+

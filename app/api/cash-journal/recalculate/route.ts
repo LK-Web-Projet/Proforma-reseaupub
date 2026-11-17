@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient, OperationType } from '@prisma/client';
+import { OperationType } from '@prisma/client';
+import prisma from '@/lib/prisma';
+import { requireCaisseUser } from '@/lib/budgetAuth';
 
-const prisma = new PrismaClient();
-
+// Recalcule tous les soldes du journal : réservé au droit « Saisir au journal de caisse ».
 export async function POST() {
+  const caps = await requireCaisseUser();
+  if (caps instanceof NextResponse) return caps;
   try {
     // Fetch all cash registers
     const cashRegisters = await prisma.cashRegister.findMany();

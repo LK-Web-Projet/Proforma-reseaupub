@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma"; // Assuming prisma client is exported from here
 import { z } from "zod";
 import { saveProduitFournisseurPhotos, describeFsError } from "@/lib/uploadProduitFournisseur";
+import { ALLOWED_IMAGE_EXTENSIONS, assertAllowedUpload } from "@/lib/uploadSecurity";
 
 const productSchema = z.object({
     designation: z.string().min(1, "La désignation est requise"),
@@ -67,6 +68,14 @@ export async function POST(request: Request) {
             typeUnite: formData.get("typeUnite"),
             fournisseurId: formData.get("fournisseurId"),
         });
+
+        // Photos vérifiées AVANT la création : une photo refusée ne doit pas laisser un produit sans photo.
+        const photosAVerifier = (formData.getAll("photos") as File[]).filter((f) => f && f.size > 0);
+        try {
+            photosAVerifier.forEach((f) => assertAllowedUpload(f, ALLOWED_IMAGE_EXTENSIONS));
+        } catch (e) {
+            return NextResponse.json({ error: e instanceof Error ? e.message : "Photo refusée." }, { status: 400 });
+        }
 
         const product = await prisma.produitFournisseur.create({
             data: validatedData,

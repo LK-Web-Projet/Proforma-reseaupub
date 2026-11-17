@@ -8,6 +8,26 @@ export interface RecetteDetailLine { id: number; libelle: string; montant: numbe
 export interface DepenseDetailLine { id: number; libelle: string; montant: number; caisse: string; client: DetailClient | null }
 export interface ProformaValideeDetailLine { id: string; numero: string; totalTTC: number; client: DetailClient | null }
 
+// --- Dépenses de budget annulées ------------------------------------------------------
+// Une dépense de budget annulée garde son écriture DEPENSE d'origine et reçoit une
+// contre-écriture RECETTE (voir app/api/demandes-budget/[id]/depenses/[depenseId]/annuler).
+// Le couple s'annule dans le solde réel, mais ne doit apparaître ni dans les "Dépenses" ni
+// dans les "Autres mouvements" des rapports. Sélection Prisma à ajouter aux requêtes :
+export const BUDGET_ANNULATION_SELECT = {
+  budgetDepense: { select: { annuleeAt: true } },
+  budgetDepenseAnnulee: { select: { id: true } },
+} as const;
+
+export interface BudgetAnnulationFields {
+  budgetDepense?: { annuleeAt: Date | null } | null;
+  budgetDepenseAnnulee?: { id: string } | null;
+}
+
+/** Vrai pour une dépense de budget annulée ou pour sa contre-écriture : à ignorer dans les rapports. */
+export function isEcritureBudgetAnnulee(e: BudgetAnnulationFields): boolean {
+  return !!e.budgetDepense?.annuleeAt || !!e.budgetDepenseAnnulee;
+}
+
 // --- Détection des transferts internes entre caisses visibles -----------------------
 // Reprend exactement la logique de app/(main)/journal-caisse/page.tsx (totalRecettesGlobal/
 // totalDepensesGlobal) : un virement entre deux caisses crée deux lignes réelles

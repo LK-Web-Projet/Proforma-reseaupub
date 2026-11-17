@@ -29,6 +29,8 @@ import {
   PiggyBank,
   FilePlus,
   Eye,
+  Search,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -46,6 +48,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import type { AppPublicMetadata, PageKey } from "@/lib/permissions";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 // Menu facture.
 const dashboard = [
@@ -141,8 +144,8 @@ const finance = [
 
 // Section à part — accessible à tout utilisateur authentifié (pas soumise aux cases à
 // cocher par page) : n'importe quel employé doit pouvoir soumettre une demande de budget,
-// la visibilité des données (ses demandes vs toutes) est filtrée côté API selon que son
-// email figure dans BUDGET_ADMIN_EMAILS/BUDGET_COMPTABLE_EMAILS (voir lib/budgetAuth.ts).
+// la visibilité des données (ses demandes vs toutes) est filtrée côté API selon les droits
+// budget cochés sur son rôle (Paramètres > Rôles — voir lib/budgetAuth.ts).
 const budget = [
   {
     title: "Faire une demande",
@@ -238,15 +241,20 @@ export function AppSidebar() {
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-sm">
             RP
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-sm font-bold truncate">Finance reseaupub</h1>
             <p className="text-xs text-gray-500 truncate">
               Proforma &amp; Finance
             </p>
           </div>
+          <NotificationBell />
         </div>
       </SidebarHeader>
       <SidebarContent className="gap-2">
+        {/* Recherche dans les documents classés (résultats filtrés selon les droits) */}
+        <SidebarMenu>
+          <NavLink item={{ title: "Recherche", url: "/recherche", icon: Search }} />
+        </SidebarMenu>
         {canSeePage("dashboard", true) && (
         <Collapsible open={isDashboardOpen} onOpenChange={setIsDashboardOpen}>
           <CollapsibleTrigger asChild>
@@ -444,6 +452,9 @@ export function AppSidebar() {
         </Collapsible>
       </SidebarContent>
       <SidebarFooter>
+        <SidebarMenu>
+          <NavLink item={{ title: "Aide", url: "/aide", icon: BookOpen }} />
+        </SidebarMenu>
         {canSeePage("parametres", false) && (
           <SidebarMenu>
             <NavLink item={{ title: "Paramètres", url: "/parametres", icon: Settings }} />

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { writeFile } from "fs/promises";
 import path from "path";
+import { ALLOWED_IMAGE_EXTENSIONS, fileExtension } from "@/lib/uploadSecurity";
 
 export async function POST(request: Request) {
     try {
@@ -16,7 +17,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Type de fichier invalide" }, { status: 400 });
         }
 
-        const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
+        // L'extension vient du nom envoyé par le client : liste blanche, sinon un "logo.html"
+        // serait écrit à la racine de /public et servi par le site.
+        const ext = fileExtension(file.name);
+        if (!(ALLOWED_IMAGE_EXTENSIONS as readonly string[]).includes(ext)) {
+            return NextResponse.json({ error: "Format d'image non accepté (jpg, png, webp, gif)." }, { status: 400 });
+        }
         const filename = `logo-entreprise.${ext}`;
 
         const bytes = await file.arrayBuffer();

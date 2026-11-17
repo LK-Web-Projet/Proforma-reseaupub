@@ -19,6 +19,7 @@ import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { CalendarIcon, Lock } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { exigeBonDeCommande } from '@/lib/typeFournisseur';
 
 export interface FactureFournisseurData {
   id: string;
@@ -28,6 +29,7 @@ export interface FactureFournisseurData {
   fournisseurId: string;
   status: string;
   pieceJointe: string | null;
+  commandeId?: string | null;
 }
 
 const emptyForm = {
@@ -36,7 +38,21 @@ const emptyForm = {
   date: new Date(),
   fournisseurId: '',
   status: 'EN_ATTENTE',
+  commandeId: '',
+  ligneBudgetId: '',
 };
+
+interface LigneBudgetOption {
+  id: string;
+  label: string;
+}
+
+interface CommandeOption {
+  id: string;
+  numero: string;
+  statut: string;
+  montantNet: number | string;
+}
 
 interface FactureFournisseurModalProps {
   isOpen: boolean;
@@ -59,6 +75,39 @@ export function FactureFournisseurModal({
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFournisseurModalOpen, setIsFournisseurModalOpen] = useState(false);
+  // Bons de commande du prestataire choisi : toute nouvelle facture répond à l'un d'eux.
+  const [commandes, setCommandes] = useState<CommandeOption[]>([]);
+  // Prestataire interne / externe : lignes des budgets ouverts (ex. budget mensuel de la comptabilité).
+  const [lignesBudget, setLignesBudget] = useState<LigneBudgetOption[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/demandes-budget')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((demandes: { numero: string; statut: string; type: string; departement: string | null; lignes: { id: string; designation: string; statutValidation: string }[] }[]) =>
+        setLignesBudget(
+          demandes
+            .filter((d) => ['VALIDATION_PARTIELLE', 'VALIDEE', 'EN_COURS'].includes(d.statut))
+            .flatMap((d) =>
+              d.lignes
+                .filter((l) => l.statutValidation === 'ACCORDEE')
+                .map((l) => ({ id: l.id, label: `${d.numero}${d.departement ? ` (${d.departement})` : ''} — ${l.designation}` }))
+            )
+        )
+      )
+      .catch(() => setLignesBudget([]));
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !formData.fournisseurId) {
+      setCommandes([]);
+      return;
+    }
+    fetch(`/api/fournisseurs/commandes?fournisseurId=${formData.fournisseurId}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((liste: CommandeOption[]) => setCommandes(liste.filter((c) => c.statut !== 'ANNULEE' && c.statut !== 'BROUILLON')))
+      .catch(() => setCommandes([]));
+  }, [isOpen, formData.fournisseurId]);
 
   const isEditing = !!initialData;
   const isLocked = isEditing && (initialData?.status === 'PAYEE' || initialData?.status === 'ANNULEE');
@@ -74,6 +123,8 @@ export function FactureFournisseurModal({
         date: new Date(initialData.date),
         fournisseurId: initialData.fournisseurId,
         status: initialData.status,
+        commandeId: initialData.commandeId ?? '',
+        ligneBudgetId: '',
       });
     } else {
       setFormData(emptyForm);
@@ -114,6 +165,9 @@ export function FactureFournisseurModal({
     } else if (!formData.fournisseurId) {
       toast.error('Veuillez sélectionner un prestataire.');
       return;
+    } else if (!isEditing && !formData.commandeId && exigeBonDeCommande(fournisseurs.find((f) => f.id === formData.fournisseurId)?.typeFournisseur)) {
+      toast.error('Ce prestataire est un fournisseur : choisissez le bon de commande auquel répond cette facture.');
+      return;
     }
 
     setIsSubmitting(true);
@@ -125,6 +179,8 @@ export function FactureFournisseurModal({
       data.append('date', formData.date.toISOString());
       data.append('fournisseurId', formData.fournisseurId);
       data.append('status', formData.status);
+      if (formData.commandeId) data.append('commandeId', formData.commandeId);
+      else if (formData.ligneBudgetId) data.append('ligneBudgetId', formData.ligneBudgetId);
     }
     if (file) {
       data.append('pieceJointe', file);
@@ -201,6 +257,47 @@ export function FactureFournisseurModal({
                   />
                 )}
               </div>
+              {!isEditing && (
+                <div className="space-y-2 md:col-span-2">
+                  <label>Bon de commande{exigeBonDeCommande(selectedFournisseur?.typeFournisseur) ? ' *' : ' (facultatif)'}</label>
+                  <Select
+                    value={formData.commandeId || '__AUCUN__'}
+                    onValueChange={(v) => setFormData((prev) => ({ ...prev, commandeId: v === '__AUCUN__' ? '' : v, ligneBudgetId: v === '__AUCUN__' ? prev.ligneBudgetId : '' }))}
+                    disabled={!formData.fournisseurId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={!formData.fournisseurId ? "Choisissez d'abord le prestataire" : commandes.length ? 'Choisir le bon de commande' : 'Aucun bon de commande validé pour ce prestataire'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!exigeBonDeCommande(selectedFournisseur?.typeFournisseur) && <SelectItem value="__AUCUN__">Aucun bon de commande</SelectItem>}
+                      {commandes.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.numero} — {new Intl.NumberFormat('fr-FR').format(Number(c.montantNet))} F
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {exigeBonDeCommande(selectedFournisseur?.typeFournisseur) ? (
+                    <p className="text-xs text-muted-foreground">Fournisseur : la facture passera « payée » au paiement du solde de ce bon.</p>
+                  ) : (
+                    !formData.commandeId && (
+                      <div className="space-y-2 pt-1">
+                        <label>Ligne de budget (facultatif)</label>
+                        <Select value={formData.ligneBudgetId || '__AUCUNE__'} onValueChange={(v) => setFormData((prev) => ({ ...prev, ligneBudgetId: v === '__AUCUNE__' ? '' : v }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__AUCUNE__">Aucune (choisie au moment du paiement)</SelectItem>
+                            {lignesBudget.map((l) => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Prestataire interne / externe : la facture se règle par une dépense sur une ligne de budget (ex. budget mensuel de la comptabilité pour la paie). Elle passe « payée » une fois entièrement réglée.
+                        </p>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <label htmlFor="reference">Référence de la facture *</label>
                 <Input
@@ -266,7 +363,8 @@ export function FactureFournisseurModal({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="EN_ATTENTE">En attente</SelectItem>
-                    <SelectItem value="PAYEE">Payée</SelectItem>
+                    {/* « Payée » : uniquement par le paiement du solde depuis le budget. */}
+                    <SelectItem value="PAYEE" disabled>Payée (par le solde du budget)</SelectItem>
                     <SelectItem value="ANNULEE">Annulée</SelectItem>
                   </SelectContent>
                 </Select>

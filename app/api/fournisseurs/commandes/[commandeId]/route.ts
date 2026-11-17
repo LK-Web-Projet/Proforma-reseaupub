@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { getCurrentUserIdentity } from "@/lib/budgetAuth";
+import { getBudgetCapabilities } from "@/lib/budgetAuth";
+import { requirePage } from "@/lib/authz";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
-import type { StatutCommandeFournisseur } from "@prisma/client";
+import { StatutCommandeFournisseur } from "@prisma/client";
+import { refusLigneBudgetCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
+import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
+import {
+    sendCommandeEmiseNotification,
+    sendCommandeFournisseurValideeNotification,
+    sendCommandeScanAJoindreNotification,
+} from "@/lib/email/commandeFournisseur";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
@@ -19,6 +27,7 @@ const commandeUpdateSchema = z.object({
     appliquerTva: z.boolean().optional().default(false),
     appliquerAib: z.boolean().optional().default(false),
     proformaIds: z.array(z.string()).optional().default([]),
+    ligneBudgetId: z.string().nullable().optional(),
 });
 
 const commandeInclude = {
@@ -29,6 +38,45 @@ const commandeInclude = {
         },
     },
     proformas: { include: { invoice: { include: { client: true } } } },
+    // Lot C : ligne de budget qui finance le bon, liasse, factures, avances et solde.
+    ligneBudget: {
+        select: {
+            id: true,
+            designation: true,
+            demandeBudget: { select: { id: true, numero: true, type: true, statut: true } },
+        },
+    },
+    documents: { orderBy: { createdAt: "asc" as const } },
+    factures: { orderBy: { date: "asc" as const } },
+    // Imputations des paiements (budget, proforma ou Camptrack) : payé par ligne de produit.
+    imputations: {
+      orderBy: { createdAt: "asc" as const },
+      select: {
+        id: true,
+        ligneCommandeId: true,
+        montant: true,
+        nature: true,
+        annuleeAt: true,
+        cashJournalEntryId: true,
+        factureFournisseurId: true,
+        cashJournalEntry: { select: { date_operation: true, libelle: true, budgetDepense: { select: { demandeBudgetId: true } }, paiement: { select: { invoiceId: true } } } },
+      },
+    },
+    depenses: {
+        orderBy: { createdAt: "asc" as const },
+        select: {
+            id: true,
+            montant: true,
+            nature: true,
+            dateDepense: true,
+            nomReceveur: true,
+            modePaiement: true,
+            annuleeAt: true,
+            demandeBudgetId: true,
+            factureFournisseurId: true,
+            cashJournalEntryId: true,
+        },
+    },
 };
 
 export async function GET(
@@ -67,38 +115,104 @@ export async function GET(
     }
 }
 
-// PATCH /api/fournisseurs/commandes/[commandeId] - Changer le statut d'un bon de commande.
-// Tout utilisateur authentifié peut changer librement le statut, dans n'importe quel sens.
-// Le verrouillage des états finaux (LIVREE/ANNULEE) est géré côté interface
-// (CommandeStatutControl), pas ici.
+const patchSchema = z.object({
+    statut: z.nativeEnum(StatutCommandeFournisseur).optional(),
+    ligneBudgetId: z.string().nullable().optional(),
+});
+
+// PATCH /api/fournisseurs/commandes/[commandeId] — statut et/ou ligne de budget, section
+// « Prestataires » requise. Statut : BROUILLON → VALIDEE → LIVREE, ANNULEE depuis BROUILLON ou
+// VALIDEE (sans paiement), jamais de retour en arrière. Un brouillon rattaché à une ligne de budget
+// ACCORDÉE est validé d'office (validationAutomatiqueCommande) ; sinon, VALIDEE = signé par la DG :
+// réservé au droit « Valider les budgets mensuels » et seulement une fois le scan du BC signé joint.
 export async function PATCH(
     request: Request,
     { params }: { params: Promise<{ commandeId: string }> }
 ) {
     const { commandeId } = await params;
-
-    const { email } = await getCurrentUserIdentity();
-    if (!email) {
+    const refusPage = await requirePage("fournisseurs");
+    if (refusPage) return refusPage;
+    const caps = await getBudgetCapabilities();
+    if (!caps) {
         return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
     }
 
     try {
-        const body = await request.json();
-        const nouveauStatut = body.statut as StatutCommandeFournisseur;
+        const validation = patchSchema.safeParse(await request.json());
+        if (!validation.success) {
+            return NextResponse.json({ error: "Statut ou ligne de budget invalide." }, { status: 400 });
+        }
+        const { statut: nouveauStatut, ligneBudgetId } = validation.data;
 
-        const commandeActuelle = await prisma.commandeFournisseur.findUnique({
+        const actuelle = await prisma.commandeFournisseur.findUnique({
             where: { id: commandeId },
-            select: { statut: true },
+            // Paiements actifs = imputations non annulées (budget, proforma ou Camptrack).
+            include: { documents: { select: { kind: true } }, imputations: { where: { annuleeAt: null }, select: { id: true } } },
         });
-        if (!commandeActuelle) {
+        if (!actuelle) {
             return NextResponse.json({ error: "Bon de commande introuvable" }, { status: 404 });
+        }
+
+        const data: { statut?: StatutCommandeFournisseur; ligneBudgetId?: string | null } = {};
+        let emisSurBudget = false;
+
+        if (ligneBudgetId !== undefined && ligneBudgetId !== actuelle.ligneBudgetId) {
+            if (actuelle.imputations.length > 0) {
+                return NextResponse.json({ error: "Des paiements ont déjà été faits sur ce bon : sa ligne de budget ne peut plus changer." }, { status: 400 });
+            }
+            const refusLigne = await refusLigneBudgetCommande(prisma, ligneBudgetId);
+            if (refusLigne) return NextResponse.json({ error: refusLigne }, { status: 400 });
+            data.ligneBudgetId = ligneBudgetId;
+            // Ligne accordée : contrôle de l'engagement, et un brouillon est validé d'office.
+            const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId, montantNet: Number(actuelle.montantNet), commandeIdExclu: actuelle.id });
+            if (auto.refus) return NextResponse.json({ error: auto.refus }, { status: 400 });
+            if (auto.valider && actuelle.statut === StatutCommandeFournisseur.BROUILLON && !nouveauStatut) {
+                data.statut = StatutCommandeFournisseur.VALIDEE;
+                emisSurBudget = true;
+            }
+        }
+
+        if (nouveauStatut && nouveauStatut !== actuelle.statut) {
+            if (!TRANSITIONS_COMMANDE[actuelle.statut].includes(nouveauStatut)) {
+                return NextResponse.json(
+                    { error: `Passage de « ${actuelle.statut} » à « ${nouveauStatut} » non autorisé.` },
+                    { status: 400 }
+                );
+            }
+            if (nouveauStatut === StatutCommandeFournisseur.VALIDEE) {
+                if (!caps.canValidateMensuel) {
+                    return NextResponse.json({ error: "Seule la direction (signataire des bons de commande) peut valider un bon de commande." }, { status: 403 });
+                }
+                if (!etatLiasse(actuelle.documents).bcSigne) {
+                    return NextResponse.json({ error: "Joignez d'abord le scan du bon de commande signé par la DG." }, { status: 400 });
+                }
+            }
+            if (nouveauStatut === StatutCommandeFournisseur.ANNULEE && actuelle.imputations.length > 0) {
+                return NextResponse.json({ error: "Ce bon a déjà des paiements : annulez d'abord les dépenses concernées." }, { status: 400 });
+            }
+            data.statut = nouveauStatut;
         }
 
         const updatedCommande = await prisma.commandeFournisseur.update({
             where: { id: commandeId },
-            data: { statut: nouveauStatut },
+            data,
             include: commandeInclude,
         });
+
+        if (emisSurBudget) {
+            sendCommandeEmiseNotification(updatedCommande).catch((err) =>
+                console.error("Erreur lors de la notification de bon de commande émis:", err)
+            );
+            if (!etatLiasse(actuelle.documents).bcSigne) {
+                sendCommandeScanAJoindreNotification(updatedCommande).catch((err) =>
+                    console.error("Erreur lors du rappel de scan du bon de commande:", err)
+                );
+            }
+        } else if (data.statut === StatutCommandeFournisseur.VALIDEE) {
+            sendCommandeFournisseurValideeNotification(updatedCommande).catch((err) =>
+                console.error("Erreur lors de la notification de bon de commande validé:", err)
+            );
+        }
 
         return NextResponse.json(updatedCommande);
     } catch (error) {
@@ -117,11 +231,13 @@ export async function PUT(
     { params }: { params: Promise<{ commandeId: string }> }
 ) {
     const { commandeId } = await params;
+    const refusPage = await requirePage("fournisseurs");
+    if (refusPage) return refusPage;
 
     try {
         const commandeActuelle = await prisma.commandeFournisseur.findUnique({
             where: { id: commandeId },
-            select: { statut: true },
+            select: { statut: true, ligneBudgetId: true, documents: { select: { kind: true } } },
         });
         if (!commandeActuelle) {
             return NextResponse.json({ error: "Bon de commande introuvable" }, { status: 404 });
@@ -135,6 +251,10 @@ export async function PUT(
 
         const body = await request.json();
         const validatedData = commandeUpdateSchema.parse(body);
+        const refusLigne = await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId);
+        if (refusLigne) {
+            return NextResponse.json({ error: refusLigne }, { status: 400 });
+        }
 
         if (validatedData.proformaIds.length > 0) {
             const proformasValides = await prisma.invoice.findMany({
@@ -187,6 +307,13 @@ export async function PUT(
             validatedData.appliquerAib
         );
 
+        // Ligne de budget accordée : contrôle de l'engagement, et le brouillon est validé d'office.
+        const ligneVisee = validatedData.ligneBudgetId !== undefined ? validatedData.ligneBudgetId : commandeActuelle.ligneBudgetId;
+        const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId: ligneVisee, montantNet, commandeIdExclu: commandeId });
+        if (auto.refus) {
+            return NextResponse.json({ error: auto.refus }, { status: 400 });
+        }
+
         const updatedCommande = await prisma.$transaction(async (tx) => {
             await tx.ligneCommandeFournisseur.deleteMany({ where: { commandeId } });
             await tx.commandeFournisseurProforma.deleteMany({ where: { commandeId } });
@@ -195,6 +322,8 @@ export async function PUT(
                 where: { id: commandeId },
                 data: {
                     dateCommande: validatedData.dateCommande || undefined,
+                    ...(validatedData.ligneBudgetId !== undefined ? { ligneBudgetId: validatedData.ligneBudgetId } : {}),
+                    ...(auto.valider ? { statut: StatutCommandeFournisseur.VALIDEE } : {}),
                     totalHT,
                     appliquerTva: validatedData.appliquerTva,
                     tva,
@@ -210,6 +339,17 @@ export async function PUT(
                 include: commandeInclude,
             });
         });
+
+        if (auto.valider) {
+            sendCommandeEmiseNotification(updatedCommande).catch((err) =>
+                console.error("Erreur lors de la notification de bon de commande émis:", err)
+            );
+            if (!etatLiasse(commandeActuelle.documents).bcSigne) {
+                sendCommandeScanAJoindreNotification(updatedCommande).catch((err) =>
+                    console.error("Erreur lors du rappel de scan du bon de commande:", err)
+                );
+            }
+        }
 
         return NextResponse.json(updatedCommande);
     } catch (error) {

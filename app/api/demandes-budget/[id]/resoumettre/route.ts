@@ -1,27 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { ModePaiementDemande } from "@prisma/client";
+import { ActionBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { getCurrentUserIdentity, isBudgetComptableEmail } from "@/lib/budgetAuth";
-import { saveTypedDemandeBudgetAttachments, describeFsError } from "@/lib/uploadDemandeBudget";
+import { logBudget, budgetMensuelExistant } from "@/lib/budgetSuivi";
+import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
+import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
+import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
-
-const ligneSchema = z.object({
-  designation: z.string().min(1),
-  montant: z.number().min(0),
-});
-
-const resoumettreSchema = z.object({
-  departement: z.string().optional(),
-  contexteMotivation: z.string().min(1, "Le contexte et la motivation sont requis."),
-  modePaiement: z.nativeEnum(ModePaiementDemande),
-  typeDepense: z.string().min(1, "Le type de dépense est requis."),
-  pourLeCompteDe: z.string().optional(),
-  dateLimiteSouhaitee: z.string().optional(),
-  bonCommandeId: z.string().optional(),
-  proformaIds: z.array(z.string()).default([]),
-  lignes: z.array(ligneSchema).min(1, "Ajoutez au moins une ligne de dépense."),
-});
 
 // POST /api/demandes-budget/[id]/resoumettre - Modifier une demande rejetée et la resoumettre
 export async function POST(
@@ -29,13 +13,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const caps = await requireBudgetUser();
+  if (caps instanceof NextResponse) return caps;
 
   try {
-    const { email } = await getCurrentUserIdentity();
-    if (!email) {
-      return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
-    }
-
     const existing = await prisma.demandeBudget.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: "Demande introuvable." }, { status: 404 });
@@ -45,33 +26,42 @@ export async function POST(
     }
 
     // Seul l'auteur de la demande ou le comptable peuvent la corriger et la resoumettre.
-    const isAutorise = existing.requesterEmail === email || isBudgetComptableEmail(email);
+    const isAutorise = isSameEmail(existing.requesterEmail, caps.email) || caps.canPay;
     if (!isAutorise) {
       return NextResponse.json({ error: "Vous n'êtes pas autorisé à modifier cette demande." }, { status: 403 });
     }
 
     const formData = await request.formData();
-    const rawLignes = formData.get("lignes");
-    const rawProformaIds = formData.get("proformaIds");
-
-    const parsedBody = {
-      departement: (formData.get("departement") as string) || undefined,
-      contexteMotivation: (formData.get("contexteMotivation") as string) || "",
-      modePaiement: formData.get("modePaiement") as string,
-      typeDepense: (formData.get("typeDepense") as string) || "",
-      pourLeCompteDe: (formData.get("pourLeCompteDe") as string) || undefined,
-      dateLimiteSouhaitee: (formData.get("dateLimiteSouhaitee") as string) || undefined,
-      bonCommandeId: (formData.get("bonCommandeId") as string) || undefined,
-      proformaIds: rawProformaIds ? JSON.parse(rawProformaIds as string) : [],
-      lignes: rawLignes ? JSON.parse(rawLignes as string) : [],
-    };
-
-    const validation = resoumettreSchema.safeParse(parsedBody);
+    const validation = parseDemandeBudgetFormData(formData);
     if (!validation.success) {
-      return NextResponse.json({ error: validation.error.format() }, { status: 400 });
+      return NextResponse.json({ error: firstZodMessage(validation.error) }, { status: 400 });
     }
     const data = validation.data;
+    assertTypedAttachmentsAllowed(formData);
+
+    // Un seul budget mensuel par service et par mois (hors demandes rejetées).
+    if (data.type === TypeBudget.MENSUEL && data.departement) {
+      const periode = toPeriodeMois(data.periodeMois);
+      const doublon = periode
+        ? await budgetMensuelExistant(prisma, { departement: data.departement, periodeMois: periode, excludeId: id })
+        : null;
+      if (doublon) {
+        return NextResponse.json(
+          { error: `Un budget mensuel existe déjà pour ce service et ce mois (${doublon}). Complétez-le plutôt que d'en créer un second.` },
+          { status: 409 }
+        );
+      }
+    }
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
+
+    // Une demande rejetée n'a jamais eu de dépense ni de dépassement (ils n'existent qu'à partir
+    // de VALIDEE). Ses lignes peuvent en revanche porter des commentaires, supprimés avec elles :
+    // on les recopie dans le journal d'audit pour n'en perdre aucune trace.
+    const anciensCommentaires = await prisma.budgetCommentaire.findMany({
+      where: { demandeBudgetId: id },
+      orderBy: { createdAt: "asc" },
+      include: { ligne: { select: { designation: true } } },
+    });
 
     const demande = await prisma.$transaction(async (tx) => {
       await tx.demandeBudgetLigne.deleteMany({ where: { demandeBudgetId: id } });
@@ -84,6 +74,8 @@ export async function POST(
           rejectionReason: null,
           validatedByEmail: null,
           validatedAt: null,
+          type: data.type,
+          periodeMois: data.type === TypeBudget.MENSUEL ? toPeriodeMois(data.periodeMois) : null,
           departement: data.departement,
           contexteMotivation: data.contexteMotivation,
           montantTotal,
@@ -92,24 +84,41 @@ export async function POST(
           pourLeCompteDe: data.pourLeCompteDe,
           dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : null,
           bonCommandeId: data.bonCommandeId || null,
-          lignes: { create: data.lignes },
+          lignes: { create: lignesAvecMode(data) },
           proformas: { create: data.proformaIds.map((invoiceId) => ({ invoiceId })) },
         },
         include: { lignes: true },
       });
     });
 
-    const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData);
+    const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData, { date: new Date(), montant: montantTotal });
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
     }
 
-    sendDemandeSoumiseNotification(demande).catch((err) =>
+    await logBudget(prisma, {
+      demandeBudgetId: id,
+      action: ActionBudget.RESOUMISSION,
+      auteurEmail: caps.email,
+      auteurNom: caps.name,
+      montant: montantTotal,
+      details: [
+        `Ancien montant : ${Number(existing.montantTotal).toLocaleString("fr-FR")} FCFA`,
+        ...anciensCommentaires.map(
+          (c) => `Commentaire « ${c.ligne.designation} » (${c.auteurNom || c.auteurEmail}) : ${c.contenu}`
+        ),
+      ].join("\n"),
+    });
+
+    sendDemandeSoumiseNotification(demande, caps.plafond).catch((err) =>
       console.error("Erreur lors de l'envoi de la notification de re-soumission:", err)
     );
 
     return NextResponse.json(demande);
   } catch (error) {
+    if (error instanceof UploadRejectedError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error(`Erreur lors de la re-soumission de la demande ${id}:`, error);
     const fsMessage = describeFsError(error);
     const message = fsMessage || (error instanceof Error ? error.message : "Erreur interne du serveur");

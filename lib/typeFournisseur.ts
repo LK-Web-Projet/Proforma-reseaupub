@@ -28,3 +28,12 @@ export function resolveTypeFournisseur(value: string | null | undefined): TypeFo
   if (value === "Prestataire externe" || value === "Fournisseur") return value;
   return "Prestataire interne";
 }
+
+/**
+ * Procédure de paiement : seules les factures d'un « Fournisseur » répondent obligatoirement à un
+ * bon de commande (payées par le solde du bon). Celles d'un prestataire interne ou externe peuvent
+ * être rattachées directement à une ligne de budget (ex. budget mensuel de la comptabilité pour la paie).
+ */
+export function exigeBonDeCommande(typeFournisseur: string | null | undefined): boolean {
+  return resolveTypeFournisseur(typeFournisseur) === "Fournisseur";
+}
