@@ -5,7 +5,9 @@ import { getBudgetCapabilities } from "@/lib/budgetAuth";
 import { requirePage } from "@/lib/authz";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import { StatutCommandeFournisseur } from "@prisma/client";
-import { refusLigneBudgetCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
+import { refusCoherenceLigneProforma, refusLigneBudgetCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
+
+const UNE_SEULE_PROFORMA = "Un bon de commande n'est associé qu'à une seule proforma.";
 import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
 import {
     sendCommandeEmiseNotification,
@@ -147,7 +149,7 @@ export async function PATCH(
         const actuelle = await prisma.commandeFournisseur.findUnique({
             where: { id: commandeId },
             // Paiements actifs = imputations non annulées (budget, proforma ou Camptrack).
-            include: { documents: { select: { kind: true } }, imputations: { where: { annuleeAt: null }, select: { id: true } } },
+            include: { documents: { select: { kind: true } }, imputations: { where: { annuleeAt: null }, select: { id: true } }, proformas: { select: { invoiceId: true } } },
         });
         if (!actuelle) {
             return NextResponse.json({ error: "Bon de commande introuvable" }, { status: 404 });
@@ -160,7 +162,9 @@ export async function PATCH(
             if (actuelle.imputations.length > 0) {
                 return NextResponse.json({ error: "Des paiements ont déjà été faits sur ce bon : sa ligne de budget ne peut plus changer." }, { status: 400 });
             }
-            const refusLigne = await refusLigneBudgetCommande(prisma, ligneBudgetId);
+            const refusLigne =
+                (await refusLigneBudgetCommande(prisma, ligneBudgetId)) ??
+                (await refusCoherenceLigneProforma(prisma, { ligneBudgetId, proformaId: actuelle.proformas[0]?.invoiceId }));
             if (refusLigne) return NextResponse.json({ error: refusLigne }, { status: 400 });
             data.ligneBudgetId = ligneBudgetId;
             // Ligne accordée : contrôle de l'engagement, et un brouillon est validé d'office.
@@ -251,7 +255,13 @@ export async function PUT(
 
         const body = await request.json();
         const validatedData = commandeUpdateSchema.parse(body);
-        const refusLigne = await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId);
+        if (validatedData.proformaIds.length > 1) {
+            return NextResponse.json({ error: UNE_SEULE_PROFORMA }, { status: 400 });
+        }
+        const ligneVisee = validatedData.ligneBudgetId !== undefined ? validatedData.ligneBudgetId : commandeActuelle.ligneBudgetId;
+        const refusLigne =
+            (await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId)) ??
+            (await refusCoherenceLigneProforma(prisma, { ligneBudgetId: ligneVisee, proformaId: validatedData.proformaIds[0] }));
         if (refusLigne) {
             return NextResponse.json({ error: refusLigne }, { status: 400 });
         }
@@ -308,7 +318,6 @@ export async function PUT(
         );
 
         // Ligne de budget accordée : contrôle de l'engagement, et le brouillon est validé d'office.
-        const ligneVisee = validatedData.ligneBudgetId !== undefined ? validatedData.ligneBudgetId : commandeActuelle.ligneBudgetId;
         const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId: ligneVisee, montantNet, commandeIdExclu: commandeId });
         if (auto.refus) {
             return NextResponse.json({ error: auto.refus }, { status: 400 });

@@ -27,7 +27,8 @@ import {
 } from '@/components/ui/select';
 import { FournisseurCombobox, Fournisseur } from '@/components/FournisseurCombobox';
 import { FournisseurModal } from '@/components/FournisseurModal';
-import { InvoiceMultiCombobox, InvoiceOption } from '@/components/InvoiceMultiCombobox';
+import { InvoiceCombobox, InvoiceOption } from '@/components/InvoiceCombobox';
+import { LigneBudgetCommandeField } from '@/components/fournisseurs/LigneBudgetCommandeField';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2 } from 'lucide-react';
@@ -75,7 +76,9 @@ export function CommandeFournisseurModal({
   const [appliquerTva, setAppliquerTva] = useState(false);
   const [appliquerAib, setAppliquerAib] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-  const [proformaIds, setProformaIds] = useState<string[]>([]);
+  // Une seule proforma par bon ; si elle a un budget, la ligne de ce budget est obligatoire.
+  const [proformaId, setProformaId] = useState('');
+  const [ligneBudgetId, setLigneBudgetId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFournisseurModalOpen, setIsFournisseurModalOpen] = useState(false);
 
@@ -87,7 +90,8 @@ export function CommandeFournisseurModal({
     setLignes([]);
     setAppliquerTva(false);
     setAppliquerAib(false);
-    setProformaIds([]);
+    setProformaId('');
+    setLigneBudgetId('');
 
     fetch('/api/factures')
       .then((res) => (res.ok ? res.json() : []))
@@ -200,7 +204,8 @@ export function CommandeFournisseurModal({
         })),
         appliquerTva,
         appliquerAib,
-        proformaIds,
+        proformaIds: proformaId ? [proformaId] : [],
+        ligneBudgetId: ligneBudgetId || undefined,
       };
 
       const res = await fetch('/api/fournisseurs/commandes', {
@@ -211,7 +216,7 @@ export function CommandeFournisseurModal({
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Erreur lors de la création du bon de commande.');
+        throw new Error(typeof errorData.error === 'string' ? errorData.error : 'Erreur lors de la création du bon de commande.');
       }
 
       toast.success('Bon de commande créé avec succès !');
@@ -262,12 +267,14 @@ export function CommandeFournisseurModal({
             </div>
 
             <div className="space-y-2">
-              <label>Proforma(s) associée(s)</label>
-              <InvoiceMultiCombobox invoices={invoices} value={proformaIds} onChange={setProformaIds} />
+              <label>Proforma associée</label>
+              <InvoiceCombobox invoices={invoices} value={proformaId} onChange={setProformaId} />
               <p className="text-[11px] text-muted-foreground">
-                Seules les proformas validées, payées ou soldées peuvent être associées.
+                Une seule proforma par bon de commande : validée, payée ou soldée.
               </p>
             </div>
+
+            <LigneBudgetCommandeField proformaId={proformaId} montantNet={montantNet} value={ligneBudgetId} onChange={setLigneBudgetId} />
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

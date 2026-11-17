@@ -9,7 +9,9 @@ import {
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import { requirePage } from "@/lib/authz";
 import { Prisma } from "@prisma/client";
-import { prochainNumeroCommande, refusLigneBudgetCommande, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
+import { prochainNumeroCommande, refusCoherenceLigneProforma, refusLigneBudgetCommande, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
+
+const UNE_SEULE_PROFORMA = "Un bon de commande n'est associé qu'à une seule proforma.";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
@@ -26,6 +28,7 @@ const commandeSchema = z.object({
     lignes: z.array(ligneCommandeSchema).min(1),
     appliquerTva: z.boolean().optional().default(false),
     appliquerAib: z.boolean().optional().default(false),
+    // Une seule proforma par bon (tableau conservé pour la compatibilité : 0 ou 1 élément).
     proformaIds: z.array(z.string()).optional().default([]),
     // Ligne de budget qui finance le bon (procédure : « les bons de commande sont émis à partir du budget »).
     ligneBudgetId: z.string().optional(),
@@ -75,7 +78,13 @@ export async function POST(request: Request) {
         const body = await request.json();
         const validatedData = commandeSchema.parse(body);
 
-        const refusLigne = await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId);
+        if (validatedData.proformaIds.length > 1) {
+            return NextResponse.json({ error: UNE_SEULE_PROFORMA }, { status: 400 });
+        }
+        const refusLigne =
+            (await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId)) ??
+            // Ligne facultative, mais d'un budget cohérent avec la proforma du bon.
+            (await refusCoherenceLigneProforma(prisma, { ligneBudgetId: validatedData.ligneBudgetId, proformaId: validatedData.proformaIds[0] }));
         if (refusLigne) {
             return NextResponse.json({ error: refusLigne }, { status: 400 });
         }

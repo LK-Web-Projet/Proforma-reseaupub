@@ -26,8 +26,8 @@ const ligneSchema = z.object({
  * Validation commune à la création (POST /api/demandes-budget) et à la re-soumission
  * (POST /api/demandes-budget/[id]/resoumettre), avec les règles propres à chaque type :
  * - MENSUEL  : mois et service obligatoires ;
- * - CAMPAGNE : au moins une proforma liée (les dépenses lui seront imputées) ;
- * - TIERS    : bénéficiaire ("pour le compte de") obligatoire, proforma facultative.
+ * - CAMPAGNE : sa proforma, une seule (les dépenses lui seront imputées) ;
+ * - TIERS    : bénéficiaire ("pour le compte de") obligatoire, proforma facultative (une au plus).
  */
 export const demandeBudgetSchema = z
   .object({
@@ -40,7 +40,8 @@ export const demandeBudgetSchema = z
     pourLeCompteDe: z.string().optional(),
     dateLimiteSouhaitee: z.string().optional(),
     bonCommandeId: z.string().optional(),
-    proformaIds: z.array(z.string()).default([]),
+    // Une seule proforma par budget (tableau conservé pour la compatibilité : 0 ou 1 élément).
+    proformaIds: z.array(z.string()).max(1, "Un budget n'est associé qu'à une seule proforma.").default([]),
     lignes: z.array(ligneSchema).min(1, "Ajoutez au moins une ligne de dépense."),
   })
   .superRefine((d, ctx) => {
@@ -53,7 +54,7 @@ export const demandeBudgetSchema = z
       if (!d.departement) ctx.addIssue({ code: "custom", path: ["departement"], message: "Le service est requis pour un budget mensuel." });
     }
     if (d.type === TypeBudget.CAMPAGNE && d.proformaIds.length === 0) {
-      ctx.addIssue({ code: "custom", path: ["proformaIds"], message: "Un budget de campagne doit être associé à au moins une proforma." });
+      ctx.addIssue({ code: "custom", path: ["proformaIds"], message: "Un budget de campagne doit être associé à sa proforma." });
     }
     if (d.type === TypeBudget.TIERS && !d.pourLeCompteDe?.trim()) {
       ctx.addIssue({ code: "custom", path: ["pourLeCompteDe"], message: "Indiquez pour le compte de quelle entreprise ou de quel client." });

@@ -25,6 +25,95 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 5) — Cloche des notifications : à gauche de « Recherche », bleue ou rouge
+
+**Demande / Contexte**
+Rendre la cloche des notifications bien visible : la placer à côté du bouton « Recherche » et la colorer, surtout quand il y a des notifications non lues.
+
+**Modifications apportées**
+- `components/app-sidebar.tsx` : la cloche quitte l'en-tête de la barre latérale (à côté de « Finance reseaupub »). Elle est maintenant **à gauche du bouton « Recherche »**, sur la même ligne, en haut du menu.
+- `components/notifications/NotificationBell.tsx` :
+  - bouton encadré, plus grand (36 px, icône 20 px) ;
+  - **sans non lues** : bleu (fond bleu clair, cloche bleue) ;
+  - **avec non lues** : rouge (fond rouge clair, cloche **rouge pleine**), avec une pastille du nombre plus grande et un liseré blanc ;
+  - une bulle au survol indique « X notification(s) non lue(s) ».
+- Le menu déroulant et le fonctionnement ne changent pas.
+
+**Erreurs rencontrées & solutions**
+- Le contrôle des permissions du mode automatique a été momentanément indisponible. La modification a été appliquée après accord de l'utilisateur. `tsc` et `next lint` ne signalent aucune erreur.
+
+**À tester / points d'attention**
+- Vérifier l'affichage dans la barre latérale (largeur 256 px) et sur mobile, où la barre s'ouvre en tiroir.
+
+## 2026-11-19 (suite 4) — Une seule proforma par bon de commande et par budget ; ligne de budget proposée selon la proforma
+
+**Demande / Contexte**
+- Un bon de commande (BC) n'est désormais associé qu'à **une seule** proforma, et un budget aussi.
+- Avant ce changement, la création d'un BC ne proposait pas de ligne de budget. Le bon restait en brouillon jusqu'à un rattachement manuel, et la fenêtre de rattachement listait les lignes de **tous** les budgets ouverts, sans le reste à engager.
+- Rien ne vérifiait que la ligne appartenait au budget de la proforma du bon.
+
+**Modifications apportées**
+- `lib/commandeFournisseurSuivi.ts`, deux nouvelles fonctions :
+  - `lignesBudgetPourCommande({ proformaId, commandeIdExclu })` renvoie les lignes proposées, avec plafond, dépensé, autres BC en cours et reste à engager :
+    - proforma liée à un budget non rejeté → `aBudget`, et uniquement les lignes **accordées** de ce budget s'il est ouvert ;
+    - sinon → les lignes accordées des budgets ouverts **sans proforma** (mensuel, ponctuel…).
+  - `refusCoherenceLigneProforma({ ligneBudgetId, proformaId })` applique trois règles :
+    - proforma avec budget → la ligne, **facultative à la création**, doit appartenir à ce budget. Sur demande de l'utilisateur, elle peut être rattachée ensuite depuis la fiche du bon, qui ne propose que les lignes du budget de la proforma ;
+    - ligne d'un budget lié à une proforma → le BC doit avoir cette proforma ;
+    - sans budget → ligne facultative (processus de base).
+- `app/api/fournisseurs/commandes/lignes-budget/route.ts` (nouveau) : `GET ?proformaId=&commandeId=`, protégé par la section « Prestataires ».
+- Routes BC (`commandes/route.ts` POST, `commandes/[commandeId]/route.ts` PUT et PATCH) :
+  - plus d'une proforma → 400 « Un bon de commande n'est associé qu'à une seule proforma » ;
+  - la cohérence ligne / proforma est contrôlée à la création, à la modification et au changement de ligne. Un PATCH qui ne touche que le statut ne la contrôle pas, donc les BC existants ne sont pas bloqués.
+- `lib/budgetSchema.ts` : `proformaIds` limité à **1** (« Un budget n'est associé qu'à une seule proforma »). Un budget de campagne doit avoir **sa** proforma.
+- `components/InvoiceCombobox.tsx` (nouveau) : choix d'**une** proforma, avec recherche et croix pour retirer. `components/InvoiceMultiCombobox.tsx` est **supprimé** (plus utilisé).
+- `components/fournisseurs/LigneBudgetCommandeField.tsx` (nouveau) : champ « Ligne de budget » selon la proforma.
+  - Il est facultatif, avec un choix « Plus tard (à rattacher depuis la fiche du bon) ». Un message orange indique que, sans ligne, le bon reste en brouillon. Rien n'est présélectionné, pour ne pas valider le bon d'office sans le vouloir.
+  - Les lignes trop justes pour le montant du bon sont désactivées.
+  - Il rappelle : « validé dès son enregistrement ; joignez le scan signé ».
+  - Il affiche un message rouge si le budget n'a encore aucune ligne accordée.
+  - En modification, il conserve une ligne déjà rattachée mais pas encore accordée.
+- Formulaires de BC :
+  - `components/fournisseurs/NewCommandeForm.tsx`, `components/CommandeFournisseurModal.tsx` et `components/fournisseurs/EditCommandeFournisseurModal.tsx` : une seule proforma, plus le champ ligne de budget ;
+  - le message d'erreur du serveur est maintenant affiché tel quel. `NewCommandeForm` affichait toujours « Impossible de créer la commande ».
+- `components/fournisseurs/CommandeLiasseCard.tsx` : la fenêtre « Rattacher / Changer de ligne » utilise le même champ (`sansChoixVide`). Elle ne propose que les lignes du budget de la proforma du bon, ou celles des budgets sans proforma si le bon n'a pas de budget, avec le reste à engager.
+- `components/DemandeBudgetForm.tsx` : une seule proforma (« Proforma associée »).
+- `public/docs/procedure-paiement-plateforme.md` : budget et BC avec une seule proforma, choix de la ligne selon la proforma, deux nouveaux messages d'erreur.
+
+**Erreurs rencontrées & solutions**
+- La base Supabase était momentanément injoignable (P1001), puis lente. Le délai de la transaction du test a été allongé, et les lignes proposées sont calculées en parallèle (`Promise.all`).
+- Dans mon test de schéma, une ligne n'avait pas de catégorie : c'était une donnée de test incomplète, et non un bug.
+
+**À tester / points d'attention**
+- Test en base (transaction annulée), 24/24 :
+  - lignes proposées selon la proforma (avec budget, sans budget, sans proforma, budget seulement soumis, budget rejeté) ;
+  - reste à engager, y compris en modification ;
+  - cohérence (9 cas, dont « sans ligne → accepté ») ;
+  - validation d'office et dépassement ;
+  - budget avec une seule proforma.
+- Données existantes : aucun BC ni budget n'avait plusieurs proformas. Les 3 BC avec une proforma ne sont contrôlés que lorsqu'on les modifie.
+- Une proforma peut toujours avoir plusieurs budgets (un cas en base). Les lignes de tous ses budgets ouverts sont alors proposées.
+
+## 2026-11-19 (suite 3) — Proforma : le bouton « Dépense » toujours visible
+
+**Demande / Contexte**
+Sur une proforma qui n'est pas liée à un budget, aucun bouton ne permettait d'enregistrer une dépense directe.
+
+**Modifications apportées**
+- `app/(main)/facture/[id]/page.tsx` : le bouton « Dépense » de « Historique des Flux » est de nouveau toujours affiché, comme avant le Lot A.
+  - Avant ce changement, il n'apparaissait que si `/api/demandes-budget/me-role` renvoyait un des droits (caisse, comptable, petites dépenses). Si cet appel échouait, par exemple sur un serveur non redémarré après la migration, le bouton disparaissait sans aucun message.
+  - Il est maintenant grisé seulement le temps du chargement des droits.
+  - Au clic, les droits sont contrôlés et un message clair s'affiche en cas de refus : « Proforma sans budget : la dépense directe demande le droit « Saisir au journal de caisse » (Paramètres → Rôles) ».
+  - Le serveur contrôle toujours les droits.
+- `lib/entreprise.ts` : `getEntrepriseConfig` lit d'abord la configuration et ne fait l'`upsert` (avec les valeurs par défaut) que si elle n'existe pas. Un client Prisma resté en mémoire avec l'ancien schéma ne fait donc plus échouer `me-role` sur les nouveaux champs.
+
+**Erreurs rencontrées & solutions**
+- Aucune. `tsc` et `next lint` ne signalent aucune erreur.
+
+**À tester / points d'attention**
+- Redémarrer le serveur de développement après les migrations du 2026-11-18 et du 2026-11-19.
+- Rôle ASSISTANT : il a « Enregistrer les dépenses de budget », mais pas « Saisir au journal de caisse ». Il ne peut donc pas saisir de dépense directe sur une proforma sans budget : cocher ce droit si c'est voulu.
+
 ## 2026-11-19 (suite 2) — Lot CampTrack : pipeline vérifié, détail du lot visible partout
 
 **Demande / Contexte**

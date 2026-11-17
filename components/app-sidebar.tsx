@@ -247,14 +247,17 @@ export function AppSidebar() {
               Proforma &amp; Finance
             </p>
           </div>
-          <NotificationBell />
         </div>
       </SidebarHeader>
       <SidebarContent className="gap-2">
-        {/* Recherche dans les documents classés (résultats filtrés selon les droits) */}
-        <SidebarMenu>
-          <NavLink item={{ title: "Recherche", url: "/recherche", icon: Search }} />
-        </SidebarMenu>
+        {/* Cloche des notifications, bien visible à gauche de la Recherche (documents classés,
+            résultats filtrés selon les droits). */}
+        <div className="flex items-center gap-1.5">
+          <NotificationBell />
+          <SidebarMenu className="min-w-0 flex-1">
+            <NavLink item={{ title: "Recherche", url: "/recherche", icon: Search }} />
+          </SidebarMenu>
+        </div>
         {canSeePage("dashboard", true) && (
         <Collapsible open={isDashboardOpen} onOpenChange={setIsDashboardOpen}>
           <CollapsibleTrigger asChild>

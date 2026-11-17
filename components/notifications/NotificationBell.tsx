@@ -23,8 +23,9 @@ export interface NotificationItem {
 const RAFRAICHISSEMENT_MS = 60_000;
 
 /**
- * Cloche des notifications (en-tête de la barre latérale) : pastille du nombre de non lues,
- * rafraîchie chaque minute et au retour sur l'onglet ; les 10 dernières dans un menu.
+ * Cloche des notifications (barre latérale, à gauche de « Recherche ») : bleue sans non lues,
+ * rouge et pleine avec la pastille du nombre de non lues ; rafraîchie chaque minute et au retour
+ * sur l'onglet ; les 10 dernières dans un menu.
  */
 export function NotificationBell() {
   const router = useRouter();
@@ -77,10 +78,22 @@ export function NotificationBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative h-8 w-8 shrink-0" aria-label={`Notifications${nonLues ? ` (${nonLues} non lues)` : ''}`}>
-          <Bell className="h-4 w-4" />
+        <Button
+          variant="outline"
+          size="icon"
+          title={nonLues ? `${nonLues} notification(s) non lue(s)` : 'Notifications'}
+          className={cn(
+            'relative h-9 w-9 shrink-0 transition-colors',
+            nonLues > 0
+              ? 'border-red-300 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700'
+              : 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700'
+          )}
+          aria-label={`Notifications${nonLues ? ` (${nonLues} non lues)` : ''}`}
+        >
+          {/* Non lues : cloche rouge pleine ; sinon bleue. */}
+          <Bell className={cn('h-5 w-5', nonLues > 0 && 'fill-current')} />
           {nonLues > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-4 text-center">
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-[18px] text-center ring-2 ring-white">
               {nonLues > 99 ? '99+' : nonLues}
             </span>
           )}

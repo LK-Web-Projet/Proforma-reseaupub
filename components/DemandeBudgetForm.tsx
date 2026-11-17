@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { InvoiceMultiCombobox, InvoiceOption } from '@/components/InvoiceMultiCombobox';
+import { InvoiceCombobox, InvoiceOption } from '@/components/InvoiceCombobox';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { DOCUMENT_UPLOAD_TYPES, DocumentUploadType, ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
 import {
@@ -165,6 +165,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   const [receveurChoix, setReceveurChoix] = useState<'MOI' | 'AUTRE'>('MOI');
   const [receveurAutreNom, setReceveurAutreNom] = useState('');
   const [lignes, setLignes] = useState<Ligne[]>([{ ...emptyLigne }]);
+  // Une seule proforma par budget (0 ou 1 élément ; tableau conservé pour l'API).
   const [proformaIds, setProformaIds] = useState<string[]>([]);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
   const [commandes, setCommandes] = useState<CommandeFournisseurOption[]>([]);
@@ -208,7 +209,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         precedent: l.precedent,
       }))
     );
-    setProformaIds(initialData.proformaIds);
+    setProformaIds(initialData.proformaIds.slice(0, 1));
 
     // "Pour le compte de" est reconstruit à partir de la chaîne déjà enregistrée
     // (ex: "RESEAUPUB (Jean Dupont)" ou "CAMPAGNE/CLIENT (Client X - RP-PRO-25/09-0001)").
@@ -309,7 +310,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         return;
       }
       if (typeBudget === 'CAMPAGNE' && proformaIds.length === 0) {
-        toast.error('Un budget de campagne doit être associé à au moins une proforma.');
+        toast.error('Un budget de campagne doit être associé à sa proforma.');
         setIsSubmitting(false);
         return;
       }
@@ -652,12 +653,17 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       {beneficiaireType === 'CAMPAGNE_CLIENT' && (
         <div className="space-y-2">
           <label>
-            Proforma(s) associée(s){typeBudget === 'CAMPAGNE' ? ' *' : ' (facultatif)'}
+            Proforma associée{typeBudget === 'CAMPAGNE' ? ' *' : ' (facultatif)'}
           </label>
           <p className="text-xs text-muted-foreground">
-            Les dépenses de ce budget seront imputées à la proforma choisie et apparaîtront dans sa fiche.
+            Une seule proforma par budget : ses dépenses lui seront imputées et apparaîtront dans sa fiche.
           </p>
-          <InvoiceMultiCombobox invoices={invoices} value={proformaIds} onChange={setProformaIds} />
+          <InvoiceCombobox
+            invoices={invoices}
+            value={proformaIds[0] ?? ''}
+            onChange={(id) => setProformaIds(id ? [id] : [])}
+            placeholder={typeBudget === 'CAMPAGNE' ? 'Choisir la proforma de la campagne' : 'Associer une proforma (optionnel)'}
+          />
         </div>
       )}
 

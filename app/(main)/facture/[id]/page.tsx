@@ -252,7 +252,7 @@ export default function FactureDetailPage() {
         setPeutPayerBudget(!!data?.canPay);
         setPlafondPetiteDepense(!data?.canPay && data?.canPetiteDepense ? Number(data.plafondPetiteDepense) : null);
       })
-      .catch(() => setPeutSaisirCaisse(false))
+      .catch(() => { setPeutSaisirCaisse(false); setPeutPayerBudget(false); })
       .finally(() => setDroitsCharges(true));
   }, []);
 
@@ -302,7 +302,7 @@ export default function FactureDetailPage() {
         return;
       }
       if (!peutSaisirCaisse) {
-        toast.error("Campagne sans budget : la dépense directe demande le droit « Saisir au journal de caisse ».");
+        toast.error("Proforma sans budget : la dépense directe demande le droit « Saisir au journal de caisse » (Paramètres → Rôles).");
         return;
       }
       setCommandesSansBudget(data.commandesSansBudget ?? []);
@@ -838,11 +838,10 @@ export default function FactureDetailPage() {
                                 <PlusCircle className="w-4 h-4 mr-2" /> Paiement
                             </Button>
                         )}
-                        {(peutSaisirCaisse || peutPayerBudget || plafondPetiteDepense != null) && (
-                            <Button size="sm" variant="outline" onClick={() => ouvrirDepense()}>
-                                <PlusCircle className="w-4 h-4 mr-2" /> Dépense
-                            </Button>
-                        )}
+                        {/* Toujours visible, comme avant : les droits sont contrôlés au clic (message clair) et par le serveur. */}
+                        <Button size="sm" variant="outline" onClick={() => ouvrirDepense()} disabled={!droitsCharges}>
+                            <PlusCircle className="w-4 h-4 mr-2" /> Dépense
+                        </Button>
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
