@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ModePaiementDemande, Prisma, SourceDepense } from "@prisma/client";
+import { ModePaiementDemande, Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { verifyIntegrationKey } from "@/lib/integrationAuth";
 import { isSoldeInsuffisantError } from "@/lib/cashJournal";
-import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
-import { budgetsDeLaProforma, DepenseError, enregistrerDepense } from "@/lib/depenses/enregistrerDepense";
+import { DepenseError } from "@/lib/depenses/enregistrerDepense";
+import { enregistrerLotPaiement } from "@/lib/depenses/enregistrerLotPaiement";
 
 /**
  * Contrat défini côté CampTrack (docs/INTEGRATION_FINANCE_PAIEMENTS_GROUPES.md, fonction
@@ -80,79 +80,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Proforma introuvable." }, { status: 404 });
     }
 
-    const n = lot.lignes.length;
     const dateDepense = lot.datePaiement ? new Date(lot.datePaiement) : new Date();
     const resultat = await prisma.$transaction(
-      async (tx) => {
-        const budgets = lot.proformaId ? await budgetsDeLaProforma(tx, lot.proformaId) : [];
-        let cashJournalEntry: Prisma.CashJournalGetPayload<object>;
-        let budgetDepenseId: string | null = null;
-        let aRattacher = false;
-
-        if (lot.ligneBudgetId || (lot.proformaId && budgets.length === 0)) {
-          // Ligne de budget fournie, ou campagne sans budget : la même opération que partout ailleurs.
-          const d = await enregistrerDepense(tx, {
-            source: SourceDepense.CAMPTRACK,
-            auteur: { userId: null, email: (lot.comptableEmail ?? "camptrack@integration").toLowerCase(), name: null },
-            montant: lot.montant,
-            dateDepense,
-            cashRegisterId: lot.cashRegisterId,
-            nomReceveur: `Lot ${lot.reference} — ${n} prestataire(s)`,
-            modePaiement: lot.modePaiement,
-            notes: lot.referenceOperateur ? `Référence opérateur : ${lot.referenceOperateur}` : null,
-            ligneBudgetId: lot.ligneBudgetId ?? null,
-            invoiceId: lot.proformaId ?? null,
-            justifieAilleurs: true,
-            referenceExterne: lot.reference,
-            libelle: lot.libelle,
-            methode: lot.modePaiement,
-            reference: lot.referenceOperateur ?? lot.reference,
-          });
-          cashJournalEntry = d.cashJournalEntry;
-          budgetDepenseId = d.budgetDepense?.id ?? null;
-        } else if (lot.proformaId) {
-          // Transition : campagne avec budget mais pas encore de ligne envoyée → à rattacher.
-          const r = await recordDepensePaiement(tx, {
-            invoiceId: lot.proformaId,
-            cashRegisterId: lot.cashRegisterId,
-            montant: lot.montant,
-            libelle: lot.libelle,
-            date_operation: dateDepense,
-            methode: lot.modePaiement,
-            reference: lot.referenceOperateur ?? lot.reference,
-          });
-          await tx.paiement.update({ where: { id: r.paiement.id }, data: { aRattacherBudget: true } });
-          cashJournalEntry = r.cashJournalEntry;
-          aRattacher = true;
-        } else {
-          // Campagne sans proforma : simple sortie de caisse.
-          cashJournalEntry = await recordCashDepense(tx, {
-            cashRegisterId: lot.cashRegisterId,
-            montant: lot.montant,
-            libelle: lot.libelle,
-            date_operation: dateDepense,
-          });
-        }
-
-        await tx.lotPaiement.create({
-          data: {
-            reference: lot.reference,
-            referenceOperateur: lot.referenceOperateur ?? null,
-            proformaId: lot.proformaId ?? null,
-            campagneId: lot.campagne.id,
-            campagneNom: lot.campagne.nom,
-            libelle: lot.libelle,
-            nbBeneficiaires: n,
-            montant: lot.montant,
-            modePaiement: lot.modePaiement,
-            detail: lot.lignes as Prisma.InputJsonValue,
-            comptableEmail: lot.comptableEmail?.toLowerCase() ?? null,
-            cashJournalEntryId: cashJournalEntry.id,
-            budgetDepenseId,
-          },
-        });
-        return { cashJournalEntry, budgetDepenseId, aRattacher };
-      },
+      (tx) =>
+        enregistrerLotPaiement(tx, {
+          reference: lot.reference,
+          referenceOperateur: lot.referenceOperateur,
+          proformaId: lot.proformaId,
+          campagneId: lot.campagne.id,
+          campagneNom: lot.campagne.nom,
+          libelle: lot.libelle,
+          cashRegisterId: lot.cashRegisterId,
+          montant: lot.montant,
+          modePaiement: lot.modePaiement,
+          dateDepense,
+          ligneBudgetId: lot.ligneBudgetId,
+          comptableEmail: lot.comptableEmail,
+          lignes: lot.lignes,
+        }),
       { timeout: 30000 }
     );
 

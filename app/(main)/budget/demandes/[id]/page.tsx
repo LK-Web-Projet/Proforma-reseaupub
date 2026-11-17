@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { LotPaiementDetail } from '@/components/depenses/LotPaiementDetail';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -74,7 +75,7 @@ interface BudgetDepense {
     referenceOperateur: string | null;
     nbBeneficiaires: number;
     // Lignes telles qu'envoyées par CampTrack (numéro de ligne, bénéficiaire, numéro MoMo, type…).
-    detail: { numero?: number | string; beneficiaire: string; numeroMomo?: string; typePaiement?: string; reference?: string; montant: number }[];
+    detail: { numero?: number | string; beneficiaire: string; numeroMomo?: string; typePaiement?: string; libelle?: string; reference?: string; montant: number }[];
   } | null;
   commande: { id: string; numero: string; fournisseurId: string; documents: { kind: string }[]; factures: { pieceJointe: string | null; status: string }[] } | null;
   cashRegister: { id: number; name: string };
@@ -1012,26 +1013,7 @@ export default function DemandeBudgetDetailPage() {
                           {d.source === 'CAMPTRACK' ? 'Camptrack' : 'Saisie depuis la proforma'}
                         </Badge>
                       )}
-                      {d.lotPaiement && (
-                        <details className="mt-1 text-xs">
-                          <summary className="cursor-pointer text-primary">
-                            Lot {d.lotPaiement.reference} — {d.lotPaiement.nbBeneficiaires} bénéficiaire(s)
-                            {d.lotPaiement.referenceOperateur ? ` · réf. opérateur ${d.lotPaiement.referenceOperateur}` : ''}
-                          </summary>
-                          <ul className="mt-1 space-y-0.5 max-h-40 overflow-y-auto">
-                            {d.lotPaiement.detail.map((b, i) => (
-                              <li key={i} className="flex justify-between gap-2">
-                                <span className="truncate">
-                                  {b.beneficiaire}
-                                  {b.numeroMomo ? ` · ${b.numeroMomo}` : ''}
-                                  {b.typePaiement ? ` · ${b.typePaiement.toLowerCase()}` : ''}
-                                </span>
-                                <span className="whitespace-nowrap">{formatMontant(Number(b.montant))}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
+                      {d.lotPaiement && <LotPaiementDetail lot={d.lotPaiement} />}
                     </TableCell>
                     <TableCell className="text-sm">
                       {d.nomReceveur}

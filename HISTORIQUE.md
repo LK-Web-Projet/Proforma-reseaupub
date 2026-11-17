@@ -22,6 +22,81 @@ Ce qui a été demandé et pourquoi.
 
 ---
 
+## 2026-11-19 (suite 2) — Lot CampTrack : pipeline vérifié, détail du lot visible partout
+
+**Demande / Contexte**
+Vérifier qu'un lot envoyé par CampTrack s'applique bien à la ligne de budget choisie, à la proforma et à la caisse, avec une seule écriture de caisse. Permettre de consulter le détail (JSON) du lot.
+
+**Modifications apportées**
+- `components/depenses/LotPaiementDetail.tsx` (nouveau) : tableau repliable du lot, avec n°, bénéficiaire, n° MoMo, nature, montant, total, référence opérateur et campagne.
+  - La nature vient de `typePaiement` (ancienne route) ou de `libelle` (route `lots-paiement`).
+  - Le composant est utilisé sur la fiche budget et dans le journal de caisse, où il remplace deux listes codées à part, et **sur la proforma**, sous la pastille « CampTrack · lot », où le détail n'était pas visible.
+- `GET /api/factures/[id]` renvoie aussi le détail du lot : `detail`, `referenceOperateur`, `campagneNom`.
+
+**Tests**
+- Pipeline d'un lot de 3 bénéficiaires (vraies écritures, nettoyées) : **16/16**. Il vérifie :
+  - **une seule écriture de caisse** (DEPENSE du total), avec le solde diminué du total ;
+  - la ligne de budget choisie consommée du total, l'autre ligne intacte ;
+  - la dépense de budget et la dépense de la proforma sur la même écriture, le budget « en cours » ;
+  - un détail complet et cohérent (total = écriture), accessible depuis la proforma, la fiche budget et le journal.
+- `tsc` et lint OK.
+
+---
+
+## 2026-11-19 (suite) — Lots CampTrack : route `lots-paiement` rétablie au format exact de CampTrack
+
+**Demande / Contexte**
+Vérification, côté CampTrack (branche `feature/paiements_groupes`), de l'envoi des paiements individuels et par lots, avec ou sans budget.
+
+Constat : le dernier commit CampTrack (`1cdabe4`, 16/11) envoie les lots à `POST /api/integration/cash-journal/lots-paiement`, au format de la première version de notre document (`montantTotal`, `lignes[].numero` = numéro MoMo, doublon → `200 { deja: true }`). Proforma avait entre-temps supprimé cette route au profit de `depenses-groupees`, qui suit l'ancien format CampTrack. Résultat : 404, et aucun lot ne pouvait être payé. Décision : corriger côté Proforma, sans toucher à CampTrack.
+
+**Modifications apportées**
+- `lib/depenses/enregistrerLotPaiement.ts` (nouveau) : traitement commun d'un lot. Il couvre :
+  - la ligne de budget fournie, ou la campagne sans budget → `enregistrerDepense` ;
+  - le budget sans ligne → « à rattacher » ;
+  - l'absence de proforma → sortie de caisse ;
+  - l'enregistrement du détail dans `LotPaiement`.
+- `app/api/integration/cash-journal/lots-paiement/route.ts` (rétablie) : format exact de CampTrack.
+  - `comptableEmail` obligatoire.
+  - Réponse `201 { lot, cashJournalEntryId, budgetDepenseId, paiementId, aRattacher }`.
+  - **Doublon → `200 { deja: true, … }`** avec les mêmes identifiants, y compris en cas d'envoi simultané (P2002).
+  - Détail stocké au format affiché par Finance (numéro de ligne et `numeroMomo`).
+- `depenses-groupees` utilise le même traitement commun, avec un comportement inchangé. Un lot reçu par une route est reconnu par l'autre.
+- `docs/integration/camptrack-paiements-lots.md` réécrit : contrat réel de CampTrack, rien à changer de leur côté.
+
+**Vérification CampTrack (lecture seule, aucune modification)**
+- Paiement individuel : `POST /depenses`, inchangé. Il est conforme avec ou sans budget, et marqué « à rattacher » si un budget existe. Il est bloqué si le prestataire est dans un lot ouvert.
+- Lots :
+  - la ligne de budget est obligatoire si `aBudget`, et les lignes au reste insuffisant sont désactivées ;
+  - le paiement est bloqué si `lignes` est vide ;
+  - `comptableEmail` = la personne qui valide ;
+  - un nouvel essai garde la même référence ;
+  - une campagne sans proforma est bloquée.
+- Remarques mineures pour CampTrack :
+  - le moyen de paiement est toujours MOBILE_MONEY ;
+  - le paiement individuel sur une campagne avec budget finit toujours « à rattacher ».
+
+**Tests**
+- Nouveau test avec le JSON exact de CampTrack (vraies écritures, nettoyées) : **24/24**. Il couvre :
+  - la lecture des lignes ;
+  - le lot avec ligne ;
+  - le doublon → 200 sans nouvelle écriture ;
+  - la transition « à rattacher » ;
+  - la campagne sans budget ;
+  - les refus 400 (somme, séparation des tâches, plafond, budget signé, comptable manquant, solde) et 404 (caisse, proforma) ;
+  - la clé invalide (401) ;
+  - la reconnaissance d'un lot entre les deux routes ;
+  - le paiement individuel inchangé.
+- Non-régression : `depenses-groupees` 16/16, service de dépense 18/18. `tsc` OK.
+
+**Erreurs rencontrées & solutions**
+- Les deux applications avaient divergé le même jour sur le contrat des lots. On s'aligne désormais sur le code CampTrack, qui fait foi.
+
+**À tester / points d'attention**
+- Après le déploiement de Proforma, valider un vrai lot depuis CampTrack, en local d'abord (`PROFORMA_API_URL=http://localhost:3001`).
+
+---
+
 ## 2026-11-19 — Tout passe par le budget : qui saisit quoi, où, sans doublon
 
 **Demande / Contexte**

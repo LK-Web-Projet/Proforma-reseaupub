@@ -85,7 +85,7 @@ export async function GET(
                     _count: { select: { attachments: true } },
                   },
                 },
-                lotPaiement: { select: { reference: true, nbBeneficiaires: true } },
+                lotPaiement: { select: { reference: true, referenceOperateur: true, campagneNom: true, nbBeneficiaires: true, detail: true } },
               },
             },
           },

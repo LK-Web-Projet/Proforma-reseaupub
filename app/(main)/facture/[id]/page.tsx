@@ -45,6 +45,7 @@ import { toast } from "sonner";
 import { BudgetDepenseDialog, type BudgetDepenseDialogLigne, type CommandeDeLigne, type FacturePrestataire } from "@/components/budget/BudgetDepenseDialog";
 import { ChoixLigneBudgetDialog, type BudgetDepenseOption } from "@/components/depenses/ChoixLigneBudgetDialog";
 import { RentabiliteCampagneCard } from "@/components/proforma/RentabiliteCampagneCard";
+import { LotPaiementDetail, type LotPaiementResume } from "@/components/depenses/LotPaiementDetail";
 import { etatLiasse, partsLignesCommande, payeSurCommande } from "@/lib/commandeFournisseurLiasse";
 
 type Campagne = {
@@ -84,7 +85,7 @@ type Paiement = {
       factureFournisseur: { reference: string } | null;
       _count: { attachments: number };
     } | null;
-    lotPaiement?: { reference: string; nbBeneficiaires: number } | null;
+    lotPaiement?: LotPaiementResume | null;
   } | null;
 };
 
@@ -95,7 +96,7 @@ function OrigineDepense({ p }: { p: Paiement }) {
   const lot = p.cashJournalEntry?.lotPaiement;
   const pastille = 'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium';
   return (
-    <span className="mt-1 flex flex-wrap gap-1">
+    <div className="mt-1 flex flex-wrap gap-1">
       {bd ? (
         <a href={`/budget/demandes/${bd.demandeBudget.id}`} className={`${pastille} bg-indigo-50 text-indigo-700 hover:underline`}>
           Budget {bd.demandeBudget.numero} · {bd.ligne.designation}
@@ -113,7 +114,8 @@ function OrigineDepense({ p }: { p: Paiement }) {
       {bd?.factureFournisseur && <span className={`${pastille} bg-blue-50 text-blue-700`}>Facture {bd.factureFournisseur.reference}</span>}
       {lot && <span className={`${pastille} bg-emerald-50 text-emerald-700`}>CampTrack · lot {lot.reference} ({lot.nbBeneficiaires} bénéf.)</span>}
       {bd?.annuleeAt && <span className={`${pastille} bg-red-100 text-red-700`}>Annulée</span>}
-    </span>
+      {lot && <LotPaiementDetail lot={lot} className="w-full" />}
+    </div>
   );
 }
 

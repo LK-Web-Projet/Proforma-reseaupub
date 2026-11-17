@@ -14,6 +14,7 @@ import { AddCashRegisterModal } from '@/components/AddCashRegisterModal';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { UploadAttachmentModal } from '@/components/UploadAttachmentModal';
+import { LotPaiementDetail } from '@/components/depenses/LotPaiementDetail';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface CashJournalEntry {
@@ -37,7 +38,7 @@ interface CashJournalEntry {
     referenceOperateur: string | null;
     campagneNom: string | null;
     nbBeneficiaires: number;
-    detail: { numero?: number; beneficiaire: string; numeroMomo?: string; typePaiement?: string; reference?: string; montant: number }[];
+    detail: { numero?: number; beneficiaire: string; numeroMomo?: string; typePaiement?: string; libelle?: string; reference?: string; montant: number }[];
   } | null;
 }
 
@@ -446,24 +447,7 @@ export default function CashJournalPage() {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                      {entry.lotPaiement && (
-                        <details className="mt-1 text-xs max-w-[340px]">
-                          <summary className="cursor-pointer text-primary">
-                            Lot {entry.lotPaiement.reference} — {entry.lotPaiement.nbBeneficiaires} prestataire(s)
-                            {entry.lotPaiement.referenceOperateur ? ` · réf. ${entry.lotPaiement.referenceOperateur}` : ''}
-                          </summary>
-                          <ul className="mt-1 space-y-0.5 max-h-48 overflow-y-auto">
-                            {entry.lotPaiement.detail.map((l, i) => (
-                              <li key={l.reference ?? i} className="flex justify-between gap-2">
-                                <span className="truncate">
-                                  {l.beneficiaire}{l.numeroMomo ? ` · ${l.numeroMomo}` : ''}{l.typePaiement ? ` · ${l.typePaiement.toLowerCase()}` : ''}
-                                </span>
-                                <span className="whitespace-nowrap">{Number(l.montant).toLocaleString('fr-FR')}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
+                      {entry.lotPaiement && <LotPaiementDetail lot={entry.lotPaiement} className="max-w-[420px]" />}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {entry.type === "RECETTE"
