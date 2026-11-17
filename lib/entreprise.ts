@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { EntrepriseConfig } from "@prisma/client";
+import { EntrepriseConfig, Prisma, TypeBudget } from "@prisma/client";
 
 export const DEFAULT_ENTREPRISE: Omit<EntrepriseConfig, "updatedAt"> = {
     id: "singleton",
@@ -14,6 +14,10 @@ export const DEFAULT_ENTREPRISE: Omit<EntrepriseConfig, "updatedAt"> = {
     rccm: null,
     nomDirecteur: "Directeur Général",
     logoPath: "rplogo.png",
+    plafondValidationDeleguee: new Prisma.Decimal(500000),
+    typesBudgetSigneRequis: [TypeBudget.CAMPAGNE, TypeBudget.MENSUEL],
+    plafondPetiteDepense: new Prisma.Decimal(50000),
+    liasseExigeePourSolde: true,
 };
 
 /**

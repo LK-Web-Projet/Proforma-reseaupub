@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyIntegrationKey } from "@/lib/integrationAuth";
-import { recordCashMovement } from "@/lib/cashJournal";
+import { isSoldeInsuffisantError, recordCashMovement } from "@/lib/cashJournal";
+import { budgetsDeLaProforma } from "@/lib/depenses/enregistrerDepense";
 import { recordDepensePaiement } from "@/lib/paiements";
 import { OperationType } from "@prisma/client";
 import { z } from "zod";
@@ -70,16 +71,24 @@ export async function POST(request: NextRequest) {
     if (invoice) {
       const enrichedLibelle = `${libelle} (Proforma ${invoice.numero} de ${invoice.client.nom} pour ${invoice.objet})`;
 
-      const { paiement, cashJournalEntry } = await prisma.$transaction((tx) =>
-        recordDepensePaiement(tx, {
+      // Contrat inchangé pour Camptrack (appel « historique », sans ligne de budget). Si la campagne
+      // a un budget, la dépense est enregistrée comme avant ET marquée « à rattacher » : le comptable
+      // la rattache ensuite à une ligne depuis la fiche du budget (plafond contrôlé, sans nouveau
+      // mouvement de caisse). Le lot (…/depenses-groupees) accepte, lui, la ligne de budget.
+      const { paiement, cashJournalEntry } = await prisma.$transaction(async (tx) => {
+        const r = await recordDepensePaiement(tx, {
           invoiceId: proformaId!,
           cashRegisterId,
           montant,
           libelle: enrichedLibelle,
           reference: enrichedLibelle,
           date_operation: dateOperation,
-        })
-      );
+        });
+        if ((await budgetsDeLaProforma(tx, proformaId!)).length > 0) {
+          await tx.paiement.update({ where: { id: r.paiement.id }, data: { aRattacherBudget: true } });
+        }
+        return r;
+      });
 
       return NextResponse.json({ paiement, cashJournalEntry }, { status: 201 });
     }
@@ -96,6 +105,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ cashJournalEntry }, { status: 201 });
   } catch (error) {
+    if (isSoldeInsuffisantError(error)) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    }
     console.error("Erreur API intégration - création dépense caisse:", error);
     const errorMessage = error instanceof Error ? error.message : "Erreur interne du serveur";
     return NextResponse.json({ error: errorMessage }, { status: 500 });

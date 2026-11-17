@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { sendEmail, escapeHtml } from "./sendEmail";
+import { escapeHtml } from "./sendEmail";
+import { notifier } from "@/lib/notifications/notifier";
 
 interface ProduitLigne {
   designation: string;
@@ -145,9 +146,11 @@ function buildEmailHtml({ invoice, montantPaye, resteAPayer, margeBrute }: Paiem
 export async function sendProformaPaiementNotification(data: PaiementNotificationData) {
   const recipients = await adminRecipients();
   if (recipients.length === 0) return;
-  await sendEmail({
+  await notifier("PROFORMA_ENCAISSEMENT", {
     to: recipients,
     subject: `🎊 Paiement reçu — Proforma ${data.invoice.numero} (${data.invoice.client.nom})`,
     html: buildEmailHtml(data),
+    message: `${formatMontant(data.montantPaye, data.invoice.devise)} encaissés sur la proforma ${data.invoice.numero} (${data.invoice.client.nom}). Reste à payer : ${formatMontant(data.resteAPayer, data.invoice.devise)}.`,
+    lien: `/facture/${data.invoice.id}`,
   });
 }

@@ -4,6 +4,7 @@ import { writeFile } from "fs/promises";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 import prisma from "@/lib/prisma";
+import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 
 export async function POST(
   request: NextRequest,
@@ -24,6 +25,12 @@ export async function POST(
     return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
   }
 
+  try {
+    files.forEach((f) => assertAllowedUpload(f));
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Fichier refusé." }, { status: 400 });
+  }
+
   const uploadDir = join(
     process.cwd(),
     "public",
@@ -40,7 +47,8 @@ export async function POST(
   for (const file of files) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const path = join(uploadDir, file.name);
+    const safeName = safeUploadFileName(file.name);
+    const path = join(uploadDir, safeName);
     await writeFile(path, buffer);
 
     const fileUrl = join(
@@ -48,7 +56,7 @@ export async function POST(
       "Upload",
       "CashJournal",
       String(cashJournalId),
-      file.name,
+      safeName,
     ).replace(/\\/g, "/");
 
     const attachment = await prisma.cashJournalAttachment.create({

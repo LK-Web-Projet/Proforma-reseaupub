@@ -25,6 +25,634 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 2) — Lot CampTrack : pipeline vérifié, détail du lot visible partout
+
+**Demande / Contexte**
+Vérifier qu'un lot envoyé par CampTrack s'applique bien à la ligne de budget choisie, à la proforma et à la caisse, avec une seule écriture de caisse. Permettre de consulter le détail (JSON) du lot.
+
+**Modifications apportées**
+- `components/depenses/LotPaiementDetail.tsx` (nouveau) : tableau repliable du lot, avec n°, bénéficiaire, n° MoMo, nature, montant, total, référence opérateur et campagne.
+  - La nature vient de `typePaiement` (ancienne route) ou de `libelle` (route `lots-paiement`).
+  - Le composant est utilisé sur la fiche budget et dans le journal de caisse, où il remplace deux listes codées à part, et **sur la proforma**, sous la pastille « CampTrack · lot », où le détail n'était pas visible.
+- `GET /api/factures/[id]` renvoie aussi le détail du lot : `detail`, `referenceOperateur`, `campagneNom`.
+
+**Tests**
+- Pipeline d'un lot de 3 bénéficiaires (vraies écritures, nettoyées) : **16/16**. Il vérifie :
+  - **une seule écriture de caisse** (DEPENSE du total), avec le solde diminué du total ;
+  - la ligne de budget choisie consommée du total, l'autre ligne intacte ;
+  - la dépense de budget et la dépense de la proforma sur la même écriture, le budget « en cours » ;
+  - un détail complet et cohérent (total = écriture), accessible depuis la proforma, la fiche budget et le journal.
+- `tsc` et lint OK.
+
+---
+
+## 2026-11-19 (suite) — Lots CampTrack : route `lots-paiement` rétablie au format exact de CampTrack
+
+**Demande / Contexte**
+Vérification, côté CampTrack (branche `feature/paiements_groupes`), de l'envoi des paiements individuels et par lots, avec ou sans budget.
+
+Constat : le dernier commit CampTrack (`1cdabe4`, 16/11) envoie les lots à `POST /api/integration/cash-journal/lots-paiement`, au format de la première version de notre document (`montantTotal`, `lignes[].numero` = numéro MoMo, doublon → `200 { deja: true }`). Proforma avait entre-temps supprimé cette route au profit de `depenses-groupees`, qui suit l'ancien format CampTrack. Résultat : 404, et aucun lot ne pouvait être payé. Décision : corriger côté Proforma, sans toucher à CampTrack.
+
+**Modifications apportées**
+- `lib/depenses/enregistrerLotPaiement.ts` (nouveau) : traitement commun d'un lot. Il couvre :
+  - la ligne de budget fournie, ou la campagne sans budget → `enregistrerDepense` ;
+  - le budget sans ligne → « à rattacher » ;
+  - l'absence de proforma → sortie de caisse ;
+  - l'enregistrement du détail dans `LotPaiement`.
+- `app/api/integration/cash-journal/lots-paiement/route.ts` (rétablie) : format exact de CampTrack.
+  - `comptableEmail` obligatoire.
+  - Réponse `201 { lot, cashJournalEntryId, budgetDepenseId, paiementId, aRattacher }`.
+  - **Doublon → `200 { deja: true, … }`** avec les mêmes identifiants, y compris en cas d'envoi simultané (P2002).
+  - Détail stocké au format affiché par Finance (numéro de ligne et `numeroMomo`).
+- `depenses-groupees` utilise le même traitement commun, avec un comportement inchangé. Un lot reçu par une route est reconnu par l'autre.
+- `docs/integration/camptrack-paiements-lots.md` réécrit : contrat réel de CampTrack, rien à changer de leur côté.
+
+**Vérification CampTrack (lecture seule, aucune modification)**
+- Paiement individuel : `POST /depenses`, inchangé. Il est conforme avec ou sans budget, et marqué « à rattacher » si un budget existe. Il est bloqué si le prestataire est dans un lot ouvert.
+- Lots :
+  - la ligne de budget est obligatoire si `aBudget`, et les lignes au reste insuffisant sont désactivées ;
+  - le paiement est bloqué si `lignes` est vide ;
+  - `comptableEmail` = la personne qui valide ;
+  - un nouvel essai garde la même référence ;
+  - une campagne sans proforma est bloquée.
+- Remarques mineures pour CampTrack :
+  - le moyen de paiement est toujours MOBILE_MONEY ;
+  - le paiement individuel sur une campagne avec budget finit toujours « à rattacher ».
+
+**Tests**
+- Nouveau test avec le JSON exact de CampTrack (vraies écritures, nettoyées) : **24/24**. Il couvre :
+  - la lecture des lignes ;
+  - le lot avec ligne ;
+  - le doublon → 200 sans nouvelle écriture ;
+  - la transition « à rattacher » ;
+  - la campagne sans budget ;
+  - les refus 400 (somme, séparation des tâches, plafond, budget signé, comptable manquant, solde) et 404 (caisse, proforma) ;
+  - la clé invalide (401) ;
+  - la reconnaissance d'un lot entre les deux routes ;
+  - le paiement individuel inchangé.
+- Non-régression : `depenses-groupees` 16/16, service de dépense 18/18. `tsc` OK.
+
+**Erreurs rencontrées & solutions**
+- Les deux applications avaient divergé le même jour sur le contrat des lots. On s'aligne désormais sur le code CampTrack, qui fait foi.
+
+**À tester / points d'attention**
+- Après le déploiement de Proforma, valider un vrai lot depuis CampTrack, en local d'abord (`PROFORMA_API_URL=http://localhost:3001`).
+
+---
+
+## 2026-11-19 — Tout passe par le budget : qui saisit quoi, où, sans doublon
+
+**Demande / Contexte**
+L'utilisateur a rappelé le processus complet :
+1. la proforma est validée ;
+2. le budget est lié à la proforma ;
+3. un bon de commande est émis sur une ligne du budget ;
+4. la facture du fournisseur arrive, du même montant que le bon ;
+5. le comptable applique le paiement, qui consomme le budget, passe l'écriture de caisse et passe la facture « payée » ;
+6. l'accueil saisit les petites dépenses en espèces ;
+7. les prestataires internes sont payés sur le budget mensuel ;
+8. CampTrack passe par la proforma.
+
+Objectif : centraliser les dépenses d'une campagne sur sa proforma (marge, rentabilité), avec **un seul chemin de saisie par cas** et **aucun doublon**.
+
+Décisions de l'utilisateur :
+- BC rattaché à une ligne de budget : validé dès sa création. La partie « scan signé » est en rouge, une notification part, et une pastille s'affiche dans la liste.
+- Facture = montant du BC.
+- Accueil : droit plafonné, en espèces.
+- Budget lié à une proforma : consultation sur la fiche budget, saisie sur la proforma.
+- Paiement des factures depuis la liste des factures.
+- Liasse à confirmer, d'où un réglage.
+- Preuve de paiement obligatoire au paiement.
+
+**Modifications apportées**
+- Migration `20261119100000_paiements_centralises` (appliquée, ajouts seulement) : `Role.canSaisirPetiteDepense`, `EntrepriseConfig.plafondPetiteDepense` (50 000 par défaut) et `EntrepriseConfig.liasseExigeePourSolde` (vrai par défaut).
+- **F1 — BC validé d'office** :
+  - nouvelles fonctions `engagementLigne` (plafond − consommé − autres BC en cours) et `validationAutomatiqueCommande` dans `lib/commandeFournisseurSuivi.ts` ;
+  - routes BC POST, PATCH (rattachement à une ligne) et PUT (brouillon) : ligne accordée et budget ouvert → VALIDEE, refus au-delà du reste non engagé. Sans ligne accordée, le circuit DG est inchangé ;
+  - notifications `BC_EMIS` (« BC X émis pour l'exécution de l'activité liée à la proforma Y » : demandeur du budget, comptables, direction) et `BC_SCAN_A_JOINDRE`, dans `lib/email/commandeFournisseur.ts`, qui passe sur `budgetDestinataires` ;
+  - carte rouge « Scan du bon de commande signé à joindre » sur la fiche du BC, et pastille « Scan signé manquant » dans la liste des BC et sur la fiche du prestataire ;
+  - les paiements restent bloqués sans le scan (règle existante).
+- **F2 — Factures** :
+  - `refusMontantFactureCommande` : montant = montant net du BC à 1 F près, une seule facture active par BC (création et modification) ;
+  - route `POST/GET /api/factures-fournisseurs/[id]/payer`, « Appliquer le paiement » :
+    - le montant est fixé au reste (facture − avances) et la preuve de paiement est obligatoire ;
+    - la ligne vient du BC ou de la facture, ou est choisie pour un prestataire interne ou externe, puis rattachée à la facture ;
+    - blocages indiqués : scan, liasse, budget, ancienne facture de fournisseur sans BC ;
+  - route `POST/GET /api/fournisseurs/commandes/[commandeId]/avance` (« Verser une avance ») ;
+  - fenêtre `components/fournisseurs/PayerFactureDialog.tsx`, utilisée dans la liste des factures, sur la fiche du prestataire et sur la fiche du BC ;
+  - liasse : `controlerPaiementCommande` lit `liasseExigeePourSolde`. La facture reste exigée ;
+  - `BudgetDepenseDialog` ne sert plus qu'aux dépenses hors bon : les choix BC et facture sont remplacés par un lien vers la liste des factures. Les routes acceptent toujours ces champs, pour CampTrack et la compatibilité.
+- **F3 — Accueil** :
+  - le droit est branché dans `getBudgetCapabilities` (`canPetiteDepense`, `plafondPetiteDepense`), dans les routes des rôles, sur la page Rôles et dans `me-role` ;
+  - `refusPetiteDepense` (`lib/budgetAuth.ts`) est appliqué dans la route des dépenses de budget : hors bon, espèces, ≤ plafond ;
+  - la fenêtre fixe Espèces et affiche le maximum ;
+  - Paramètres → Rôles : carte « Maximum d'une petite dépense » et interrupteur de la liasse.
+- **F4 — Un seul chemin** : sur la fiche d'un budget lié à une proforma, le bouton devient « Saisir sur la proforma » (`/facture/[id]?depense=<ligneId>` ouvre directement la saisie sur la ligne).
+- **F5 — Centralisation sur la proforma** :
+  - pastilles d'origine sur chaque dépense : Budget/ligne, Avance/Solde BC, Facture, Lot CampTrack, À rattacher, Hors budget, Annulée ;
+  - carte « Rentabilité de la campagne » (`/api/factures/[id]/rentabilite`, CA HT après remise) avec un contrôle de cohérence budget/proforma ;
+  - `/rattacher` est étendu aux dépenses saisies sur la proforma avant le budget (source PROFORMA, sans nouveau mouvement de caisse). Le bandeau devient « dépenses hors budget à rattacher ».
+- Guide des équipes : principe, section « Qui saisit quoi, et où », rôle de l'accueil, sections 3 à 5 réécrites et nouveaux messages.
+
+**Tests**
+- Nouveau test en base (transaction annulée) : **31/31**. Il couvre :
+  - le BC validé d'office, l'engagement et le refus au-delà ;
+  - le paiement bloqué sans scan ;
+  - la facture ≠ BC et la deuxième facture ;
+  - l'avance puis le solde (avance déduite), avec facture et BC « payés » ;
+  - la liasse, réglage activé puis désactivé ;
+  - la facture interne payée sur le budget mensuel ;
+  - les 6 règles de l'accueil ;
+  - le refus d'une dépense directe sur une proforma qui a un budget ;
+  - le rattachement d'une dépense antérieure sans nouvelle écriture ;
+  - la cohérence (budget vu par la proforma = dépenses de budget, aucun doublon, une écriture par dépense).
+
+**Erreurs rencontrées & solutions**
+- `onClick={ouvrirDepense}` aurait passé l'événement comme identifiant de ligne : corrigé en `() => ouvrirDepense()`.
+
+**À tester / points d'attention**
+- **Redémarrer le serveur de dev** (nouvelles colonnes).
+- Cocher « Saisir les petites dépenses » sur le rôle de l'accueil, et lui ouvrir la section Budget (pages).
+- Confirmer la règle de la liasse (Paramètres → Rôles).
+
+---
+
+## 2026-11-18 — Budget signé après la décision de la DG (paramétrable) et correctif « Tout valider »
+
+**Demande / Contexte**
+- « Tout valider » plantait (erreur 500 `P2028 Transaction not found`), alors que la validation ligne par ligne marchait.
+- Nouveau circuit demandé :
+  - la DG valide d'abord les lignes ;
+  - le demandeur reçoit alors une notification pour joindre la version papier signée ;
+  - la section est en rouge sur la fiche ;
+  - le budget passe « Validé » seulement quand toutes les lignes sont validées et que le scan signé est joint, sinon il reste « Validation partielle ».
+- Choix de l'utilisateur :
+  - (A) **aucune dépense** tant que le scan manque ;
+  - (B) scan exigé pour les budgets de **campagne et mensuels**, réglable dans les paramètres pour l'étendre aux autres types.
+
+**Modifications apportées**
+- Cause du plantage : « Tout valider » accordait les lignes une par une dans une transaction. Avec Supabase, cela dépassait les 5 s par défaut de Prisma.
+  - Correctif : une seule requête (`updateMany`) dans `app/api/demandes-budget/[id]/valider/route.ts`.
+  - Délai porté à 30 s (attente de connexion 10 s) pour toutes les transactions, dans `lib/prisma.ts` (`transactionOptions`), et explicitement sur les routes de validation.
+- Migration `20261118100000_budget_signe_parametrable` (appliquée, ajout d'une colonne seulement) : `EntrepriseConfig.typesBudgetSigneRequis TypeBudget[]`, par défaut `[CAMPAGNE, MENSUEL]`.
+- `lib/budgetSuivi.ts` :
+  - nouvelles fonctions `typesBudgetSigneRequis`, `budgetSigneJoint`, `signatureAttendue`, `etatDepensable` (budget ouvert ET scan joint s'il est exigé) ;
+  - `refusBudgetSigneManquant` est supprimé, car le scan n'est plus exigé avant d'accorder ;
+  - `majStatutApresDecision` :
+    - VALIDEE seulement si toutes les lignes sont décidées ET le scan est joint (ou n'est pas exigé) ;
+    - renvoie `signatureDemandee`, à la première ligne accordée puis quand toutes les lignes sont décidées ;
+    - nouvelle option `declencheur: "SIGNATURE"` ;
+    - le valideur enregistré (`validatedByEmail`) est celui qui a décidé la dernière ligne, jamais le demandeur qui joint le scan ou retire une ligne.
+- Routes :
+  - décision de ligne et « Tout valider » : plus de blocage sur le scan, et notification au demandeur ;
+  - `documents` : joindre un BUDGET_SIGNE pendant la validation recalcule le statut, qui passe Validé si tout est décidé, et envoie la notification « Budget validé » ;
+  - `GET /api/demandes-budget/[id]` renvoie `budgetSigneRequis`.
+- Dépenses : `controlerLigneBudget` (`lib/depenses/enregistrerDepense.ts`) utilise `etatDepensable`. Les dépenses sont donc refusées sans scan, depuis le budget, la proforma, le rattachement ou CampTrack.
+  - La liste des lignes de la proforma (`/api/factures/[id]/lignes-depense`) et celle de CampTrack (`/api/integration/budgets/lignes`) ne proposent plus ces lignes.
+  - `ChoixLigneBudgetDialog` affiche le motif.
+- Notification `BUDGET_SIGNE_A_JOINDRE` (au demandeur, canal réglable) : `lib/notifications/evenements.ts` et `sendBudgetSigneDemandeNotification` dans `lib/email/demandeBudget.ts`.
+- Fiche budget :
+  - carte rouge « Budget signé à joindre », avec Imprimer et Joindre, dès qu'une ligne est accordée ;
+  - boutons Accorder, Ajuster et Tout valider débloqués ;
+  - bouton Dépense masqué tant que le scan manque.
+- Paramètres → Rôles : carte « Budget signé exigé », avec un interrupteur par type de budget (`/api/budget-config`, champ `typesBudgetSigneRequis`).
+- Documentation : guide des équipes (section 2 et messages) et document CampTrack (nouveau message de refus).
+
+**Ce qui ne change pas**
+- La séparation des tâches, le plafond, les dépassements, les corrections de ligne et le rejet.
+- Les budgets ponctuels et pour tiers, tant qu'ils ne sont pas cochés : validés sans scan, comme avant.
+- **Les budgets déjà validés ne sont jamais bloqués**, par exemple le budget mensuel validé sans scan qui existe en base.
+
+**Tests**
+- Nouveau test en base (transaction annulée) : 26/26. Il couvre le partiel sans scan, le refus de dépense, la notification, le passage à Validé au dépôt du scan avec la DG comme valideur, le scan joint avant la fin des décisions, le ponctuel sans scan, l'ancien budget validé, le réglage coché ou décoché, « Tout valider » sur 12 lignes et le rejet.
+- Non-régression : budget (logique 89, base 37), Lot A 15, Lot C (19, 8 et 5), service de dépense 18, factures de prestataires 11, routes CampTrack 16 : tout passe. Deux anciens tests ont été adaptés à la nouvelle règle (plus de scan exigé avant d'accorder), et le délai du test c2 a été allongé (Supabase lent).
+- `tsc` et lint OK.
+
+**Erreurs rencontrées & solutions**
+- `prisma generate` en EPERM, car le serveur de dev tient le moteur. Les types sont bien générés. **Il faut redémarrer le serveur de dev** pour qu'il voie la nouvelle colonne.
+
+**À tester / points d'attention**
+- Tester sur un vrai budget : la DG accorde (le demandeur reçoit la notification, la carte est rouge), puis le demandeur joint le scan (le budget passe Validé et les comptables sont prévenus).
+
+---
+
+## 2026-11-17 (suite 4) — Vérification de non-régression de toute la logique métier
+
+**Demande / Contexte**
+S'assurer que la chaîne de dépense unifiée, les lots CampTrack et la nuance des prestataires ne cassent aucune logique existante.
+
+**Vérifications faites**
+- 9 suites de tests en base (transactions annulées ou données marquées puis nettoyées) : 218 contrôles, tous OK. Ils couvrent le budget (logique 89 et base 37), le Lot A (15), le Lot C (19 + 8 + 5), le service de dépense (18), les factures de prestataires (11) et les routes CampTrack avec le vrai JSON (16).
+- Recherche dans le code de tout calcul du « payé » d'un bon de commande qui ne passerait pas par les imputations : aucun trouvé.
+- Audit des données en lecture seule : aucun solde de caisse négatif, aucun écart entre les soldes et le journal, aucun lot ni paiement à rattacher. 3 bons validés sans scan signé ne sont pas payables, ce qui est voulu par la procédure.
+- Build de production complet, puis ouverture dans le navigateur (Playwright) des 29 grandes pages, y compris les nouvelles. Aucun écran d’erreur, aucune erreur JavaScript, aucune API en erreur 500. Le planificateur démarre sans erreur avec le build de production.
+
+**Régressions trouvées et corrigées**
+- **138 anciennes factures fournisseurs EN_ATTENTE**, créées sans bon ni ligne de budget, ne pouvaient plus être marquées « payée ». Correctif dans `app/api/factures-fournisseurs/[id]/route.ts` et les pages `fournisseur/factures` et `fournisseur/[id]` :
+  - le passage manuel à PAYEE reste refusé pour une facture liée à un bon, à une ligne ou à des dépenses ;
+  - une facture non liée (le cas de toutes les factures existantes) se marque « payée » à la main **comme avant, par tout le monde**. Une première version réservait ce passage à la DG : c’était un changement par rapport à l’existant, il a été retiré à la demande de l’utilisateur.
+- **Planificateur en production** : `instrumentation.ts` → `etatSoir` → `budgetAuth` importait `@clerk/nextjs`, ce qui échoue au démarrage en production. `getBudgetRecipients` est déplacé dans le nouveau module `lib/budgetDestinataires.ts`, sans Clerk. `budgetAuth` le réexporte, et rien ne change pour les autres appelants. Constat : le planificateur démarre maintenant avec le build de production.
+
+**Autres modifications**
+- `next.config.ts` : `distDir: process.env.NEXT_DIST_DIR || ".next"`. Le build de vérification se fait dans `.next-verif` sans toucher au serveur de dev. Docker n'est pas changé, puisque `.next` reste la valeur par défaut. `.gitignore` est complété.
+- `e2e/non-regression.spec.ts` : une page lente ou une navigation interrompue est notée en échec sans arrêter la tournée (limite de 90 s par page, 15 min au total). Ajout des pages notifications, paramètres des notifications, recherche, aide, liste des factures, bons de commande et fiche d'un bon.
+
+**Changements de comportement voulus (ce ne sont pas des régressions)**
+- Le bouton Dépense de la proforma passe par une ligne du budget quand la campagne en a un.
+- Une nouvelle facture d'un prestataire de type Fournisseur exige un bon de commande.
+- Les transitions de statut des bons sont restreintes, et PAYEE est automatique.
+- La saisie au journal de caisse exige le droit « Saisir au journal de caisse ».
+- Toute sortie au-delà du solde de la caisse est refusée.
+
+**Erreurs rencontrées & solutions**
+- Coupures ponctuelles de Supabase (P1001) pendant les tests et au démarrage, avec la synchronisation des rôles en échec : relance. Ce n'est pas lié au code.
+
+**À tester / points d'attention**
+- Le rôle ASSISTANT (1 utilisateur actif) n’a pas le droit « Saisir au journal de caisse ». Avant la branche, aucun droit n’était demandé : cette personne pouvait saisir une dépense sur une proforma et écrire au journal de caisse, et elle ne le peut plus. Pour retrouver l’ancien fonctionnement, cocher ce droit sur le rôle (Paramètres → Rôles).
+- Un build avec `NEXT_DIST_DIR` fait réécrire `tsconfig.json` par Next.js, qui y ajoute `<dossier>/types`. Il faut restaurer `tsconfig.json` après coup (`git restore tsconfig.json`) et ne pas le committer.
+- Le rôle « Comptable » n'a aucun utilisateur. Les 5 admins ont tous les droits, la séparation des tâches s'applique donc entre eux. Il faut attribuer les rôles réels avant la mise en service.
+
+---
+
+## 2026-11-17 (suite 3) — Lots CampTrack : alignement sur le contrat déjà codé dans CampTrack
+
+**Demande / Contexte**
+Vérification de l'intégration des lots de paiement CampTrack. Le développeur de CampTrack avait déjà codé l'envoi par lot (branche `feature/paiements_groupes`, non fusionnée) avec son propre contrat (`POST /api/integration/cash-journal/depenses-groupees`, document `docs/INTEGRATION_FINANCE_PAIEMENTS_GROUPES.md` côté CampTrack), différent de celui prévu ici (`/lots-paiement` : adresse, noms de champs, 409 sur doublon, forme de la réponse). Décision : Proforma s'aligne sur le contrat de CampTrack ; le développeur n'ajoute que les champs liés au budget.
+
+**Modifications apportées**
+- Nouvelle route `app/api/integration/cash-journal/depenses-groupees` : accepte le JSON de CampTrack **tel quel** (`montant`, `campagne`, `lignes[]` avec numéro MoMo, type, idPaiement…) et répond comme il l'attend (`cashJournalEntry`, `lignes[{numero, id}]`, `409` si la référence existe, `404` caisse introuvable) ; ajouts facultatifs `ligneBudgetId`, `comptableEmail` (requis avec la ligne), `modePaiement`, `datePaiement`. Avec ligne → dépense de budget via `enregistrerDepense` ; campagne avec budget sans ligne (transition) → enregistré et marqué « à rattacher » ; campagne sans budget → dépense sur la proforma ; sans proforma → sortie de caisse. Réponse enrichie de `budgetDepenseId` et `aRattacher`.
+- Route `/lots-paiement` **supprimée** (jamais utilisée) : une seule route pour les lots.
+- Migration `20261117300000_lot_paiement_contrat_camptrack` (appliquée) : `LotPaiement.proformaId` et `comptableEmail` facultatifs, `campagneId`, `campagneNom`, `libelle`.
+- Rattachement d'une dépense CampTrack : le lot correspondant est lié à la dépense de budget créée.
+- Détail du lot visible sur l'écriture du **journal de caisse** (demande du document CampTrack) et sur la fiche budget (numéro MoMo, type).
+- `docs/integration/camptrack-paiements-lots.md` réécrit pour le développeur CampTrack : ce qui est prêt, les 3 champs à ajouter, l'appel des lignes de budget, l'écran, les messages d'erreur, la transition, les tests.
+
+**Tests**
+- Avec le JSON exact du document CampTrack (vraies écritures, nettoyées) : 16/16 — JSON tel quel → 201 et « à rattacher », doublon → 409, ligne + comptable → dépense de budget, comptable manquant → 400, séparation des tâches → 400, plafond → 400, total incohérent → 400, caisse introuvable → 404, solde insuffisant → 400, sans budget, sans proforma, appel unitaire inchangé, reste des lignes. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Transmettre `docs/integration/camptrack-paiements-lots.md` au développeur CampTrack.
+
+---
+
+## 2026-11-17 (suite 2) — Registre de la dette technique
+
+**Demande / Contexte**
+Conserver l'analyse franche de la solidité du code (risques pour les futures fonctionnalités) afin de la traiter lors de prochains correctifs.
+
+**Modifications apportées**
+- Nouveau fichier `docs/dette-technique.md` : ce qui est solide (à préserver), puis 15 points classés par priorité — tests automatisés absents du projet, développement sur la base de production, routes sans contrôle de droits, fusion de `feature/budgets`, montants de caisse en `Float`, double gestionnaire de paquets (pnpm / npm), écrans trop volumineux, calculs de suivi dupliqués, annulation des dépenses hors budget, double calcul du statut « payée » des factures, champs redondants, fichiers sur disque, `Paiement.methode` en texte libre, client Prisma isolé, envoi d'email hors `sendEmail` — et les rappels à suivre pour toute nouvelle fonctionnalité.
+
+**À tester / points d'attention**
+- Consulter ce fichier avant chaque nouveau chantier ; cocher les points traités et les consigner ici.
+
+---
+
+## 2026-11-17 (suite) — Factures de prestataires internes / externes réglées sur une ligne de budget
+
+**Demande / Contexte**
+Nuance sur la règle « une facture répond à un bon de commande » : elle ne vaut que pour les prestataires de type **Fournisseur**. Les prestataires **internes** et **externes** peuvent être associés directement à un budget — par exemple le budget mensuel de la comptabilité pour la paie des employés.
+
+**Modifications apportées**
+- Migration `20261117200000_facture_prestataire_ligne_budget` (appliquée) : `FactureFournisseur.ligneBudgetId` (facultatif).
+- `lib/typeFournisseur.ts` : `exigeBonDeCommande(type)` — vrai seulement pour « Fournisseur » (un prestataire sans type compte comme interne).
+- Création de facture (`/api/factures-fournisseurs`) : bon obligatoire pour un Fournisseur ; pour un prestataire interne / externe, bon facultatif **ou** ligne de budget (jamais les deux). Fenêtre de facture : libellé « Bon de commande * / (facultatif) » selon le type, choix « Ligne de budget (facultatif) » parmi les lignes accordées des budgets ouverts.
+- Paiement : `controlerPaiementFacture` / `recalculerStatutFacture` (`lib/commandeFournisseurSuivi.ts`), branchés dans `enregistrerDepense` : une dépense sur une ligne de budget peut régler une facture de prestataire interne / externe (en attente, sans bon, rattachée à cette ligne ou à aucune, montant ≤ reste) ; **paiement partiel possible**, facture **PAYEE** une fois entièrement réglée, de nouveau « à payer » si une dépense est annulée. Fenêtre de dépense (fiche budget et fiche proforma) : option « Facture … — prestataire (reste …) » ; liste fournie par `facturesPrestatairesPayables`.
+- Guide des équipes : sous-partie « Prestataires internes et externes » et message d'erreur correspondant.
+
+**Tests**
+- Transaction annulée : 11/11 (règle par type, factures payables par ligne, acompte puis solde → PAYEE, dépassement refusé, facture payée non repayable, annulation → à payer, autre ligne refusée, facture de Fournisseur sans bon refusée, prestataire sans type traité en interne). Non-régression : chaîne de dépense 18/18, Lot C 19/19, budget 37/37. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Vérifier le **type** de chaque prestataire (fiche prestataire) : un ancien prestataire sans type est traité comme « interne » (bon de commande facultatif).
+
+---
+
+## 2026-11-17 — Une seule chaîne de dépense (budget ↔ bon de commande ↔ facture ↔ caisse ↔ proforma), lots Camptrack, guide des équipes
+
+**Demande / Contexte**
+Toute sortie d'argent doit être une seule opération, qu'elle parte de la fiche budget, de la fiche proforma ou de Camptrack, et tout mettre à jour d'un coup (caisse, ligne de budget, marge de la proforma, ligne de produit du bon de commande, facture). Décisions : les campagnes sans budget gardent la dépense directe sur la proforma ; avec budget, la ligne est obligatoire (y compris pour Camptrack) ; Camptrack paie **par lots** (un lot par proforma) et n'est **pas modifié ici** — l'appel actuel doit continuer de marcher, des instructions sont écrites pour son développeur ; un guide des processus consultable et téléchargeable dans Proforma.
+
+**Modifications apportées**
+- Migration `20261117100000_chaine_depense_imputations_lots` (appliquée, écart nul) : `ImputationCommande` (source unique du payé d'un bon et de chaque ligne de produit ; reprise au prorata des dépenses déjà liées à un bon), statut `PAYEE` des bons (automatique), `BudgetDepense.source` (MANUEL / PROFORMA / CAMPTRACK) et `referenceExterne`, `Paiement.aRattacherBudget`, `LotPaiement`.
+- `lib/depenses/enregistrerDepense.ts` : **fonction unique** de toute sortie d'argent — avec ligne de budget (`controlerLigneBudget` : budget ouvert, séparation des tâches, dates, ligne accordée, plafond) ou, seulement si la proforma n'a aucun budget, sortie directe ; bon de commande (`controlerPaiementCommande` revu : ligne de produit ou « tout le bon » réparti au prorata du reste, bon lié à la ligne de budget ou à la proforma) ; écriture de caisse + dépense sur la proforma ; imputations ; facture PAYEE au solde ; bon PAYEE quand il est soldé (`majStatutCommande`) ; historique et statut du budget. Utilisée par `/api/demandes-budget/[id]/depenses`, `/api/factures/[id]/paiements` (DEPENSE) et les lots Camptrack. Annulation : `annulerImputations` (facture à payer, bon revenu à Livrée / Validée).
+- Fiche proforma : le bouton **Dépense** propose la ligne de budget si la campagne en a un (`ChoixLigneBudgetDialog`, puis la même fenêtre que la fiche budget), sinon la sortie directe avec bon de commande facultatif ; route `GET /api/factures/[id]/lignes-depense`.
+- Fenêtre de dépense : choix de la **ligne de produit** du bon (ou tout le bon). Fiche du bon : **payé / reste par ligne de produit**, paiements de toute origine. Factures fournisseurs : **bon de commande obligatoire** à la création (écran et serveur). Liste des bons : filtre « Payée ».
+- **Camptrack (transition)** : `POST /api/integration/cash-journal/depenses` garde son contrat ; sur une campagne avec budget, le paiement est marqué « à rattacher » → carte orange sur la fiche budget, bouton **Rattacher** (`/api/demandes-budget/[id]/rattacher` : crée la dépense de budget sur l'écriture existante, plafond contrôlé, caisse non retouchée), et section dans l'état du soir.
+- **Camptrack (lots)** : `GET /api/integration/budgets/lignes?proformaId=` et `POST /api/integration/cash-journal/lots-paiement` (résumé du lot, total = somme des lignes, ligne de budget obligatoire si budget, **idempotent** par `reference`, lot justifié dans Camptrack). Sur la fiche budget, le détail du lot s'ouvre depuis la dépense. Instructions pour le développeur : `docs/integration/camptrack-paiements-lots.md`.
+- Dépenses Camptrack considérées **justifiées dans Camptrack** (hors justificatifs manquants, « Oui (Camptrack) »).
+- **Guide des équipes** : `public/docs/procedure-paiement-plateforme.md`, affiché sur la page **Aide** (`/aide`, lien dans la barre latérale : sommaire, Imprimer / PDF, téléchargement Markdown) ; `/docs/*` réservé aux utilisateurs connectés (middleware). Dépendance `marked` ajoutée (package-lock.json et pnpm-lock.yaml synchronisés, aucune autre version changée).
+
+**Tests**
+- Service, transaction annulée : 18/18 (prorata 60 000 / 30 000, ligne de produit et son reste, refus sans ligne sur une campagne avec budget, sortie directe sans budget, BC d'un budget refusé hors budget, solde → facture et bon payés, bon payé non repayable, annulation → facture à payer et bon « Livrée », séparation des tâches, plafond, budget non validé, Camptrack justifié).
+- Routes Camptrack, vraies écritures **nettoyées** : 15/15 (ancien appel inchangé avec et sans budget, marqué à rattacher ; lignes de budget ; lot : total incohérent, ligne obligatoire, plafond, succès, renvoi idempotent, sans budget, hors justificatifs manquants).
+- Non-régression : budget 37/37 et 89/89, Lot A 15/15, Lot C 19/19 (adapté aux imputations) et 8/8. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Transmettre `docs/integration/camptrack-paiements-lots.md` au développeur de Camptrack ; d'ici là, rattacher les paiements Camptrack depuis les fiches budget.
+- Relire le guide (`public/docs/procedure-paiement-plateforme.md`) avant de le partager en ligne.
+- Les anciennes factures fournisseurs sans bon de commande restent telles quelles ; toute nouvelle facture exige un bon.
+
+---
+
+## 2026-11-16 (suite 3) — Correctif : build Docker (package-lock) et erreur de la cloche en local
+
+**Demande / Contexte**
+En local, `GET /api/notifications` répondait 500 (`prisma.notification` indéfini). En préparant le déploiement, constat que le build Docker du VPS aurait échoué.
+
+**Erreurs rencontrées & solutions**
+- `prisma.notification` indéfini : le serveur `next dev` lancé avant la migration du Lot C gardait l'ancien client Prisma en mémoire (le client régénéré contient bien les nouveaux modèles) → **redémarrer `next dev`**. Rien à corriger dans le code.
+- **Build Docker cassé** : `infra/Dockerfile` installe avec `npm ci` (et non pnpm) ; `@playwright/test` et `@clerk/testing`, ajoutés avec pnpm pour les tests de bout en bout, manquaient dans `package-lock.json` → `npm ci` aurait refusé de s'exécuter. `package-lock.json` régénéré avec `npm install --package-lock-only` (ne touche pas `node_modules`). La dernière `@clerk/testing` faisait monter `@clerk/backend` (utilisé en production) de 2.23.0 à 2.33.9 : **`@clerk/testing` épinglé en 1.13.10**, compatible avec les versions de production — le lock n'ajoute plus que les 6 paquets de test, aucune version existante ne change. `pnpm-lock.yaml` aligné (`pnpm install --lockfile-only`).
+
+**À tester / points d'attention**
+- À chaque ajout de dépendance avec pnpm, mettre aussi à jour `package-lock.json` (`npm install --package-lock-only`), sinon le build Docker échoue.
+- `pnpm install` en local installera `@clerk/testing` 1.13.10 (même API pour les tests Playwright).
+
+---
+
+## 2026-11-16 (suite 2) — Lot C (3/3) : état du soir par campagne, minuterie interne, recherche par mot-clé
+
+**Demande / Contexte**
+Procédure de paiement, sections 7 et 8 : chaque soir la DG reçoit l'état par campagne (prévu, payé par moyen, reste), la liste des justificatifs manquants et les avances non justifiées ; tout document classé doit se retrouver en quelques mots-clés. Choix confirmé : les envois sont déclenchés par l'application elle-même (pas de crontab).
+
+**Modifications apportées**
+- `lib/rapports/etatSoir.ts` : `listerJustificatifsManquants` (calcul unique, repris par la route existante), `construireEtatSoir` (budgets CAMPAGNE ouverts : prévu = accordé + dépassements, payé total et **par moyen**, payé du jour, reste ; justificatifs manquants ; avances dont la liasse est incomplète), `envoyerEtatSoir` → `notifier("ETAT_DU_SOIR")` (DG, comptables en copie ; rien si tout est vide). Route `POST /api/integration/rapports/etat-soir` (clé d'intégration, `?dryRun=1`). La liste seule des justificatifs (`…/justificatifs-manquants`) passe aussi par `notifier`.
+- `lib/taches/planificateur.ts`, démarré par `instrumentation.ts` **seulement si `SCHEDULER_ENABLED=true`** (jamais en local : base partagée avec la production) : toutes les 5 min, heure du Bénin — clôture des budgets mensuels chaque jour dès 6 h, état du soir à 19 h du lundi au vendredi ; verrou `TacheExecution` (clé « tâche:jour ») = une seule exécution par jour même avec plusieurs instances ; rattrapage le jour même après un redémarrage ; pas de nouvel essai automatique après un échec (consigné dans `TacheExecution.resultat`, renvoi possible par la route).
+- Recherche : `GET /api/recherche?q=` (plusieurs mots en ET, insensible à la casse, un nombre cherche aussi les montants) — budgets et leurs pièces (circuit budget, sinon ses propres budgets), journal de caisse (section finance), bons de commande, pièces de liasse, factures fournisseurs et prestataires (section fournisseurs), proformas (section proforma). Page `/recherche` (lien en tête de la barre latérale), aperçu direct des pièces.
+
+**Tests**
+- 8/8 : heure du Bénin, échéances (pas avant 19 h, pas le week-end, clôture le samedi matin, passage de minuit), verrou (2e exécution refusée — ligne de test supprimée), cohérence de l'état du soir sur les données réelles (lecture seule, aucun envoi).
+- Non-régression : budget 37/37 et 89/89, Lot A 15/15. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- **Déploiement** : ajouter `SCHEDULER_ENABLED=true` dans le `.env` du VPS uniquement ; une crontab éventuelle sur la clôture mensuelle peut rester (opération idempotente) ou être retirée.
+- `next build` non relancé (serveur de développement actif sur `.next`) : à faire avant de déployer (supprimer d'abord `.nextstandalone`).
+- Manuellement : Paramètres → Notifications (choisir le canal de « État du soir ») ; `POST /api/integration/rapports/etat-soir?dryRun=1` pour voir le contenu ; page Recherche avec un compte sans section Finance (le journal de caisse ne doit pas apparaître).
+
+---
+
+## 2026-11-16 (suite) — Lot C (2/3) : bons de commande, avances et soldes, factures fournisseurs ↔ caisse
+
+**Demande / Contexte**
+Procédure de paiement, section 4 : les bons de commande sont émis à partir du budget et signés par la DG ; l'avance est versée sur BC signé et reste « non justifiée » (rouge) tant que la liasse n'est pas complète (BC signé, bordereau ou attestation de service fait, facture, rapport) ; le solde n'est payé qu'avec la liasse complète. Choix confirmés : avance / solde = dépense de budget liée au BC ; liasse = les 4 pièces.
+
+**Modifications apportées**
+- `lib/commandeFournisseurLiasse.ts` (calculs purs, aussi côté écran) : `etatLiasse`, `payeSurCommande`, libellés des pièces et des natures, `TRANSITIONS_COMMANDE`. `lib/commandeFournisseurSuivi.ts` (serveur) : `controlerPaiementCommande` (BC de la ligne, validé ou livré, BC signé ; solde = liasse complète + facture du BC en attente ; montant ≤ reste du BC ; verrou sur le BC), `libererFactureApresAnnulation`, `refusLigneBudgetCommande`, `prochainNumeroCommande`.
+- Dépenses de budget (`app/api/demandes-budget/[id]/depenses`) : `commandeId`, `nature` (AVANCE / SOLDE), `factureFournisseurId` ; le solde passe la facture fournisseur **PAYEE** ; l'annulation de la dépense la remet **EN_ATTENTE**. Tous les contrôles existants restent (ligne accordée, plafond, solde de caisse, séparation des tâches).
+- Bons de commande : création / modification réservées à la section « Prestataires » (aucune garde avant) ; numéro **par année** dans une transaction (`BCF-AAAA-NNNN`, suit le plus grand numéro de l'année, nouvel essai si doublon) ; `ligneBudgetId` ; **statut contrôlé côté serveur** (avant : n'importe quelle valeur, dans n'importe quel sens) — BROUILLON → VALIDEE → LIVREE, ANNULEE sans paiement, aucun retour ; **VALIDEE réservé à la direction et seulement avec le scan du BC signé** (notification « BC validé » aux comptables). Nouvelle route `POST /api/fournisseurs/commandes/[commandeId]/documents` (pièces de la liasse, `public/Upload/CommandeFournisseur/<id>/`, nommées `date_campagne_document_montant`, jamais supprimées). La liste des BC reste lisible par tout utilisateur connecté (le formulaire de budget s'en sert).
+- Factures fournisseurs : impossible de les passer (ou de les créer) « payée » à la main — elles le deviennent par le solde ; pas d'annulation tant qu'un paiement actif les règle ; rattachement possible à un BC (`commandeId`, même prestataire). Choix « Payée » désactivé dans les écrans.
+- Interface : carte **« Budget, liasse et paiements »** sur la fiche du BC (`components/fournisseurs/CommandeLiasseCard.tsx` : ligne de budget à rattacher, 4 pièces cochées / manquantes avec « Joindre », factures du prestataire avec « Enregistrer la facture », payé / reste, avance non justifiée en rouge) ; liste de statuts limitée aux passages autorisés (« Validée » grisé sans droit ou sans scan) ; fenêtre « Enregistrer une dépense » : choix Dépense simple / Avance / Solde par BC, état de la liasse et reste du BC, facture à régler ; fiche budget : BC de chaque ligne (liasse x/4), nature des dépenses, « Avance non justifiée » en rouge.
+
+**Tests**
+- En base, transaction annulée : 19/19 (ligne retirée refusée, numérotation, avance refusée sur brouillon / sans BC signé / autre ligne / au-delà du BC, solde refusé sans liasse ou sans facture, accepté avec liasse complète, facture payée non réutilisable, annulation → facture à payer, transitions) — rien enregistré. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Les BC déjà VALIDEE sans scan signé ne peuvent recevoir aucun paiement tant que le scan n'est pas joint.
+- Le rattachement d'un BC à une ligne de budget se fait depuis la fiche du BC (pas encore dans le formulaire de création).
+
+---
+
+## 2026-11-16 — Lot C (1/3) : notifications dans l'application, canal choisi par événement
+
+**Demande / Contexte**
+Plutôt qu'un email à chaque événement, un système de notifications dans Proforma : pour chaque événement qui envoie aujourd'hui un email, l'admin choisit le canal — email, application ou les deux. Socle du Lot C (plan : notifications, puis avances / soldes fournisseurs, puis état du soir et recherche).
+
+**Modifications apportées**
+- Migration `20261116100000_lot_c_notifications_fournisseurs` (générée par `migrate diff`, appliquée, écart nul vérifié ; elle contient aussi les tables du reste du Lot C) : `Notification`, `NotificationPreference` (enum `CanalNotification` EMAIL / APP / LES_DEUX), `TacheExecution` ; `CommandeFournisseurDocument` (enum `TypeDocumentCommande`), `CommandeFournisseur.ligneBudgetId`, `BudgetDepense.commandeId / nature (NatureDepense) / factureFournisseurId`, `FactureFournisseur.commandeId`. `prisma format` a réaligné le schéma (sans changement de fond).
+- `lib/notifications/evenements.ts` : catalogue des 15 événements (budgets, pilotage, proformas, fournisseurs), canal par défaut **les deux** (les emails continuent de partir comme avant).
+- `lib/notifications/notifier.ts` : point d'entrée unique `notifier(evenement, {to, cc, subject, html, message, lien})` — notification pour chaque destinataire qui a un compte actif, email selon le canal ; une adresse sans compte (liste de diffusion) reçoit toujours l'email ; un canal en erreur n'empêche pas l'autre.
+- Toutes les notifications existantes passent par `notifier` (signatures et appelants inchangés) : 10 de budget (`lib/email/demandeBudget.ts`, via `notifierBudget`, lien vers la fiche), encaissement de proforma, validation de proforma — qui avait son propre transporteur nodemailer et échappait à `EMAIL_DISABLED` —, création de bon de commande ; nouvelle `sendCommandeFournisseurValideeNotification` (BC validé → comptables).
+- Routes : `GET /api/notifications`, `POST /api/notifications/lues`, `GET/PUT /api/notifications/preferences` (administrateurs).
+- Interface : **cloche** dans l'en-tête de la barre latérale (pastille des non lues, rafraîchie chaque minute et au retour sur l'onglet, 10 dernières, « Tout marquer comme lu ») ; page `/notifications` ; page **Paramètres > Notifications** (canal par événement, « Tout régler sur… »).
+
+**Tests**
+- En base (lignes de test supprimées ensuite, préférence remise en l'état) : 5/5 — « les deux » = notification pour le compte seulement (email insensible à la casse) + email à tous ; « application » = email seulement à l'adresse sans compte ; « email » = aucune notification. `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Redémarrer `next dev` (nouveau client Prisma ; `prisma generate` a buté sur le moteur verrouillé).
+- L'envoi de la proforma au client (`/api/factures/[id]/send-email`) n'est pas une notification : il reste un envoi direct.
+
+---
+
+## 2026-11-15 (suite) — Tests de bout en bout Playwright (en pause) et interrupteur des emails
+
+**Demande / Contexte**
+Tester la solution de bout en bout en local avec le compte admin de test : l'admin crée les autres profils, leur donne des droits, puis chaque acteur joue sa part du circuit ; vérifier l'absence de régression. La base locale étant celle de la production, choix confirmés : données marquées « E2E-… » et supprimées à la fin, emails coupés, tests rangés dans le projet. Mis **en pause** à la demande de l'utilisateur (durée d'exécution), pour passer au Lot C.
+
+**Modifications apportées**
+- `lib/email/sendEmail.ts` : interrupteur `EMAIL_DISABLED=true` — aucun envoi, l'email est seulement tracé en console (sans effet en production où la variable est absente). Les deux envois qui n'utilisent pas `sendEmail` (validation de proforma, envoi de facture) ne sont pas couverts ; les tests ne les déclenchent pas.
+- Dépendances de développement : `@playwright/test` 1.56.1, `@clerk/testing` ; script `pnpm test:e2e` ; `.gitignore` (rapports, `e2e/.run/`).
+- `playwright.config.ts`, dossier `e2e/` (mode d'emploi dans `e2e/README.md`) : `global-setup.ts` (contrôles, proforma de test, jeton Clerk de test), `cleanup.ts` / `global-teardown.ts` (suppression de tout ce que l'exécution a créé, y compris comptes Clerk et fichiers ; reprise si une exécution a été interrompue), `procedure-paiement.spec.ts` (13 scénarios), `non-regression.spec.ts` (toutes les grandes pages pour l'admin). Mot de passe admin jamais écrit : passé par variable d'environnement.
+
+**Résultats de la 1re exécution (sur `next build` + `next start`)**
+- `next build` OK (compilé en 4,5 min, 33 pages) — `node_modules` intact (`.next/standalone` supprimé avant).
+- ✅ Non-régression : les 22 pages principales s'ouvrent sans erreur ni exception pour l'admin.
+- ✅ Scénarios 1 à 3 : création des rôles et des comptes par l'admin, caisse de test, refus **serveur** d'une dépense et d'un transfert supérieurs au solde.
+- ❌ Scénario 4 arrêté sur un sélecteur du test (bouton « Associer des proformas » non trouvé dans le formulaire de campagne) — à corriger dans le test, pas d'anomalie applicative constatée ; scénarios 5 à 13 non exécutés.
+- Nettoyage vérifié : caisse, 3 comptes (base + Clerk), 3 rôles, proforma et client de test supprimés.
+
+**Erreurs rencontrées & solutions**
+- Navigateur de Playwright non téléchargeable (bloqué à 0 %) → option `E2E_BROWSER_CHANNEL=chrome` (Chrome installé sur le poste).
+- `next dev` trop lent (≈ 1 min de compilation par page) → tests lancés sur la version compilée.
+
+**À tester / points d'attention**
+- Reprise : corriger le sélecteur du scénario 4, puis `EMAIL_DISABLED=true pnpm start` (après `pnpm build`) et `E2E_BROWSER_CHANNEL=chrome E2E_ADMIN_EMAIL=… E2E_ADMIN_PASSWORD=… E2E_EMAILS_DESACTIVES=true pnpm test:e2e`.
+- Changer le mot de passe du compte de test, partagé dans la conversation.
+
+---
+
+## 2026-11-15 — Procédure de paiement (Lot A) : verrou du journal de caisse, moyen de paiement par ligne, budget signé, justificatifs à 24 h, fichiers protégés
+
+**Demande / Contexte**
+La direction a diffusé la « Procédure de paiement RESEAUPUB – de A à Z » (v3, 12/11/2026). L'analyse d'écart (plan : Lots A à E) a montré que le circuit budget couvrait déjà l'essentiel, mais que des sorties d'argent restaient possibles hors de tout contrôle. Le Lot A ferme ces failles et applique les réglages de la section 10 qui ne dépendent d'aucun arbitrage de la DG.
+
+**Modifications apportées**
+- Migration `20261115100000_procedure_paiement_lot_a` (générée par `migrate diff`, appliquée, écart nul vérifié) : `Role.canSaisirCaisse` ; `DemandeBudgetLigne.modePaiement` ; valeur `CARTE` dans `ModePaiementDemande` ; valeur `BUDGET_SIGNE` dans `TypeAttachmentDemande`. Reprise : chaque ligne existante prend le moyen de sa demande ; le droit de caisse est coché sur les rôles qui avaient déjà accès au journal (section Finance), à l'administration (`canManageUsers`) et au comptable (`canPayBudget`) — résultat en base : **Admin** et **Comptable** l'ont, **ASSISTANT** non.
+- **Verrou du journal de caisse** (règle d'or n° 2 : aucun argent ne sort sans validation de la DG) : nouveau droit « Saisir au journal de caisse (hors budget) » dans Paramètres > Rôles ; garde `requireCaisseUser()` (`lib/budgetAuth.ts`) sur `POST /api/cash-journal` (recettes, dépenses, transferts), `POST /api/cash-registers`, `PATCH /api/cash-registers/[id]`, `POST /api/cash-journal/recalculate` et les **dépenses** sur proforma (`POST /api/factures/[id]/paiements` type DEPENSE ; les encaissements clients restent ouverts). Ces routes n'avaient jusque-là aucun contrôle de droit. Côté écran, les boutons de saisie sont masqués sans le droit (journal de caisse, fiche proforma), avec la mention « Consultation seule ».
+- **Solde contrôlé côté serveur** : `recordCashMovement` (`lib/cashJournal.ts`) refuse toute DEPENSE non couverte par le solde, sous verrou de la caisse — donc aussi la saisie manuelle et l'API d'intégration Camptrack sans proforma, qui ne vérifiaient rien. Les transferts vérifient la caisse source (`assertSoldeSuffisant`). Erreur « Solde insuffisant… » renvoyée en 400 (et non 500).
+- **Moyen de paiement prévu par ligne** (section 4, point 1) : sélecteur par ligne dans le formulaire (« Principal (…) » par défaut), total par moyen sous le total, sur la fiche (demandé / accordé), dans l'impression et dans le rapport « Suivi budgétaire » (tableau et onglet Excel « Par moyen », colonne dans le détail). La dépense pré-sélectionne le moyen de la ligne ; la correction de ligne permet d'en changer. Libellés communs dans `lib/budgetTypes.ts` (`MODE_PAIEMENT_OPTIONS`, `modePaiementLabel`, `totauxParModePaiement`). Ajout de **Carte bancaire**.
+- **Budget de campagne signé par la DG** (section 4, points 2-3) : bouton **Imprimer** sur la fiche (PDF `lib/pdf/budgetPdf.ts` : lignes, moyens, total par moyen, cadres de signature Préparé par / Vérifié comptable / Approuvé Direction générale) ; nouveau type de document « Budget signé (DG) » ; un budget **CAMPAGNE** ne peut avoir aucune ligne accordée (Tout valider, Accorder, Ajuster) tant que ce scan n'est pas joint (`refusBudgetSigneManquant`, `lib/budgetSuivi.ts`). Les documents peuvent désormais être ajoutés pendant la validation.
+- **Justificatifs à 24 h ouvrées** (section 7) : `lib/justificatifs.ts` (délai lundi-vendredi, heure du Bénin) ; colonne « Justificatif reçu : Oui / Non », échéance affichée, dépense **en rouge** une fois le délai dépassé ; compteur « dont N en retard » sur la fiche et dans la liste des budgets. **État du soir** : `POST /api/integration/rapports/justificatifs-manquants` (clé d'intégration) envoie à la DG (comptables en copie) la liste des dépenses sans justificatif, les retards en tête ; rien n'est envoyé s'il n'en manque aucun ; `?dryRun=1` pour contrôler sans envoyer.
+- **Nommage des pièces** (section 7) : les pièces de budget sont nommées `date_campagne_document_montant` (ex. `2026-11-12_BIIC-DB-2026-0012_Preuve-paiement_350000F.pdf`, client de la proforma + numéro du budget) — `lib/uploadDemandeBudget.ts`.
+- **Fichiers protégés** : `middleware.ts` couvre désormais `/Upload/*` — un fichier déposé (justificatif, état, bon…) n'est plus servi qu'à un utilisateur connecté (vérifié : 307 vers la connexion sans session ; le logo public reste accessible).
+
+**Erreurs rencontrées & solutions**
+- Fichiers en fins de ligne Windows (CRLF) : remplacements faits par un petit script qui les conserve.
+- `prisma generate` : EPERM (moteur verrouillé par `next dev`) — types bien générés ; redémarrer `next dev`.
+- Une commande de test lancée avec `cat >` sans entrée a bloqué le terminal → arrêtée, relancée correctement.
+
+**Tests**
+- Nouveau scénario en base, transaction annulée : 15/15 (dépense manuelle > solde refusée, dépense = solde acceptée, caisse vide refusée pour `recordCashDepense` et les transferts, recette toujours possible, solde cohérent ; CAMPAGNE sans scan refusée, un devis ne suffit pas, scan signé → accepté ; PONCTUEL non concerné, enum CARTE ; moyen par ligne ; total par moyen ; nommage) — rien enregistré.
+- Non-régression : 37/37 (base) et 89/89 (sans base). `tsc` et `lint` OK.
+
+**À tester / points d'attention**
+- Redémarrer `next dev` (nouveau moteur Prisma).
+- **Paramètres > Rôles** : vérifier le droit « Saisir au journal de caisse » — cocher le rôle de la caissière (Mme Dolorès) s'il n'est ni Admin ni Comptable ; décocher Admin si la DG ne doit pas saisir elle-même.
+- **Caisses à solde négatif** : toute sortie y est maintenant refusée jusqu'à un approvisionnement (y compris les paiements Camptrack envoyés sans proforma, qui reçoivent un 400 et n'enregistrent rien côté Camptrack).
+- **Crontab du serveur** : ajouter l'état du soir, par ex. `0 19 * * 1-5 curl -s -X POST -H "Authorization: Bearer $INTEGRATION_API_KEY" https://<domaine>/api/integration/rapports/justificatifs-manquants` (à côté de la clôture mensuelle).
+- Budget CAMPAGNE : Imprimer → signer → « Joindre le budget signé » → les boutons Accorder / Tout valider se débloquent.
+- Liens vers des fichiers dans des e-mails existants : ils demandent désormais une connexion.
+
+---
+
+## 2026-11-14 (suite 3) — Budgets : validation ligne par ligne, correction ou retrait par le demandeur
+
+**Demande / Contexte**
+L'admin veut valider un budget **ligne par ligne** ; le bouton « Valider » existant devient « tout valider d'un coup ». Une ligne non validée n'est pas refusée définitivement : le demandeur la **corrige** selon le commentaire laissé (elle repart en validation) ou la **retire** du budget, pour que le budget puisse passer entièrement validé. Décisions confirmées : montant ajustable **à la baisse** par le valideur ; une ligne accordée est **dépensable immédiatement** (validation partielle).
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261114200000_budget_validation_par_ligne` (écrite à la main faute d'accès à Supabase au moment de la génération, puis vérifiée : `migrate diff` base ↔ schéma = migration vide) : enum `StatutLigneBudget` (EN_ATTENTE, ACCORDEE, A_CORRIGER, RETIREE) ; `DemandeBudgetLigne.statutValidation / montantAccorde / decideParEmail / decideAt / motifDecision` (`montant` = montant **demandé**) ; statut budget `VALIDATION_PARTIELLE` ; actions d'historique `LIGNE_ACCORDEE / LIGNE_A_CORRIGER / LIGNE_CORRIGEE / LIGNE_RETIREE`. Reprise : les lignes des budgets déjà validés sont ACCORDEE (vérifié : 4 lignes VALIDEE → ACCORDEE, 4 autres EN_ATTENTE) — aucun changement pour l'existant.
+- `lib/budgetSuivi.ts` : `montantAccordeLigne` (ACCORDEE → accordé ou demandé ; sinon 0) remplace `ligne.montant` partout où il sert de plafond (`getLigneDisponible`, `getBudgetTotaux`, `recalculerStatutBudget`) ; `majStatutApresDecision` (toutes retirées → REJETEE ; plus rien à décider → VALIDEE puis EN_COURS / PAYEE si déjà dépensé ; ≥ 1 accordée → VALIDATION_PARTIELLE ; sinon SOUMISE ; recalcule `montantTotal` demandé hors lignes retirées) ; `retirerLignesNonAccordees` (clôture).
+- Nouvelles routes : `POST /api/demandes-budget/[id]/lignes/[ligneId]/decider` (valideur, même matrice `refusValidation` : ACCORDER au demandé ou à un montant réduit avec motif, jamais plus ; CORRIGER avec motif, qui ouvre aussi le fil de commentaires de la ligne et prévient le demandeur) et `PATCH /api/demandes-budget/[id]/lignes/[ligneId]` (demandeur ou comptable, ligne A_CORRIGER : MODIFIER → EN_ATTENTE + notification aux valideurs ; RETIRER → RETIREE ; réponse facultative ajoutée au fil).
+- Routes modifiées : `valider` = « tout valider » (accorde les lignes EN_ATTENTE, garde les décisions déjà prises, refusé tant qu'une ligne est à corriger) ; `rejeter` aussi en validation partielle si aucune dépense ; `depenses` (validation partielle acceptée, ligne ACCORDEE uniquement, interdite à celui qui a accordé la ligne) ; `depassements` (ligne ACCORDEE uniquement) ; `cloturer` + clôture automatique (validation partielle incluse, lignes non accordées retirées) ; `documents` ; liste (plafond = accordé, compteur « lignes à corriger ») ; rapport « Suivi budgétaire » (lignes accordées seulement, colonne Demandé en plus) ; reconduction (reprend le montant accordé, ignore les lignes retirées).
+- E-mails : tableau des lignes avec statut / montant accordé / motif ; nouvelles notifications « ligne à corriger » (demandeur) et « ligne corrigée » (valideurs compétents).
+- Interface : fiche budget — colonnes Demandé / Accordé, pastille par ligne (En attente, Accordée, Accordée partiellement, À corriger, Retirée), boutons **Accorder / Ajuster / Demander une correction** pour le valideur, **Modifier la ligne / Retirer du budget** pour le demandeur, bandeau « N ligne(s) à corriger », avancement dans la carte de validation (« Tout valider » grisé tant qu'une ligne est en correction), synthèse « Accordé … sur … demandés » ; badge « Validation partielle » ; filtre de statut dans la liste. Composants `components/budget/BudgetLigneDecisionDialog.tsx` et `BudgetLigneCorrectionDialog.tsx`.
+
+**Erreurs rencontrées & solutions**
+- Supabase injoignable pendant `migrate diff` → SQL écrit à la main au format Prisma, appliqué dès le retour de la connexion, puis contrôle d'écart nul.
+- `prisma generate` : EPERM (moteur verrouillé par `next dev` lancé pour les tests) — types bien générés ; redémarrer `next dev` pour charger le nouveau moteur.
+- Le fichier de test en base avait été ré-encodé par PowerShell (`Get-Content`/`Set-Content` : accents abîmés, BOM, CRLF) → réécrit proprement ; à l'avenir, ne pas modifier ces fichiers via PowerShell.
+- `next build` non lancé (serveur de dev actif sur `.next`) ; `tsc` + `lint` OK.
+
+**Tests**
+- Sans base : 89/89 (dont validation ligne par ligne : montant accordé, SOUMISE → VALIDATION_PARTIELLE → VALIDEE, correction avec recalcul du total demandé, retrait, tout retiré → REJETEE).
+- En base, transaction annulée : 37/37 (dont lignes EN_ATTENTE par défaut, verrou de toutes les lignes, plafond de 7 000 sur une ligne ajustée, retrait → VALIDEE avec total recalculé, clôture qui retire les lignes non accordées) — `ROLLBACK` vérifié.
+
+**À tester / points d'attention**
+- Redémarrer `next dev` (nouveau moteur Prisma).
+- Scénario manuel : budget de 3 lignes → accorder la 1re (statut « Validation partielle », Dépense possible dessus) ; ajuster la 2e (10 000 → 7 000, motif) ; demander une correction sur la 3e → le demandeur reçoit l'e-mail, voit le bandeau, modifie la ligne → elle revient « En attente » → l'accorder → budget « Validé ». Variante : le demandeur retire la ligne → budget « Validé » sans elle.
+- « Tout valider » sur un budget dont une ligne est à corriger → refusé avec message ; « Rejeter » refusé si des dépenses ont déjà été faites en validation partielle.
+- Le valideur d'une ligne ne peut pas en enregistrer les dépenses (séparation des tâches, maintenant aussi au niveau de la ligne).
+
+---
+
+## 2026-11-14 (suite 2) — Budgets : tests, audit et corrections de sécurité (envois de fichiers, verrou de caisse)
+
+**Demande / Contexte**
+Tester les Lots 1 à 3 puis auditer le module budget. Aucune base de test locale (ni Docker ni Postgres sur le poste) : seule la base Supabase de production est disponible → tests sans base (base simulée en mémoire) et scénario réel en base **dans une transaction annulée** (accord de l'utilisateur). Corrections retenues par l'utilisateur : points 1 à 8 de l'audit ; le point 9 (demandeur ≠ payeur) n'est pas appliqué.
+
+**Tests**
+- `next build` : OK. Logique sans base : 71/71 (matrice de validation, seuils 80/100 %, règles par type, prévu/consommé/reste, dépassements, annulation, statuts, clôture automatique, unicité, noms de fichiers, mois acceptés). Scénario réel en base, transaction annulée : 27/27 (journal de caisse, solde insuffisant, paiement sur proforma, filtres de liste, dépassement, contre-écriture, marge neutralisée, exclusion au dashboard, clôture automatique, rapport) — `ROLLBACK` vérifié, journal de caisse inchangé. Les scripts de test sont dans le dossier temporaire de la session (non versionnés).
+- Non testé ici : les écrans et les routes protégées par Clerk (pas de navigateur dans la session) → test manuel.
+
+**Modifications apportées (corrections de l'audit)**
+1. **Envois de fichiers** — nouveau `lib/uploadSecurity.ts` (`safeUploadFileName`, `assertAllowedUpload`, liste blanche pdf / images / Word / Excel / OpenDocument / csv / txt ; images seules pour les photos produit et le logo). Faille vérifiée : un nom `../../../x` était écrit hors du dossier d'upload, et un `.html` pouvait être envoyé puis ouvert dans l'aperçu (iframe, même origine). Appliqué à **tous** les envois : `lib/uploadDemandeBudget.ts`, `uploadFournisseurDocument.ts`, `uploadProduitFournisseur.ts`, `uploadFactureFournisseur.ts`, routes `cash-journal/[id]/upload`, `factures/[id]/paiements` (+ `upload-proof`), `factures/[id]/upload`, `entreprise/logo`. Contrôle fait **avant** toute écriture en base là où le fichier était enregistré après (paiement proforma, création / re-soumission de demande via `assertTypedAttachmentsAllowed`, création de produit fournisseur) : un fichier refusé ne laisse jamais un paiement ou une demande à moitié enregistré (sinon risque de double saisie). Refus → 400 avec message.
+2. **Verrou de caisse** — `lockCashRegister` (`SELECT … FOR UPDATE`) dans `lib/cashJournal.ts`, appelé par `recordCashMovement`, `recordCashDepense` (avant la lecture du solde), les transferts entre caisses (deux caisses, par id croissant) et l'encaissement d'une proforma. Deux écritures simultanées sur une même caisse ne peuvent plus partir du même solde.
+3. Un admin **demandeur d'un budget** ne peut plus approuver les dépassements de ce budget (serveur + interface).
+4. Un budget mensuel ne peut viser qu'un mois en cours ou à venir (ou le mois précédent pendant les 5 jours de grâce) — `moisMensuelAccepte` dans `lib/budgetSchema.ts`, `min` sur le sélecteur de mois.
+5. À la clôture (manuelle ou automatique), les dépassements en attente sont refusés automatiquement (« Budget clôturé »), avec trace — `refuserDepassementsEnAttente`.
+6. Date de dépense bornée : pas dans le futur, pas avant la validation du budget (tolérance 1 jour).
+7. `GET /api/cash-registers` réservé au comptable (droit « Enregistrer les dépenses ») ou à la section Finance ; client Prisma partagé au lieu d'un `new PrismaClient()`.
+8. Numérotation `DB-AAAA-NNNN` : plus grand numéro de l'année + 1 (au lieu d'un comptage) et nouvel essai en cas de collision (P2002).
+
+**Erreurs rencontrées & solutions**
+- ⚠️ **Incident local** : la 2e compilation `next build` de la journée a **vidé des paquets de `node_modules`** (`next`, `react`, `react-dom`, `typescript`…). Cause : avec `output: "standalone"` sous Windows + pnpm, `.next/standalone/node_modules` contient des **liens symboliques vers les vrais paquets**, et le nettoyage de `.next` au début d'une compilation les a suivis. Réparé par `pnpm install --frozen-lockfile --force` (rien retéléchargé, magasin pnpm intact), puis `.next/standalone` supprimé avec `cmd /c rmdir /s /q` (supprime les liens sans toucher aux cibles — vérifié sur un dossier de test). Sans effet sur le VPS (Linux).
+- Scripts de modification : `\s` perdu dans un heredoc bash → scripts placés dans des fichiers ; tous les remplacements « tout ou rien » (aucun fichier écrit si un motif manque).
+- `pnpm install` : EPERM tant que le dossier courant de la session était dans le paquet à réinstaller.
+
+**À tester / points d'attention**
+- **En local, ne jamais relancer `next build` sans d'abord supprimer `.next\standalone` avec `cmd /c rmdir /s /q .next\standalone`**, sinon les paquets sont de nouveau vidés.
+- Envoyer un PDF / une photo comme justificatif → accepté ; un `.html` ou `.svg` → refusé avec message clair, sans demande ni paiement créé.
+- Encaissements et dépenses : fonctionnement inchangé ; deux opérations simultanées sur la même caisse passent l'une après l'autre.
+- Fichiers déjà envoyés avant la correction : non modifiés (contrôle à faire manuellement si besoin dans `public/Upload`).
+- Recommandations non appliquées : demandeur ≠ payeur (point 9), plafond ou alerte sur les dépenses sans justificatif (10), accès au rapport sans la page Tableau de bord (11).
+
+---
+
+## 2026-11-14 (suite) — Budgets : reconduction, unicité et clôture des mensuels, catégories, rapport de suivi (Lot 3)
+
+**Demande / Contexte**
+Dernier lot du plan budget : faciliter l'élaboration des budgets (reprendre le mois précédent), empêcher les doublons de budget mensuel, clôturer automatiquement les mensuels en fin de mois, normaliser les catégories de dépense et offrir un rapport « prévu vs réalisé » dans Rapports.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261114100000_budget_categories_depense` (appliquée) : enum `CategorieDepense` (carburant, transport, loyer & charges, téléphone & internet, fournitures, équipement, entretien, impression, prestations, personnel, restauration, autre) et `DemandeBudgetLigne.categorie` (nullable : les lignes existantes restent « Non catégorisé »).
+- `lib/budgetTypes.ts` : libellés des catégories (`CATEGORIE_DEPENSE_LABELS`, `categorieLabel`). `lib/budgetSchema.ts` : catégorie **obligatoire** sur chaque ligne d'une nouvelle demande ou d'une re-soumission.
+- `lib/budgetSuivi.ts` :
+  - `budgetMensuelExistant` : un seul budget mensuel par service et par mois (les demandes rejetées ne comptent pas) → 409 à la création ou à la re-soumission, avec le numéro du budget existant ;
+  - `cloturerBudgetsMensuelsEchus` : clôture des mensuels VALIDEE/EN_COURS dont le mois est fini depuis plus de **5 jours** (`JOURS_GRACE_CLOTURE_MENSUELLE`, laisse le temps de saisir les derniers reçus), journalisée dans l'historique (« Clôture automatique »). Idempotente (`updateMany` conditionnel) ; déclenchée à l'ouverture de la liste des budgets et avant chaque dépense.
+- Nouvelle route `POST /api/integration/budgets/cloture-mensuelle` (clé `INTEGRATION_API_KEY`, déjà exclue de Clerk) : même clôture, à appeler par une tâche planifiée quotidienne si on veut ne pas dépendre de l'ouverture de la liste.
+- Reconduction : `GET /api/demandes-budget/[id]/reconduction` renvoie les données de préremplissage (mêmes lignes et catégories, mois suivant pour un mensuel, proformas non reprises pour une campagne) et, pour chaque ligne, le prévu / plafond / réalisé du budget d'origine. Page `budget/nouvelle-demande?depuis=<id>` (boundary `Suspense` pour `useSearchParams`) ; bouton « Reconduire au mois suivant » (mensuel) / « Dupliquer » (autres types) sur la fiche. La nouvelle demande repasse par le circuit normal de validation.
+- Formulaire : colonne « Catégorie » par ligne ; en reconduction, rappel « Précédent : X prévu, Y dépensé » sous chaque montant (en orange si le dépensé a dépassé le prévu).
+- Rapport « Suivi budgétaire » (`/dashboard/rapports/suivi-budgetaire`, carte dans Rapports à la place de « Frais supplémentaires — bientôt ») : API `GET /api/rapports/suivi-budgetaire` (réservée aux rôles du circuit budget), filtres mois début/fin (6 derniers mois par défaut), type, service, catégorie ; indicateurs prévu / réalisé / écart / taux ; graphique prévu vs réalisé par mois ; tableaux par service et par catégorie ; détail ligne à ligne ; export Excel 4 onglets (par mois, par service, par catégorie, détail).
+
+**Erreurs rencontrées & solutions**
+- `zod` v4 : `nativeEnum(…, { errorMap })` n'existe plus → `{ message }`.
+- Scripts de modification : fichiers en CRLF, les motifs multi-lignes ne correspondaient pas → normalisation `\r\n` ↔ `\n` avant/après remplacement.
+
+**À tester / points d'attention**
+- Créer un 2e budget mensuel pour le même service et le même mois → refus avec le numéro de l'existant.
+- Reconduire un mensuel d'octobre → formulaire prérempli pour novembre, avec le dépensé d'octobre rappelé sous chaque ligne.
+- Un mensuel d'octobre encore ouvert le 6 novembre → clôturé à l'ouverture de la liste, entrée « Clôture automatique » dans son historique ; une dépense sur ce budget est alors refusée.
+- Rapport : vérifier les totaux par service / catégorie et l'export Excel. Les budgets payés avec l'ancien circuit sont comptés avec réalisé = prévu (signalé dans le rapport).
+- Re-soumettre une ancienne demande rejetée impose désormais de choisir une catégorie par ligne.
+- Optionnel : planifier l'appel quotidien de `/api/integration/budgets/cloture-mensuelle` sur le serveur.
+
+---
+
+## 2026-11-14 — Budgets : dépassements, journal d'audit, annulation par contre-écriture, alertes (Lot 2)
+
+**Demande / Contexte**
+Suite du plan budget : quand une ligne est épuisée, pouvoir demander un dépassement approuvé par l'admin ; tracer chaque action (qui, quand, quoi) ; séparer les tâches (qui valide un budget n'en enregistre pas les dépenses) ; annuler une dépense sans jamais la supprimer ; alerter à 80 % et 100 % de consommation d'une ligne. Code écrit le 2026-11-10 et commité sur la branche `feature/budgets` (`99c9572`), migration appliquée et vérifiée le 2026-11-14.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261110150000_budget_depassements_historique_annulation` :
+  - modèles `BudgetDepassement` (ligne, montant, motif, statut EN_ATTENTE/APPROUVE/REJETE, demandeur, décideur) et `BudgetHistorique` (journal d'audit, enum `ActionBudget`) ;
+  - `BudgetDepense` : `annuleeAt`, `annuleeParEmail`, `motifAnnulation`, `contreEcritureId` (2e relation vers `CashJournal`, d'où les relations nommées `BudgetDepenseEcriture` / `BudgetDepenseContreEcriture`) ;
+  - reprise SQL de l'historique des demandes existantes (création, validation, rejet, dépenses, clôture, ancien circuit « payée »).
+- `lib/budgetSuivi.ts` (nouveau) : `getLigneDisponible` (plafond = prévu + dépassements approuvés, consommé = dépenses non annulées — jamais stockés), `getBudgetTotaux`, `recalculerStatutBudget` (VALIDEE / EN_COURS / PAYEE, ne rouvre jamais un budget clôturé ni une demande de l'ancien circuit), `logBudget`, `seuilsFranchis` (80/100 %).
+- API :
+  - `[id]/depenses` : contrôle du reste sur le plafond avec dépassements, refus si l'utilisateur a validé ce budget, écriture au journal d'audit, alertes email 80/100 % hors transaction ;
+  - `[id]/depenses/[depenseId]/annuler` (nouveau, admin) : contre-écriture RECETTE dans la même caisse, Paiement DEPENSE négatif **sans écriture de caisse** sur la proforma (neutralise la marge sans être compté comme CA), dépense marquée annulée, statut recalculé ;
+  - `[id]/depassements` (nouveau, comptable ou demandeur, une seule demande en attente par ligne) et `[id]/depassements/[depassementId]/decider` (nouveau, admin, jamais sur sa propre demande de dépassement) ;
+  - journal d'audit ajouté à création, re-soumission (les commentaires des lignes recréées y sont recopiés pour ne pas être perdus), validation, rejet, clôture, documents, justificatif ;
+  - liste : plafond effectif, consommé hors annulations, compteur et filtre « dépassement en attente ».
+- Reporting : `lib/dashboardReporting.ts` (`BUDGET_ANNULATION_SELECT`, `isEcritureBudgetAnnulee`) appliqué à `app/api/dashboard/route.ts` et au rapport hebdomadaire — une dépense annulée et sa contre-écriture sont exclues des « Dépenses » et des « Autres mouvements ». La courbe du solde réel n'est pas touchée (le couple s'y annule naturellement).
+- E-mails (`lib/email/demandeBudget.ts`) : demande de dépassement (admins), décision (demandeur du dépassement + du budget), alerte de consommation (demandeur + admins), dépense annulée (demandeur + comptables).
+- UI : fiche budget (plafond avec dépassements, boutons Dépense / Dépassement par ligne, carte Dépassements avec Approuver/Refuser, dépenses annulées barrées avec motif et n° de contre-écriture, bouton Annuler pour l'admin, carte Historique), liste (barre sur le plafond effectif, filtre). Composants `components/budget/BudgetDepassementDialog`, `BudgetDepassementsCard`, `BudgetAnnulationDialog`, `BudgetHistoriqueCard`.
+
+**Erreurs rencontrées & solutions**
+- `prisma migrate dev --create-only` refuse de tourner en non-interactif à cause de l'avertissement d'index unique → SQL généré avec `prisma migrate diff --from-schema-datasource … --to-schema-datamodel … --script`, puis réécrit sans BOM (PowerShell `Out-File` en ajoute un).
+- Supabase injoignable (P1001) au moment du déploiement de la migration → appliquée ensuite ; `migrate status` confirme « Database schema is up to date ».
+- Le 2026-11-11, le travail était sur `feature/budgets` mais la session a repris sur `review_code` (commits « REBUILD »), où les fichiers budget semblaient avoir disparu → rien de perdu, retour sur `feature/budgets`. ⚠️ Cette branche n'est pas encore fusionnée dans `review_code` / `develop` / `main` : le code déployé en production n'a pas les budgets, alors que la base partagée a déjà les deux migrations (sans conséquence : Prisma ignore les colonnes et tables qu'il ne connaît pas).
+
+**À tester / points d'attention**
+- **Rôles toujours pas configurés** (vérifié le 2026-11-14) : « ASSISTANT » n'a aucune case budget, et aucun rôle n'a « Enregistrer les dépenses » → personne ne peut enregistrer de dépense tant qu'un rôle Comptable n'est pas créé et coché.
+- Scénarios : ligne de 10 000 consommée à 8 000 → alerte 80 % ; à 10 000 → alerte 100 % et bouton Dépense grisé ; demande de dépassement de 3 000 → l'admin approuve → reste 3 000, statut repasse EN_COURS ; un admin ne peut pas approuver son propre dépassement ; annulation d'une dépense sur un budget Campagne → recette compensatoire dans la caisse, paiement négatif dans la proforma, marge du dashboard revenue à l'état d'avant ; dépense refusée pour l'utilisateur qui a validé le budget.
+- Le Paiement négatif d'annulation apparaît dans la liste des paiements de la proforma : vérifier que l'affichage du montant négatif y reste lisible.
+
+---
+
+## 2026-11-10 — Budgets : types, suivi par ligne lié au journal de caisse, droits par rôle (Lot 1)
+
+**Demande / Contexte**
+Refonte du module budget : distinguer des types de budget (mensuel par service, ponctuel, campagne, tiers), suivre la consommation ligne par ligne (ex. essence prévu 10 000, utilisé 5 000 → reste 5 000), lier chaque dépense au journal de caisse avec choix de la caisse, permettre à l'admin et au comptable de commenter les lignes, et ajouter un niveau de validation « Assistant-Direction » (tout sauf les budgets mensuels, sous un plafond). Plan validé en 3 lots ; ce lot = socle. Lots 2 (dépassements, journal d'audit, annulation par contre-écriture, alertes 80/100 %) et 3 (reconduction mensuelle, rapport de suivi budgétaire) restent à faire.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + migration `20261110103515_budget_types_depenses_commentaires` (appliquée) :
+  - enum `TypeBudget` (MENSUEL, PONCTUEL, CAMPAGNE, TIERS) ; statut `EN_COURS` ; `DemandeBudget.type` (défaut PONCTUEL pour l'existant), `periodeMois`, `clotureeAt`, `clotureeParEmail` ;
+  - nouveaux modèles `BudgetDepense` (dépense réelle sur une ligne, `cashJournalEntryId` unique → toujours une écriture de caisse, `invoiceId` si budget lié à une proforma, `sansJustificatif` + motif) et `BudgetCommentaire` (par ligne) ; `DemandeBudgetAttachment.depenseId` ;
+  - `Role.canValidateBudgetMensuel` / `canValidateBudget` / `canPayBudget` ; `EntrepriseConfig.plafondValidationDeleguee` (défaut 500 000) ;
+  - reprise : les rôles `canManageUsers` reçoivent les deux droits de validation.
+- `lib/budgetAuth.ts` réécrit : droits lus sur le rôle en base (`getBudgetCapabilities`), matrice `refusValidation` (mensuel ou > plafond → admin ; sinon validation déléguée ; jamais sa propre demande), `getBudgetRecipients` pour les emails. **Les variables `BUDGET_ADMIN_EMAILS` / `BUDGET_COMPTABLE_EMAILS` ne sont plus lues** (y compris `lib/email/commandeFournisseur.ts`).
+- `lib/paiements.ts` : nouvelle `recordCashDepense` (contrôle de solde + `recordCashMovement` existant) ; `recordDepensePaiement` s'appuie dessus (comportement inchangé).
+- `lib/budgetSchema.ts` (validation partagée création / re-soumission, règles par type) ; `lib/budgetTypes.ts` (libellés client).
+- API : `demandes-budget` (GET filtres type/mois/sans justificatif + consommé ; POST type), `[id]` (dépenses, commentaires), `valider` / `rejeter` (matrice), `resoumettre`, `me-role` (capacités ; `isAdmin`/`isComptable` gardés pour les écrans fournisseurs), `documents` (justificatif ajouté après coup via `depenseId`) ; nouvelles routes `[id]/depenses` (transaction : verrou de ligne, contrôle du reste, écriture de caisse, paiement DEPENSE sur la proforma si liée, statut EN_COURS/PAYEE), `[id]/cloturer`, `[id]/commentaires` (ouverture réservée admin/comptable, réponses ensuite), `budget-config` (plafond, admins uniquement), `GET /api/cash-registers`. Route `[id]/payer` supprimée.
+- UI : `DemandeBudgetForm` (choix du type, mois, règles), liste `budget/demandes` (type, filtres, barre consommé, compteur sans justificatif), fiche `budget/demandes/[id]` (prévu/consommé/reste par ligne, bouton Dépense, historique des dépenses avec pastille Justifiée / Sans justificatif, commentaires par ligne, clôture, validation selon la matrice), page Rôles (3 cases « Circuit budget » + plafond), nouveaux composants `components/budget/*`, badge `EN_COURS`.
+
+**Erreurs rencontrées & solutions**
+- `prisma migrate dev` : Supabase injoignable (P1001) juste après la création du fichier de migration → migration appliquée ensuite avec `prisma migrate deploy`.
+- `prisma generate` : EPERM sur le moteur (DLL verrouillée par le serveur `next dev`) ; les types TypeScript ont bien été régénérés. **Redémarrer `next dev`** (puis `npx prisma generate`) pour charger le nouveau client.
+- `tsc` : `getCurrentUserIdentity` encore utilisé par `app/api/fournisseurs/commandes/[commandeId]/route.ts` → conservé dans `lib/budgetAuth.ts`.
+- Écart au plan : le plafond est réglé dans la page Rôles (route protégée `requireCanManageUsers`) plutôt que dans Paramètres entreprise, dont la route `PUT /api/entreprise` n'a aucun contrôle d'accès.
+
+**À tester / points d'attention**
+- **Configuration à faire dans Paramètres > Rôles avant usage** : il n'existe que 2 rôles (« Admin », 5 utilisateurs, et « ASSISTANT », 1 utilisateur). Cocher « Valider les budgets (hors mensuels) » sur ASSISTANT ; le comptable est dans le rôle Admin → créer un rôle « Comptable » avec « Enregistrer les dépenses » (sinon personne ne peut enregistrer de dépense, ou les 5 admins le pourraient). Un email de l'ancien `BUDGET_ADMIN_EMAILS` n'a pas de compte `User` : il n'a plus de droit budget.
+- Scénarios : Assistant valide un ponctuel sous le plafond, refusé sur un mensuel / au-dessus du plafond / sa propre demande ; dépense 5 000 sur une ligne de 10 000 → reste 5 000, écriture DEPENSE dans la caisse choisie ; 6 000 ensuite refusé ; budget CAMPAGNE → dépense visible dans la proforma ; dépense sans fichier ni case cochée refusée ; commentaire impossible à ouvrir pour un demandeur.
+- Non-régression : dépense sur proforma depuis `/facture/[id]` (refactor `recordCashDepense`).
+- Les anciennes demandes PAYEE (ancien circuit) n'ont pas de dépenses : la fiche affiche leurs date/receveur comme avant.
+
+---
+
 ## 2026-11-10 — Dashboard : "Recettes" basées uniquement sur les paiements de proforma
 
 **Demande / Contexte**

@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { sendCommandeFournisseurCreeeNotification } from "@/lib/email/commandeFournisseur";
+import {
+    sendCommandeEmiseNotification,
+    sendCommandeFournisseurCreeeNotification,
+    sendCommandeScanAJoindreNotification,
+} from "@/lib/email/commandeFournisseur";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
+import { requirePage } from "@/lib/authz";
+import { Prisma } from "@prisma/client";
+import { prochainNumeroCommande, refusLigneBudgetCommande, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
 
 const ligneCommandeSchema = z.object({
     produitFournisseurId: z.string().min(1),
@@ -20,8 +27,11 @@ const commandeSchema = z.object({
     appliquerTva: z.boolean().optional().default(false),
     appliquerAib: z.boolean().optional().default(false),
     proformaIds: z.array(z.string()).optional().default([]),
+    // Ligne de budget qui finance le bon (procédure : « les bons de commande sont émis à partir du budget »).
+    ligneBudgetId: z.string().optional(),
 });
 
+// GET reste ouvert à tout utilisateur connecté : le formulaire de demande de budget liste les bons.
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const fournisseurId = searchParams.get("fournisseurId");
@@ -39,6 +49,8 @@ export async function GET(request: Request) {
                 fournisseur: true,
                 lignes: true,
                 proformas: { include: { invoice: { include: { client: true } } } },
+                // Pastille « scan signé manquant » dans la liste.
+                documents: { where: { kind: "BC_SIGNE" }, select: { id: true } },
             },
             orderBy: {
                 dateCommande: "desc",
@@ -55,10 +67,18 @@ export async function GET(request: Request) {
     }
 }
 
+// POST — créer un bon de commande : réservé aux rôles ayant la section « Prestataires ».
 export async function POST(request: Request) {
+    const refusPage = await requirePage("fournisseurs");
+    if (refusPage) return refusPage;
     try {
         const body = await request.json();
         const validatedData = commandeSchema.parse(body);
+
+        const refusLigne = await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId);
+        if (refusLigne) {
+            return NextResponse.json({ error: refusLigne }, { status: 400 });
+        }
 
         // 0. Vérification des proformas associées : doivent exister et être dans un
         // statut confirmé côté client (validée, payée ou soldée).
@@ -81,10 +101,7 @@ export async function POST(request: Request) {
             }
         }
 
-        // 1. Génération du numéro de commande (implémentation simple pour l'instant)
-        const count = await prisma.commandeFournisseur.count();
-        const year = new Date().getFullYear();
-        const numero = `BCF-${year}-${String(count + 1).padStart(4, "0")}`;
+        // 1. Le numéro (par année) est attribué au moment de la création, dans la transaction.
 
         // 2. Calcul du total et préparation des lignes
         let totalHT = 0;
@@ -127,13 +144,22 @@ export async function POST(request: Request) {
             validatedData.appliquerAib
         );
 
-        // 4. Transaction Prisma
-        const commande = await prisma.commandeFournisseur.create({
+        // 3ter. Rattaché à une ligne de budget accordée : validé d'office (la ligne accordée vaut
+        // accord de dépense), s'il tient dans ce qui reste à engager sur la ligne.
+        const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId: validatedData.ligneBudgetId, montantNet });
+        if (auto.refus) {
+            return NextResponse.json({ error: auto.refus }, { status: 400 });
+        }
+
+        // 4. Création — numéro attribué dans la transaction ; un doublon simultané (contrainte
+        // d'unicité) relance l'attribution.
+        const creer = () => prisma.$transaction(async (tx) => tx.commandeFournisseur.create({
             data: {
-                numero,
+                numero: await prochainNumeroCommande(tx),
+                ligneBudgetId: validatedData.ligneBudgetId || null,
                 dateCommande: validatedData.dateCommande || new Date(),
                 fournisseurId: validatedData.fournisseurId,
-                statut: "BROUILLON",
+                statut: auto.valider ? "VALIDEE" : "BROUILLON",
                 totalHT: totalHT,
                 appliquerTva: validatedData.appliquerTva,
                 tva,
@@ -153,11 +179,31 @@ export async function POST(request: Request) {
                 proformas: { include: { invoice: { include: { client: true } } } },
                 fournisseur: true,
             }
-        });
+        }));
+        let commande: Awaited<ReturnType<typeof creer>> | null = null;
+        for (let essai = 0; essai < 3 && !commande; essai++) {
+            try {
+                commande = await creer();
+            } catch (e) {
+                const doublon = e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+                if (!doublon || essai === 2) throw e;
+            }
+        }
+        if (!commande) throw new Error("Impossible d'attribuer un numéro au bon de commande.");
 
-        sendCommandeFournisseurCreeeNotification(commande).catch((err) =>
-            console.error("Erreur lors de l'envoi de la notification de bon de commande créé:", err)
-        );
+        if (auto.valider) {
+            // Émis pour exécution ; le scan signé reste à joindre (pas de paiement sans lui).
+            sendCommandeEmiseNotification(commande).catch((err) =>
+                console.error("Erreur lors de l'envoi de la notification de bon de commande émis:", err)
+            );
+            sendCommandeScanAJoindreNotification(commande).catch((err) =>
+                console.error("Erreur lors de l'envoi du rappel de scan du bon de commande:", err)
+            );
+        } else {
+            sendCommandeFournisseurCreeeNotification(commande).catch((err) =>
+                console.error("Erreur lors de l'envoi de la notification de bon de commande créé:", err)
+            );
+        }
 
         return NextResponse.json(commande, { status: 201 });
 

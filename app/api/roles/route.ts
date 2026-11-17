@@ -19,6 +19,11 @@ export async function GET() {
         id: r.id,
         nom: r.nom,
         canManageUsers: r.canManageUsers,
+        canValidateBudgetMensuel: r.canValidateBudgetMensuel,
+        canValidateBudget: r.canValidateBudget,
+        canPayBudget: r.canPayBudget,
+        canSaisirCaisse: r.canSaisirCaisse,
+        canSaisirPetiteDepense: r.canSaisirPetiteDepense,
         pages: r.pages.map((p) => p.page),
         nombreUtilisateurs: r._count.users,
       }))
@@ -33,6 +38,11 @@ const roleSchema = z.object({
   nom: z.string().min(1, "Le nom du rôle est requis."),
   pages: z.array(z.enum(PAGE_KEYS)),
   canManageUsers: z.boolean().default(false),
+  canValidateBudgetMensuel: z.boolean().default(false),
+  canValidateBudget: z.boolean().default(false),
+  canPayBudget: z.boolean().default(false),
+  canSaisirCaisse: z.boolean().default(false),
+  canSaisirPetiteDepense: z.boolean().default(false),
 });
 
 // POST /api/roles - Créer un nouveau rôle
@@ -47,12 +57,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error.format() }, { status: 400 });
     }
 
-    const { nom, pages, canManageUsers } = validation.data;
+    const { nom, pages, canManageUsers, canValidateBudgetMensuel, canValidateBudget, canPayBudget, canSaisirCaisse, canSaisirPetiteDepense } = validation.data;
 
     const role = await prisma.role.create({
       data: {
         nom,
         canManageUsers,
+        canValidateBudgetMensuel,
+        canValidateBudget,
+        canPayBudget,
+        canSaisirCaisse,
+        canSaisirPetiteDepense,
         pages: { create: pages.map((page) => ({ page })) },
       },
       include: { pages: true },

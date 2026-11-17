@@ -11,5 +11,16 @@ export async function register() {
     } catch (error) {
       console.error("[bootstrap] Échec de la synchronisation rôles & utilisateurs au démarrage :", error);
     }
+
+    // Tâches planifiées internes (clôture des budgets mensuels, état du soir) — seulement sur le
+    // serveur de production : SCHEDULER_ENABLED=true dans son .env, jamais en local (base partagée).
+    if (process.env.SCHEDULER_ENABLED === "true" && process.env.NEXT_PHASE !== "phase-production-build") {
+      try {
+        const { demarrerPlanificateur } = await import("@/lib/taches/planificateur");
+        demarrerPlanificateur();
+      } catch (error) {
+        console.error("[planificateur] Démarrage impossible :", error);
+      }
+    }
   }
 }

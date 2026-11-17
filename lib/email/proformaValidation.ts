@@ -1,5 +1,5 @@
-import nodemailer from "nodemailer";
 import type { Prisma } from "@prisma/client";
+import { notifier } from "@/lib/notifications/notifier";
 
 export type ValidatedInvoice = Prisma.InvoiceGetPayload<{
   include: {
@@ -143,24 +143,16 @@ function buildEmailHtml(facture: ValidatedInvoice) {
   `;
 }
 
+// Passe désormais par notifier (donc par sendEmail et l'interrupteur EMAIL_DISABLED) : même email
+// qu'avant (adresse d'envoi en destinataire, liste de diffusion en copie), et une notification dans
+// l'application pour les adresses de la liste qui ont un compte.
 export async function sendProformaValidatedNotification(facture: ValidatedInvoice) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: Number(process.env.EMAIL_PORT),
-    secure: process.env.EMAIL_SECURE === "true",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  const mailOptions = {
-    from: process.env.EMAIL_FROM,
-    to: process.env.EMAIL_FROM,
-    cc: NOTIFICATION_RECIPIENTS.join(", "),
+  await notifier("PROFORMA_VALIDEE", {
+    to: process.env.EMAIL_FROM ?? NOTIFICATION_RECIPIENTS[0],
+    cc: NOTIFICATION_RECIPIENTS,
     subject: `${facture.client?.nom ?? "Client"} - Commande validée - Proforma ${facture.numero} - ${facture.objet}`,
     html: buildEmailHtml(facture),
-  };
-
-  await transporter.sendMail(mailOptions);
+    message: `La proforma ${facture.numero} (${facture.client?.nom ?? "client"} — ${facture.objet}) a été validée par le client.`,
+    lien: `/facture/${facture.id}`,
+  });
 }

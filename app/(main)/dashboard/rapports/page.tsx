@@ -67,10 +67,11 @@ const CARDS: RapportCardDef[] = [
     color: 'orange',
   },
   {
-    title: 'Frais supplémentaires',
-    description: 'Demandes de budget en attente de paiement.',
+    title: 'Suivi budgétaire',
+    description: 'Prévu vs réalisé par service, par mois et par catégorie de dépense, avec dépassements.',
     icon: Wallet,
-    color: 'orange',
+    color: 'blue',
+    href: '/dashboard/rapports/suivi-budgetaire',
   },
   {
     title: 'Rapport employés',

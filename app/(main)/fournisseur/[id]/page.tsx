@@ -16,13 +16,14 @@ import { FactureFournisseur, StatutFactureFournisseur } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Pencil } from "lucide-react";
+import { Pencil, Wallet } from "lucide-react";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import FournisseurProduits from "@/components/fournisseurs/FournisseurProduits";
 import FournisseurCommandes from "@/components/fournisseurs/FournisseurCommandes";
 import FournisseurDocuments from "@/components/fournisseurs/FournisseurDocuments";
 import { AttachmentPreviewButton } from "@/components/AttachmentPreviewButton";
+import { PayerFactureDialog } from "@/components/fournisseurs/PayerFactureDialog";
 import { FactureFournisseurModal, FactureFournisseurData } from "@/components/FactureFournisseurModal";
 import { FactureFournisseurStatusBadge, StatusDot } from "@/components/FactureFournisseurStatusBadge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -51,6 +52,7 @@ export default function FournisseurDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatutFactureFournisseur | null>(null);
   const [editingFacture, setEditingFacture] = useState<FactureFournisseurData | null>(null);
+  const [factureAPayer, setFactureAPayer] = useState<string | null>(null);
   const params = useParams();
   const searchParams = useSearchParams();
   const id = params.id as string;
@@ -192,6 +194,12 @@ export default function FournisseurDetailsPage() {
         </div>
       </div>
 
+      <PayerFactureDialog
+        cible={factureAPayer ? { type: "facture", id: factureAPayer } : null}
+        open={!!factureAPayer}
+        onClose={() => setFactureAPayer(null)}
+        onPaye={fetchFournisseurDetails}
+      />
       <FactureFournisseurModal
         isOpen={!!editingFacture}
         onClose={() => setEditingFacture(null)}
@@ -277,8 +285,8 @@ export default function FournisseurDetailsPage() {
                               <SelectItem value="EN_ATTENTE">
                                 <span className="flex items-center gap-2"><StatusDot status="EN_ATTENTE" animate={false} />En attente</span>
                               </SelectItem>
-                              <SelectItem value="PAYEE">
-                                <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />Payée</span>
+                              <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId}>
+                                <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{facture.commandeId || facture.ligneBudgetId ? 'Payée (par le budget)' : 'Payée'}</span>
                               </SelectItem>
                               <SelectItem value="ANNULEE">
                                 <span className="flex items-center gap-2"><StatusDot status="ANNULEE" animate={false} />Annulée</span>
@@ -291,6 +299,12 @@ export default function FournisseurDetailsPage() {
                         <AttachmentPreviewButton url={facture.pieceJointe} title={`Facture ${facture.reference}`} />
                       </TableCell>
                       <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-2">
+                        {facture.status === "EN_ATTENTE" && (
+                          <Button size="sm" className="h-8 gap-1" onClick={() => setFactureAPayer(facture.id)}>
+                            <Wallet className="h-3.5 w-3.5" /> Appliquer le paiement
+                          </Button>
+                        )}
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -315,6 +329,7 @@ export default function FournisseurDetailsPage() {
                             <TooltipContent>{isLocked ? 'Voir la facture' : 'Modifier la facture'}</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );})

@@ -14,6 +14,7 @@ import { AddCashRegisterModal } from '@/components/AddCashRegisterModal';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { UploadAttachmentModal } from '@/components/UploadAttachmentModal';
+import { LotPaiementDetail } from '@/components/depenses/LotPaiementDetail';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface CashJournalEntry {
@@ -32,6 +33,13 @@ interface CashJournalEntry {
     fileName: string;
   }[];
   createdAt: string;
+  lotPaiement?: {
+    reference: string;
+    referenceOperateur: string | null;
+    campagneNom: string | null;
+    nbBeneficiaires: number;
+    detail: { numero?: number; beneficiaire: string; numeroMomo?: string; typePaiement?: string; libelle?: string; reference?: string; montant: number }[];
+  } | null;
 }
 
 interface CashRegister {
@@ -53,6 +61,16 @@ export default function CashJournalPage() {
   const [addRegisterModalOpen, setAddRegisterModalOpen] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // Droit « Saisir au journal de caisse » (Paramètres > Rôles) : sans lui, consultation seule.
+  // Le serveur reste juge (403) ; ceci ne fait que masquer les boutons inutilisables.
+  const [peutSaisir, setPeutSaisir] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/demandes-budget/me-role')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setPeutSaisir(!!data?.canSaisirCaisse))
+      .catch(() => setPeutSaisir(false));
+  }, []);
 
 
   const toggleRegisterVisibility = async (register: CashRegister) => {
@@ -227,6 +245,7 @@ export default function CashJournalPage() {
           </div>
         </div>
         <div className="flex gap-2 ">
+          {peutSaisir && (
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="icon" title="Gérer la visibilité des caisses">
@@ -259,6 +278,7 @@ export default function CashJournalPage() {
               </div>
             </PopoverContent>
           </Popover>
+          )}
 
           <Button
             onClick={handleRecalculate}
@@ -274,11 +294,17 @@ export default function CashJournalPage() {
             />
             {isRecalculating ? "Recalcul en cours..." : "Recalculer les soldes"}
           </Button>
-          <AddEntryModal
-            onEntryAdded={() => fetchData(year)}
-            cashRegisters={cashRegisters}
-            selectedCashRegisterId={selectedCashRegisterId}
-          />
+          {peutSaisir ? (
+            <AddEntryModal
+              onEntryAdded={() => fetchData(year)}
+              cashRegisters={cashRegisters}
+              selectedCashRegisterId={selectedCashRegisterId}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground self-center max-w-[260px]">
+              Consultation seule : les sorties d&apos;argent passent par le circuit budget.
+            </p>
+          )}
         </div>
       </div>
 
@@ -311,9 +337,10 @@ export default function CashJournalPage() {
             entries={allEntries}
             isSelected={selectedCashRegisterId === register.id}
             onClick={() => startTransition(() => setSelectedCashRegisterId(register.id))}
-            onHide={() => toggleRegisterVisibility(register)}
+            onHide={peutSaisir ? () => toggleRegisterVisibility(register) : undefined}
           />
         ))}
+        {peutSaisir && (
         <Card
           className="cursor-pointer hover:shadow-lg transition-shadow flex items-center justify-center"
           onClick={() => setAddRegisterModalOpen(true)}
@@ -323,6 +350,7 @@ export default function CashJournalPage() {
             <p className="text-sm font-medium">Ajouter une caisse</p>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <Card>
@@ -419,6 +447,7 @@ export default function CashJournalPage() {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
+                      {entry.lotPaiement && <LotPaiementDetail lot={entry.lotPaiement} className="max-w-[420px]" />}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {entry.type === "RECETTE"

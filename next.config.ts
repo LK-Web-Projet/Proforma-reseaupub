@@ -3,6 +3,9 @@ import packageJson from "./package.json";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Dossier de build : `.next` par défaut (Docker inchangé). NEXT_DIST_DIR permet de compiler et
+  // de tester une version de production à côté d'un `next dev` déjà lancé (ex. .next-verif).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // ⚠️ NE PAS ajouter "@clerk/nextjs"/"@clerk/backend" à `serverExternalPackages` : testé et
   // annulé (voir HISTORIQUE.md) — ça force Next.js à charger ce package via un vrai `import()`
   // Node natif (mode ESM strict) au lieu de le bundler, ce qui casse TOUTE l'app (pas

@@ -70,6 +70,22 @@ export async function GET(
             cashJournalEntry: {
               include: {
                 attachments: true,
+                // Origine de la dépense (colonne « Origine » de la proforma) : ligne de budget, bon
+                // de commande, facture, lot CampTrack. Même écriture de caisse : aucun doublon.
+                budgetDepense: {
+                  select: {
+                    id: true,
+                    nature: true,
+                    source: true,
+                    annuleeAt: true,
+                    demandeBudget: { select: { id: true, numero: true } },
+                    ligne: { select: { designation: true } },
+                    commande: { select: { id: true, numero: true, fournisseurId: true } },
+                    factureFournisseur: { select: { reference: true } },
+                    _count: { select: { attachments: true } },
+                  },
+                },
+                lotPaiement: { select: { reference: true, referenceOperateur: true, campagneNom: true, nbBeneficiaires: true, detail: true } },
               },
             },
           },

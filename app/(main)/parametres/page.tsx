@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
     Building2, Mail, Phone, MapPin, Globe, FileText,
-    User, Save, Upload, Image as ImageIcon, Users, ShieldCheck, ChevronRight,
+    User, Save, Upload, Image as ImageIcon, Users, ShieldCheck, ChevronRight, BellRing,
 } from "lucide-react";
 import type { AppPublicMetadata } from "@/lib/permissions";
 
@@ -188,6 +188,18 @@ export default function ParametresPage() {
                                 <div className="flex-1">
                                     <p className="font-semibold text-sm">Rôles &amp; Permissions</p>
                                     <p className="text-xs text-muted-foreground">Définir les pages accessibles par rôle</p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    <Link href="/parametres/notifications">
+                        <Card className="hover:shadow-md hover:border-primary/40 transition-all cursor-pointer">
+                            <CardContent className="flex items-center gap-4 py-5">
+                                <div className="p-3 rounded-xl bg-amber-100 text-amber-700"><BellRing className="w-5 h-5" /></div>
+                                <div className="flex-1">
+                                    <p className="font-semibold text-sm">Notifications</p>
+                                    <p className="text-xs text-muted-foreground">Email, application ou les deux, par événement</p>
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
                             </CardContent>
