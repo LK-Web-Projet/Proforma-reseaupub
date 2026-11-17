@@ -25,10 +25,12 @@ export const DEFAULT_ENTREPRISE: Omit<EntrepriseConfig, "updatedAt"> = {
  * Si elle n'existe pas encore en base, crée l'entrée par défaut.
  */
 export async function getEntrepriseConfig(): Promise<EntrepriseConfig> {
-    const config = await prisma.entrepriseConfig.upsert({
+    // Lecture d'abord : la création (avec les valeurs par défaut) n'a lieu qu'une fois.
+    const existante = await prisma.entrepriseConfig.findUnique({ where: { id: "singleton" } });
+    if (existante) return existante;
+    return prisma.entrepriseConfig.upsert({
         where: { id: "singleton" },
         update: {},
         create: DEFAULT_ENTREPRISE,
     });
-    return config;
 }

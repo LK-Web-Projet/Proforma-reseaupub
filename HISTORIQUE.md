@@ -25,6 +25,26 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 3) — Proforma : le bouton « Dépense » toujours visible
+
+**Demande / Contexte**
+Sur une proforma qui n'est pas liée à un budget, aucun bouton ne permettait d'enregistrer une dépense directe.
+
+**Modifications apportées**
+- `app/(main)/facture/[id]/page.tsx` : le bouton « Dépense » de « Historique des Flux » est de nouveau toujours affiché, comme avant le Lot A.
+  - Avant ce changement, il n'apparaissait que si `/api/demandes-budget/me-role` renvoyait un des droits (caisse, comptable, petites dépenses). Si cet appel échouait, par exemple sur un serveur non redémarré après la migration, le bouton disparaissait sans aucun message.
+  - Il est maintenant grisé seulement le temps du chargement des droits.
+  - Au clic, les droits sont contrôlés et un message clair s'affiche en cas de refus : « Proforma sans budget : la dépense directe demande le droit « Saisir au journal de caisse » (Paramètres → Rôles) ».
+  - Le serveur contrôle toujours les droits.
+- `lib/entreprise.ts` : `getEntrepriseConfig` lit d'abord la configuration et ne fait l'`upsert` (avec les valeurs par défaut) que si elle n'existe pas. Un client Prisma resté en mémoire avec l'ancien schéma ne fait donc plus échouer `me-role` sur les nouveaux champs.
+
+**Erreurs rencontrées & solutions**
+- Aucune. `tsc` et `next lint` ne signalent aucune erreur.
+
+**À tester / points d'attention**
+- Redémarrer le serveur de développement après les migrations du 2026-11-18 et du 2026-11-19.
+- Rôle ASSISTANT : il a « Enregistrer les dépenses de budget », mais pas « Saisir au journal de caisse ». Il ne peut donc pas saisir de dépense directe sur une proforma sans budget : cocher ce droit si c'est voulu.
+
 ## 2026-11-19 (suite 2) — Lot CampTrack : pipeline vérifié, détail du lot visible partout
 
 **Demande / Contexte**
