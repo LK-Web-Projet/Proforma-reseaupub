@@ -25,6 +25,26 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 5) — Cloche des notifications : à gauche de « Recherche », bleue ou rouge
+
+**Demande / Contexte**
+Rendre la cloche des notifications bien visible : la placer à côté du bouton « Recherche » et la colorer, surtout quand il y a des notifications non lues.
+
+**Modifications apportées**
+- `components/app-sidebar.tsx` : la cloche quitte l'en-tête de la barre latérale (à côté de « Finance reseaupub »). Elle est maintenant **à gauche du bouton « Recherche »**, sur la même ligne, en haut du menu.
+- `components/notifications/NotificationBell.tsx` :
+  - bouton encadré, plus grand (36 px, icône 20 px) ;
+  - **sans non lues** : bleu (fond bleu clair, cloche bleue) ;
+  - **avec non lues** : rouge (fond rouge clair, cloche **rouge pleine**), avec une pastille du nombre plus grande et un liseré blanc ;
+  - une bulle au survol indique « X notification(s) non lue(s) ».
+- Le menu déroulant et le fonctionnement ne changent pas.
+
+**Erreurs rencontrées & solutions**
+- Le contrôle des permissions du mode automatique a été momentanément indisponible. La modification a été appliquée après accord de l'utilisateur. `tsc` et `next lint` ne signalent aucune erreur.
+
+**À tester / points d'attention**
+- Vérifier l'affichage dans la barre latérale (largeur 256 px) et sur mobile, où la barre s'ouvre en tiroir.
+
 ## 2026-11-19 (suite 4) — Une seule proforma par bon de commande et par budget ; ligne de budget proposée selon la proforma
 
 **Demande / Contexte**
