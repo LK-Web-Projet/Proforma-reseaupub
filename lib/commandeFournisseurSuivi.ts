@@ -329,8 +329,8 @@ async function budgetsDeLaProforma(db: Db, proformaId: string) {
 
 /**
  * Lignes de budget proposées pour un bon de commande, selon sa proforma (une seule par bon) :
- * - la proforma a un budget (`aBudget`) → uniquement les lignes ACCORDÉES de ce(s) budget(s) ouvert(s),
- *   et la ligne est obligatoire ;
+ * - proforma liée à un budget (`aBudget`) → uniquement les lignes ACCORDÉES de ce(s) budget(s) ouvert(s)
+ *   (facultatif à la création : rattachable ensuite depuis la fiche du bon) ;
  * - sinon (pas de proforma, ou proforma sans budget) → les lignes accordées des budgets ouverts qui ne
  *   sont liés à aucune proforma (mensuel, ponctuel…), au choix.
  * `reste` = ce qui peut encore être engagé (plafond − dépensé − autres bons en cours, hors `commandeIdExclu`).
@@ -372,10 +372,11 @@ export async function lignesBudgetPourCommande(
 }
 
 /**
- * Cohérence entre la proforma d'un bon de commande et la ligne de budget qui le finance :
- * - proforma liée à un budget (non rejeté) → la ligne est obligatoire et doit appartenir à ce budget ;
+ * Cohérence entre la proforma d'un bon de commande et la ligne de budget qui le finance. La ligne
+ * reste facultative (elle peut être rattachée après la création, depuis la fiche du bon), mais :
+ * - proforma liée à un budget (non rejeté) → la ligne doit appartenir à ce budget ;
  * - ligne d'un budget lié à une proforma → le bon doit être associé à cette proforma ;
- * - proforma sans budget, ou pas de proforma → ligne facultative (budget sans proforma : mensuel…).
+ * - proforma sans budget, ou pas de proforma → ligne d'un budget sans proforma (mensuel…).
  * Renvoie le motif du refus, ou null.
  */
 export async function refusCoherenceLigneProforma(
@@ -384,11 +385,7 @@ export async function refusCoherenceLigneProforma(
 ): Promise<string | null> {
   const budgetsProforma = opts.proformaId ? await budgetsDeLaProforma(db, opts.proformaId) : [];
   const numeros = budgetsProforma.map((b) => b.numero).join(", ");
-  if (!opts.ligneBudgetId) {
-    return budgetsProforma.length
-      ? `Cette proforma a un budget (${numeros}) : choisissez la ligne de ce budget qui finance le bon de commande.`
-      : null;
-  }
+  if (!opts.ligneBudgetId) return null;
   const ligne = await db.demandeBudgetLigne.findUnique({
     where: { id: opts.ligneBudgetId },
     select: {

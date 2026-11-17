@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         }
         const refusLigne =
             (await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId)) ??
-            // Proforma liée à un budget : la ligne de CE budget est obligatoire.
+            // Ligne facultative, mais d'un budget cohérent avec la proforma du bon.
             (await refusCoherenceLigneProforma(prisma, { ligneBudgetId: validatedData.ligneBudgetId, proformaId: validatedData.proformaIds[0] }));
         if (refusLigne) {
             return NextResponse.json({ error: refusLigne }, { status: 400 });

@@ -27,10 +27,11 @@ const fcfa = (n: number) => `${new Intl.NumberFormat('fr-FR', { maximumFractionD
 
 /**
  * Ligne de budget qui finance un bon de commande, proposée selon SA proforma :
- * - proforma liée à un budget → lignes accordées de ce budget uniquement, choix OBLIGATOIRE
- *   (présélectionnée s'il n'y en a qu'une) ; le bon est alors validé dès sa création ;
- * - pas de proforma, ou proforma sans budget → lignes des budgets sans proforma (mensuel…), facultatif.
- * Chaque ligne affiche ce qui reste à engager ; une ligne trop juste pour le bon est désactivée.
+ * - proforma liée à un budget → uniquement les lignes accordées de ce budget ;
+ * - pas de proforma, ou proforma sans budget → lignes des budgets sans proforma (mensuel…).
+ * Facultatif à la création (« Plus tard » : rattachement depuis la fiche du bon) ; avec une ligne
+ * accordée, le bon est validé dès son enregistrement. Chaque ligne affiche ce qui reste à engager ;
+ * une ligne trop juste pour le bon est désactivée. `sansChoixVide` : fenêtre de rattachement.
  */
 export function LigneBudgetCommandeField({
   proformaId,
@@ -38,6 +39,7 @@ export function LigneBudgetCommandeField({
   montantNet,
   value,
   onChange,
+  sansChoixVide = false,
 }: {
   proformaId: string;
   /** Bon en cours de modification : son propre montant n'est pas compté comme déjà engagé. */
@@ -45,6 +47,8 @@ export function LigneBudgetCommandeField({
   montantNet: number;
   value: string;
   onChange: (ligneBudgetId: string) => void;
+  /** Pas d'option « Plus tard / Aucune » (fenêtre « Rattacher à une ligne de budget »). */
+  sansChoixVide?: boolean;
 }) {
   const [donnees, setDonnees] = useState<Reponse | null>(null);
   const [erreur, setErreur] = useState(false);
@@ -68,14 +72,12 @@ export function LigneBudgetCommandeField({
     };
   }, [proformaId, commandeId]);
 
-  // Ligne qui n'est plus proposée (proforma changée) : on la retire ; une seule ligne au budget de
-  // la proforma : on la présélectionne.
+  // Ligne qui n'est plus proposée (proforma changée) : on la retire.
   useEffect(() => {
     if (!donnees) return;
     const ids = donnees.lignes.map((l) => l.id);
     const ligneInitiale = proformaId === initial.current.proformaId && value === initial.current.value;
     if (value && !ids.includes(value) && !ligneInitiale) onChange('');
-    else if (!value && donnees.aBudget && donnees.lignes.length === 1) onChange(donnees.lignes[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [donnees]);
 
@@ -90,24 +92,31 @@ export function LigneBudgetCommandeField({
   if (aBudget && lignes.length === 0 && !value) {
     return (
       <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
-        Cette proforma a un budget ({numeros}) mais aucune ligne accordée n&apos;est ouverte : le bon de commande pourra être
-        émis une fois le budget validé par la DG.
+        Cette proforma a un budget ({numeros}) mais aucune ligne accordée n&apos;est encore ouverte. Le bon pourra être rattaché
+        à une ligne depuis sa fiche une fois le budget validé par la DG.
       </div>
     );
   }
-  if (!aBudget && lignes.length === 0 && !value) return null;
+  if (!aBudget && lignes.length === 0 && !value) {
+    return sansChoixVide ? <p className="text-xs text-muted-foreground">Aucune ligne de budget ouverte à proposer.</p> : null;
+  }
 
   return (
     <div className="space-y-1.5">
       <Label>
-        Ligne de budget {aBudget ? <span className="text-destructive">*</span> : <span className="text-muted-foreground font-normal">(facultatif)</span>}
+        Ligne de budget{aBudget ? ` (budget ${numeros})` : ''}{' '}
+        {!sansChoixVide && <span className="text-muted-foreground font-normal">(facultatif)</span>}
       </Label>
-      <Select value={value || (aBudget ? '' : AUCUNE)} onValueChange={(v) => onChange(v === AUCUNE ? '' : v)}>
-        <SelectTrigger className={aBudget && !value ? 'border-destructive' : undefined}>
-          <SelectValue placeholder={`Choisir la ligne du budget ${numeros}`} />
+      <Select value={value || (sansChoixVide ? '' : AUCUNE)} onValueChange={(v) => onChange(v === AUCUNE ? '' : v)}>
+        <SelectTrigger>
+          <SelectValue placeholder="Choisir la ligne" />
         </SelectTrigger>
         <SelectContent>
-          {!aBudget && <SelectItem value={AUCUNE}>Aucune (circuit de validation par la DG)</SelectItem>}
+          {!sansChoixVide && (
+            <SelectItem value={AUCUNE}>
+              {aBudget ? 'Plus tard (à rattacher depuis la fiche du bon)' : 'Aucune (circuit de validation par la DG)'}
+            </SelectItem>
+          )}
           {horsListe && <SelectItem value={value}>Ligne actuelle (pas encore accordée)</SelectItem>}
           {lignes.map((l) => (
             <SelectItem key={l.id} value={l.id} disabled={montantNet > l.reste + 0.5}>
@@ -128,8 +137,10 @@ export function LigneBudgetCommandeField({
             sera <strong>validé dès son enregistrement</strong> ; joignez ensuite le scan du bon signé (aucun paiement sans lui).
           </p>
         )
-      ) : aBudget && !value ? (
-        <p className="text-xs text-destructive">Obligatoire : cette proforma a un budget ({numeros}).</p>
+      ) : aBudget && !value && !sansChoixVide ? (
+        <p className="text-xs text-amber-700">
+          Sans ligne, le bon reste en brouillon : rattachez-le ensuite depuis sa fiche (lignes du budget {numeros} uniquement).
+        </p>
       ) : null}
     </div>
   );

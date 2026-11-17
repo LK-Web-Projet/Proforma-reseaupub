@@ -466,7 +466,7 @@ function LigneBudgetDialog({ commande, open, onClose, onSuccess }: { commande: C
         <div className="space-y-2">
           {/* Proposées selon la proforma du bon : celles de son budget, sinon celles des budgets sans proforma. */}
           {open && (
-            <LigneBudgetCommandeField proformaId={proformaId} commandeId={commande.id} montantNet={Number(commande.montantNet)} value={ligneId} onChange={setLigneId} />
+            <LigneBudgetCommandeField proformaId={proformaId} commandeId={commande.id} montantNet={Number(commande.montantNet)} value={ligneId} onChange={setLigneId} sansChoixVide />
           )}
           <p className="text-xs text-muted-foreground">L&apos;avance et le solde seront payés sur cette ligne, dans la limite de son plafond.</p>
         </div>

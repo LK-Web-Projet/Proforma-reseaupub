@@ -38,7 +38,7 @@ Ce qui a été demandé et pourquoi.
     - proforma liée à un budget non rejeté → `aBudget`, et uniquement les lignes **accordées** de ce budget s'il est ouvert ;
     - sinon → les lignes accordées des budgets ouverts **sans proforma** (mensuel, ponctuel…).
   - `refusCoherenceLigneProforma({ ligneBudgetId, proformaId })` applique trois règles :
-    - proforma avec budget → ligne **obligatoire**, et elle doit appartenir à ce budget ;
+    - proforma avec budget → la ligne, **facultative à la création**, doit appartenir à ce budget. Sur demande de l'utilisateur, elle peut être rattachée ensuite depuis la fiche du bon, qui ne propose que les lignes du budget de la proforma ;
     - ligne d'un budget lié à une proforma → le BC doit avoir cette proforma ;
     - sans budget → ligne facultative (processus de base).
 - `app/api/fournisseurs/commandes/lignes-budget/route.ts` (nouveau) : `GET ?proformaId=&commandeId=`, protégé par la section « Prestataires ».
@@ -48,7 +48,7 @@ Ce qui a été demandé et pourquoi.
 - `lib/budgetSchema.ts` : `proformaIds` limité à **1** (« Un budget n'est associé qu'à une seule proforma »). Un budget de campagne doit avoir **sa** proforma.
 - `components/InvoiceCombobox.tsx` (nouveau) : choix d'**une** proforma, avec recherche et croix pour retirer. `components/InvoiceMultiCombobox.tsx` est **supprimé** (plus utilisé).
 - `components/fournisseurs/LigneBudgetCommandeField.tsx` (nouveau) : champ « Ligne de budget » selon la proforma.
-  - Il est obligatoire avec un astérisque rouge quand la proforma a un budget, et présélectionne la ligne s'il n'y en a qu'une.
+  - Il est facultatif, avec un choix « Plus tard (à rattacher depuis la fiche du bon) ». Un message orange indique que, sans ligne, le bon reste en brouillon. Rien n'est présélectionné, pour ne pas valider le bon d'office sans le vouloir.
   - Les lignes trop justes pour le montant du bon sont désactivées.
   - Il rappelle : « validé dès son enregistrement ; joignez le scan signé ».
   - Il affiche un message rouge si le budget n'a encore aucune ligne accordée.
@@ -56,7 +56,7 @@ Ce qui a été demandé et pourquoi.
 - Formulaires de BC :
   - `components/fournisseurs/NewCommandeForm.tsx`, `components/CommandeFournisseurModal.tsx` et `components/fournisseurs/EditCommandeFournisseurModal.tsx` : une seule proforma, plus le champ ligne de budget ;
   - le message d'erreur du serveur est maintenant affiché tel quel. `NewCommandeForm` affichait toujours « Impossible de créer la commande ».
-- `components/fournisseurs/CommandeLiasseCard.tsx` : la fenêtre « Rattacher / Changer de ligne » utilise le même champ, avec les mêmes règles, la proforma du bon et le reste à engager.
+- `components/fournisseurs/CommandeLiasseCard.tsx` : la fenêtre « Rattacher / Changer de ligne » utilise le même champ (`sansChoixVide`). Elle ne propose que les lignes du budget de la proforma du bon, ou celles des budgets sans proforma si le bon n'a pas de budget, avec le reste à engager.
 - `components/DemandeBudgetForm.tsx` : une seule proforma (« Proforma associée »).
 - `public/docs/procedure-paiement-plateforme.md` : budget et BC avec une seule proforma, choix de la ligne selon la proforma, deux nouveaux messages d'erreur.
 
@@ -68,7 +68,7 @@ Ce qui a été demandé et pourquoi.
 - Test en base (transaction annulée), 24/24 :
   - lignes proposées selon la proforma (avec budget, sans budget, sans proforma, budget seulement soumis, budget rejeté) ;
   - reste à engager, y compris en modification ;
-  - cohérence (9 cas) ;
+  - cohérence (9 cas, dont « sans ligne → accepté ») ;
   - validation d'office et dépassement ;
   - budget avec une seule proforma.
 - Données existantes : aucun BC ni budget n'avait plusieurs proformas. Les 3 BC avec une proforma ne sont contrôlés que lorsqu'on les modifie.
