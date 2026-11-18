@@ -80,10 +80,11 @@ export async function POST(
           contexteMotivation: data.contexteMotivation,
           montantTotal,
           modePaiement: data.modePaiement,
+          // Plus saisis dans le formulaire : absents (undefined) → valeur enregistrée conservée.
           typeDepense: data.typeDepense,
           pourLeCompteDe: data.pourLeCompteDe,
           dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : null,
-          bonCommandeId: data.bonCommandeId || null,
+          bonCommandeId: data.bonCommandeId || undefined,
           lignes: { create: lignesAvecMode(data) },
           proformas: { create: data.proformaIds.map((invoiceId) => ({ invoiceId })) },
         },

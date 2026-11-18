@@ -17,10 +17,8 @@ interface DemandeBudgetRaw {
   departement: string | null;
   contexteMotivation: string;
   modePaiement: string;
-  typeDepense: string;
   pourLeCompteDe: string | null;
   dateLimiteSouhaitee: string | null;
-  bonCommande: { id: string } | null;
   proformas: { invoice: { id: string } }[];
   lignes: { designation: string; montant: number; categorie: string | null; modePaiement: string | null }[];
   attachments: { id: string; kind: string; url: string; fileName: string }[];
@@ -93,10 +91,8 @@ export default function ModifierDemandeBudgetPage() {
     departement: demande.departement,
     contexteMotivation: demande.contexteMotivation,
     modePaiement: demande.modePaiement,
-    typeDepense: demande.typeDepense,
     pourLeCompteDe: demande.pourLeCompteDe,
     dateLimiteSouhaitee: demande.dateLimiteSouhaitee,
-    bonCommandeId: demande.bonCommande?.id ?? null,
     proformaIds: demande.proformas.map((p) => p.invoice.id),
     lignes: demande.lignes,
     existingAttachments: demande.attachments,

@@ -35,8 +35,11 @@ export const demandeBudgetSchema = z
     periodeMois: z.string().optional(),
     departement: z.string().optional(),
     contexteMotivation: z.string().min(1, "Le contexte et la motivation sont requis."),
+    // Moyen « principal » : le formulaire l'envoie, déduit des lignes (celui du plus gros montant).
     modePaiement: z.nativeEnum(ModePaiementDemande),
-    typeDepense: z.string().min(1, "Le type de dépense est requis."),
+    // Type de dépense et bon de commande associé : plus saisis dans le formulaire (facultatifs ;
+    // absents à la re-soumission → la valeur déjà enregistrée est conservée).
+    typeDepense: z.string().trim().optional(),
     pourLeCompteDe: z.string().optional(),
     dateLimiteSouhaitee: z.string().optional(),
     bonCommandeId: z.string().optional(),
@@ -78,7 +81,7 @@ export function parseDemandeBudgetFormData(formData: FormData) {
     departement: (formData.get("departement") as string) || undefined,
     contexteMotivation: (formData.get("contexteMotivation") as string) || "",
     modePaiement: formData.get("modePaiement") as string,
-    typeDepense: (formData.get("typeDepense") as string) || "",
+    typeDepense: (formData.get("typeDepense") as string) || undefined,
     pourLeCompteDe: (formData.get("pourLeCompteDe") as string) || undefined,
     dateLimiteSouhaitee: (formData.get("dateLimiteSouhaitee") as string) || undefined,
     bonCommandeId: (formData.get("bonCommandeId") as string) || undefined,

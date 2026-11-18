@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
         contexteMotivation: data.contexteMotivation,
         montantTotal,
         modePaiement: data.modePaiement,
-        typeDepense: data.typeDepense,
+        typeDepense: data.typeDepense ?? "",
         pourLeCompteDe: data.pourLeCompteDe,
         dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : undefined,
         bonCommandeId: data.bonCommandeId || undefined,
