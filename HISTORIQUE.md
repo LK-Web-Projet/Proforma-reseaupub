@@ -25,6 +25,32 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 7) — Demande de budget : retrait de « Moyen de paiement principal », « Type de dépense » et « Bon de commande associé »
+
+**Demande / Contexte**
+Ces trois champs du formulaire de demande de budget ne servent plus vraiment : les retirer de l'écran. Aucune migration : les colonnes restent en base (anciens budgets intacts).
+
+**Modifications apportées**
+- `components/DemandeBudgetForm.tsx` :
+  - les trois champs sont retirés (et le chargement de la liste des bons de commande) ;
+  - chaque ligne garde **son propre moyen de paiement** (Virement par défaut) ; l'option « Principal (…) » disparaît ;
+  - le moyen « principal » de la demande (colonne obligatoire, proposé par défaut à la saisie d'une dépense) est **déduit des lignes** : celui qui porte le plus gros montant (`modePrincipal`) ;
+  - en modification, une ancienne ligne sans moyen propre reprend celui de la demande.
+- `lib/budgetSchema.ts` : `typeDepense` devient facultatif ; absent du formulaire → `undefined`.
+- `app/api/demandes-budget/route.ts` (création) : type de dépense enregistré vide (`""`) s'il n'est pas fourni.
+- `app/api/demandes-budget/[id]/resoumettre/route.ts` : type de dépense et bon de commande absents → **valeurs déjà enregistrées conservées** (avant : le bon de commande était effacé s'il n'était pas renvoyé).
+- `app/(main)/budget/demandes/[id]/modifier/page.tsx` : ne transmet plus ces deux champs au formulaire.
+- `app/(main)/budget/demandes/[id]/page.tsx` (fiche) : « Moyen de paiement principal » n'est plus affiché ; « Type de dépense » seulement pour les anciens budgets qui en ont un ; le bon de commande lié reste affiché s'il existe.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- Tests : schéma sans ces champs 4/4 (accepté, valeurs conservées à la re-soumission, ancien envoi accepté, moyen principal toujours exigé), logique budget 89/89, budget en base 37/37 ; `tsc` et lint sans erreur.
+- À vérifier à l'écran : création d'un budget (chaque ligne avec son moyen), modification d'un ancien budget (moyens des lignes repris), fiche d'un budget.
+
+---
+
 ## 2026-11-19 (suite 6) — Sécurité : Next.js 15.4.4 → 15.5.29 (déploiement Vercel bloqué)
 
 **Demande / Contexte**

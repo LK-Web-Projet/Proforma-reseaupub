@@ -45,16 +45,10 @@ interface Ligne {
   designation: string;
   montant: string;
   categorie: string;
-  // Moyen de paiement prévu ; '' = celui de la demande (« moyen principal »).
+  // Moyen de paiement prévu pour la ligne (le moyen « principal » de la demande en est déduit).
   modePaiement: string;
   // Reconduction : prévu / plafond / réalisé de la même ligne sur le budget d'origine (lecture seule).
   precedent?: { prevu: number; plafond: number; realise: number };
-}
-
-interface CommandeFournisseurOption {
-  id: string;
-  numero: string;
-  fournisseur: { entreprise: string };
 }
 
 interface ExistingAttachment {
@@ -69,16 +63,26 @@ interface DocumentRow {
   file: File | null;
 }
 
-// Valeur du sélecteur « moyen de la ligne » qui signifie « comme la demande » (Radix refuse '').
-const MODE_LIGNE_DEFAUT = '__DEFAUT__';
+// Moyen de paiement d'une nouvelle ligne.
+const MODE_LIGNE_DEFAUT = 'VIREMENT';
 
-const TYPE_DEPENSE_OPTIONS = [
-  'Achat de matériel',
-  'Prestation de service',
-  'Frais de transport',
-  'Frais généraux',
-  'Autre',
-];
+/**
+ * Moyen « principal » de la demande (colonne obligatoire, proposé par défaut à la saisie d'une
+ * dépense) : celui qui porte le plus gros montant parmi les lignes.
+ */
+function modePrincipal(lignes: { montant: number; modePaiement: string }[]): string {
+  const totaux = new Map<string, number>();
+  for (const l of lignes) totaux.set(l.modePaiement, (totaux.get(l.modePaiement) ?? 0) + l.montant);
+  let meilleur = MODE_LIGNE_DEFAUT;
+  let max = -1;
+  for (const [mode, montant] of totaux) {
+    if (montant > max) {
+      meilleur = mode;
+      max = montant;
+    }
+  }
+  return meilleur;
+}
 
 const DEPARTEMENT_OPTIONS = [
   'Informatique',
@@ -99,17 +103,13 @@ function moisMensuelMinimum(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: '' };
+const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: MODE_LIGNE_DEFAUT };
 
 const emptyForm = {
   departement: '',
   departementAutre: '',
   contexteMotivation: '',
-  modePaiement: 'VIREMENT',
-  typeDepense: TYPE_DEPENSE_OPTIONS[0],
-  typeDepenseAutre: '',
   dateLimiteSouhaitee: '',
-  bonCommandeId: '',
 };
 
 type BeneficiaireType = 'CAMPAGNE_CLIENT' | 'RESEAUPUB';
@@ -121,11 +121,10 @@ export interface DemandeBudgetInitialData {
   periodeMois: string | null;
   departement: string | null;
   contexteMotivation: string;
+  /** Moyen de la demande : repris pour les anciennes lignes enregistrées sans moyen propre. */
   modePaiement: string;
-  typeDepense: string;
   pourLeCompteDe: string | null;
   dateLimiteSouhaitee: string | null;
-  bonCommandeId: string | null;
   proformaIds: string[];
   lignes: {
     designation: string;
@@ -168,7 +167,6 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   // Une seule proforma par budget (0 ou 1 élément ; tableau conservé pour l'API).
   const [proformaIds, setProformaIds] = useState<string[]>([]);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-  const [commandes, setCommandes] = useState<CommandeFournisseurOption[]>([]);
   const [documents, setDocuments] = useState<DocumentRow[]>([{ type: 'DEVIS', file: null }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -177,35 +175,24 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       .then((res) => (res.ok ? res.json() : []))
       .then(setInvoices)
       .catch(() => setInvoices([]));
-
-    fetch('/api/fournisseurs/commandes')
-      .then((res) => (res.ok ? res.json() : []))
-      .then(setCommandes)
-      .catch(() => setCommandes([]));
   }, []);
 
   useEffect(() => {
     if (!initialData) return;
-    const typeDepenseConnu = TYPE_DEPENSE_OPTIONS.includes(initialData.typeDepense);
     const departementValeur = initialData.departement ?? '';
     const departementConnu = departementValeur !== '' && DEPARTEMENT_OPTIONS.includes(departementValeur);
     setForm({
       departement: departementValeur === '' ? '' : departementConnu ? departementValeur : 'Autre',
       departementAutre: departementConnu || departementValeur === '' ? '' : departementValeur,
       contexteMotivation: initialData.contexteMotivation,
-      modePaiement: initialData.modePaiement,
-      typeDepense: typeDepenseConnu ? initialData.typeDepense : 'Autre',
-      typeDepenseAutre: typeDepenseConnu ? '' : initialData.typeDepense,
       dateLimiteSouhaitee: initialData.dateLimiteSouhaitee ? initialData.dateLimiteSouhaitee.split('T')[0] : '',
-      bonCommandeId: initialData.bonCommandeId ?? '',
     });
     setLignes(
       initialData.lignes.map((l) => ({
         designation: l.designation,
         montant: String(l.montant),
         categorie: l.categorie ?? '',
-        // Une ligne au même moyen que la demande suit le moyen principal s'il change.
-        modePaiement: l.modePaiement && l.modePaiement !== initialData.modePaiement ? l.modePaiement : '',
+        modePaiement: l.modePaiement || initialData.modePaiement || MODE_LIGNE_DEFAUT,
         precedent: l.precedent,
       }))
     );
@@ -268,7 +255,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   const total = lignes.reduce((sum, l) => sum + (Number(l.montant) || 0), 0);
   const totauxParMode = totauxParModePaiement(
     lignes.map((l) => ({ montant: Number(l.montant) || 0, modePaiement: l.modePaiement })),
-    form.modePaiement
+    MODE_LIGNE_DEFAUT
   ).filter((t) => t.demande > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -291,13 +278,6 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
     setIsSubmitting(true);
     try {
-      const typeDepense = form.typeDepense === 'Autre' ? form.typeDepenseAutre.trim() : form.typeDepense;
-      if (!typeDepense) {
-        toast.error('Veuillez préciser le type de dépense.');
-        setIsSubmitting(false);
-        return;
-      }
-
       const departement = form.departement === 'Autre' ? form.departementAutre.trim() : form.departement;
       if (form.departement === 'Autre' && !departement) {
         toast.error('Veuillez préciser le département.');
@@ -342,11 +322,12 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       if (typeBudget === 'MENSUEL') data.append('periodeMois', periodeMois);
       data.append('departement', departement);
       data.append('contexteMotivation', form.contexteMotivation);
-      data.append('modePaiement', form.modePaiement);
-      data.append('typeDepense', typeDepense);
+      data.append(
+        'modePaiement',
+        modePrincipal(lignesValides.map((l) => ({ montant: Number(l.montant), modePaiement: l.modePaiement })))
+      );
       data.append('pourLeCompteDe', pourLeCompteDe);
       if (form.dateLimiteSouhaitee) data.append('dateLimiteSouhaitee', new Date(form.dateLimiteSouhaitee).toISOString());
-      if (form.bonCommandeId) data.append('bonCommandeId', form.bonCommandeId);
       data.append('proformaIds', JSON.stringify(beneficiaireType === 'CAMPAGNE_CLIENT' ? proformaIds : []));
       data.append(
         'lignes',
@@ -355,7 +336,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             designation: l.designation,
             montant: Number(l.montant),
             categorie: l.categorie,
-            modePaiement: l.modePaiement || form.modePaiement,
+            modePaiement: l.modePaiement,
           }))
         )
       );
@@ -529,13 +510,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                   <TableCell>
                     <Select
                       value={ligne.modePaiement || MODE_LIGNE_DEFAUT}
-                      onValueChange={(v) => updateLigne(index, 'modePaiement', v === MODE_LIGNE_DEFAUT ? '' : v)}
+                      onValueChange={(v) => updateLigne(index, 'modePaiement', v)}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={MODE_LIGNE_DEFAUT}>
-                          Principal ({MODE_PAIEMENT_OPTIONS.find((o) => o.value === form.modePaiement)?.label ?? form.modePaiement})
-                        </SelectItem>
                         {MODE_PAIEMENT_OPTIONS.map((o) => (
                           <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                         ))}
@@ -595,39 +573,6 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label>Moyen de paiement principal *</label>
-          <Select value={form.modePaiement} onValueChange={(v) => setForm((p) => ({ ...p, modePaiement: v }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {MODE_PAIEMENT_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <label>Type de dépense *</label>
-          <Select value={form.typeDepense} onValueChange={(v) => setForm((p) => ({ ...p, typeDepense: v }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {TYPE_DEPENSE_OPTIONS.map((o) => (
-                <SelectItem key={o} value={o}>{o}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {form.typeDepense === 'Autre' && (
-            <Input
-              className="mt-2"
-              placeholder="Précisez le type de dépense"
-              value={form.typeDepenseAutre}
-              onChange={(e) => setForm((p) => ({ ...p, typeDepenseAutre: e.target.value }))}
-            />
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
           <label htmlFor="dateLimite">Date limite souhaitée</label>
           <Input
             id="dateLimite"
@@ -635,18 +580,6 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             value={form.dateLimiteSouhaitee}
             onChange={(e) => setForm((p) => ({ ...p, dateLimiteSouhaitee: e.target.value }))}
           />
-        </div>
-        <div className="space-y-2">
-          <label>Bon de commande associé</label>
-          <Select value={form.bonCommandeId || 'none'} onValueChange={(v) => setForm((p) => ({ ...p, bonCommandeId: v === 'none' ? '' : v }))}>
-            <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Aucun</SelectItem>
-              {commandes.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.numero} — {c.fournisseur.entreprise}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </div>
 

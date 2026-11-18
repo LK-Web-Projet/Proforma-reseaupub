@@ -678,8 +678,10 @@ export default function DemandeBudgetDetailPage() {
           <CardContent className="space-y-2 text-sm">
             <p><span className="text-muted-foreground">Département :</span> {demande.departement || '-'}</p>
             <p><span className="text-muted-foreground">Pour le compte de :</span> {demande.pourLeCompteDe || '-'}</p>
-            <p><span className="text-muted-foreground">Moyen de paiement principal :</span> {modePaiementLabel(demande.modePaiement)}</p>
-            <p><span className="text-muted-foreground">Type de dépense :</span> {demande.typeDepense}</p>
+            {/* Type de dépense : plus saisi, affiché seulement pour les anciens budgets qui en ont un. */}
+            {demande.typeDepense && (
+              <p><span className="text-muted-foreground">Type de dépense :</span> {demande.typeDepense}</p>
+            )}
             <p><span className="text-muted-foreground">Date limite souhaitée :</span> {demande.dateLimiteSouhaitee ? format(new Date(demande.dateLimiteSouhaitee), 'dd/MM/yyyy') : '-'}</p>
             {clients.length > 0 && <p><span className="text-muted-foreground">Client(s) :</span> {clients.join(', ')}</p>}
             {demande.bonCommande && (
