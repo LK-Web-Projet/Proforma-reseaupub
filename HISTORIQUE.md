@@ -25,6 +25,28 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 8) — Validation des budgets de campagne réservée à l'administrateur
+
+**Demande / Contexte**
+Le rôle de validation déléguée (Assistant-Direction) validait les budgets ponctuels, de campagne et pour tiers jusqu'au plafond. Désormais il ne valide plus que les budgets **ponctuels et pour tiers** ; les budgets de **campagne**, comme les mensuels, sont validés par l'administrateur, quel que soit leur montant.
+
+**Modifications apportées**
+- `lib/budgetTypes.ts` : `TYPES_VALIDATION_ADMIN = ['MENSUEL', 'CAMPAGNE']` et `typeValideParAdmin(type)`, partagés par le serveur et l'écran ; description du type Campagne (« validé par l'administrateur »).
+- `lib/budgetAuth.ts` : `requiresValidationAdmin` utilise ces types → valider, rejeter, décider une ligne (routes `valider`, `rejeter`, `lignes/[ligneId]/decider`) et destinataires de la notification « budget soumis » (`lib/email/demandeBudget.ts`) suivent la nouvelle règle sans autre changement. Message : « Les budgets de campagne sont validés par l'administrateur. »
+- `app/(main)/budget/demandes/[id]/page.tsx` : même matrice à l'écran ; valideur attendu « l'administrateur (budget de campagne) ».
+- `app/(main)/parametres/roles/page.tsx` : droits renommés « Valider les budgets mensuels, de campagne et au-dessus du plafond » et « Valider les budgets (hors mensuels et campagne) » — « Budgets ponctuels et pour tiers, jusqu'au plafond délégué (ex. Assistant-Direction) » ; texte du plafond délégué mis à jour. Aucune case ni migration : les rôles gardent leurs droits.
+- `public/docs/procedure-paiement-plateforme.md` : tableau des acteurs mis à jour.
+- `e2e/procedure-paiement.spec.ts` : libellé du droit ; étape 5 → le valideur délégué voit « pas de votre niveau » et reçoit 403 sur la campagne, puis l'admin ne peut rien accorder sans budget signé ; étape 7 → c'est l'admin qui accorde les lignes ; choix de la proforma via le sélecteur simple (une seule proforma par budget).
+
+**Erreurs rencontrées & solutions**
+- Script de modification lancé dans une chaîne shell entre guillemets doubles : les backticks du code ont été interprétés par bash → seul le guide avait été modifié ; le fichier e2e a été modifié ensuite avec l'outil d'édition.
+
+**À tester / points d'attention**
+- Tests : règle de validation 8/8 (campagne → admin, délégué refusé, ponctuel et tiers sous le plafond acceptés, mensuel inchangé), logique budget 89/89 ; `tsc` et lint sans erreur. Le scénario Playwright n'a pas été relancé (identifiants réels nécessaires).
+- Budgets de campagne déjà en cours de validation au moment du changement : **DB-2026-0006** (validation partielle, 1 ligne accordée, 2 en attente) et **DB-2026-0008** (soumis). Leurs lignes restantes doivent maintenant être décidées par l'administrateur ; la notification « à valider » avait été envoyée au rôle délégué.
+
+---
+
 ## 2026-11-19 (suite 7) — Demande de budget : retrait de « Moyen de paiement principal », « Type de dépense » et « Bon de commande associé »
 
 **Demande / Contexte**

@@ -13,8 +13,9 @@ test.describe.configure({ mode: "serial" });
 
 const ADMIN = { email: process.env.E2E_ADMIN_EMAIL!, password: process.env.E2E_ADMIN_PASSWORD! };
 let ctx: RunContext;
-// Montants sous le plafond de validation déléguée (lu en base) : le budget de campagne doit pouvoir
-// être validé par le rôle « Valider les budgets (hors mensuels) ».
+// Montants sous le plafond de validation déléguée (lu en base). Un budget de campagne est validé par
+// l'administrateur quel que soit son montant : le rôle « Valider les budgets (hors mensuels et
+// campagne) » ne peut pas le valider (vérifié à l'étape 5).
 let L1 = 0; // ligne Mobile Money
 let L2 = 0; // ligne Chèque
 let APPORT = 0; // solde de la caisse de test
@@ -39,7 +40,7 @@ test("1. Admin : crée les rôles (droits cochés sur la page Rôles)", async ({
 
   const roles: { nom: string; pages: string[]; droits: string[] }[] = [
     { nom: ctx.roles.demandeur, pages: ["Proforma (factures, statistiques)"], droits: [] },
-    { nom: ctx.roles.valideur, pages: ["Proforma (factures, statistiques)"], droits: ["Valider les budgets (hors mensuels)"] },
+    { nom: ctx.roles.valideur, pages: ["Proforma (factures, statistiques)"], droits: ["Valider les budgets (hors mensuels et campagne)"] },
     // Comptable SANS « Saisir au journal de caisse » : il paie par le circuit budget, mais ne
     // peut pas sortir d'argent directement du journal.
     { nom: ctx.roles.comptable, pages: ["Finance (journal de caisse)"], droits: ["Enregistrer les dépenses de budget"] },
@@ -143,10 +144,10 @@ test("4. Demandeur : budget de campagne avec un moyen de paiement par ligne", as
   await expect(page.getByText(/Mobile Money :/)).toBeVisible();
   await expect(page.getByText(/Chèque :/)).toBeVisible();
 
-  await page.getByRole("button", { name: /Associer des proformas/ }).click();
+  // Une seule proforma par budget : sélecteur simple (il se ferme au choix).
+  await page.getByRole("combobox", { name: /Choisir la proforma de la campagne/ }).click();
   await page.getByPlaceholder("Rechercher une proforma...").fill(ctx.invoiceNumero);
   await page.getByRole("option", { name: new RegExp(ctx.invoiceNumero) }).click();
-  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Soumettre la demande" }).click();
   await attendreToast(page, "Demande de budget soumise avec succès !");
@@ -174,9 +175,18 @@ test("4. Demandeur : budget de campagne avec un moyen de paiement par ligne", as
   await fermer();
 });
 
-test("5. Valideur : aucune ligne ne peut être accordée sans le budget signé", async ({ browser }) => {
-  const { page, fermer } = await connecter(browser, ctx.users.valideur, ctx.password);
+test("5. Budget de campagne : refusé au valideur délégué ; l'admin ne peut rien accorder sans le budget signé", async ({ browser }) => {
   const id = readRunContext().budgetCampagneId!;
+  // Rôle délégué : une campagne n'est pas de son niveau, quel que soit le montant (écran et serveur).
+  const valideur = await connecter(browser, ctx.users.valideur, ctx.password);
+  await valideur.page.goto(`/budget/demandes/${id}`);
+  await expect(valideur.page.getByText("Cette demande n'est pas de votre niveau de validation.")).toBeVisible();
+  const refus = await valideur.page.request.post(`/api/demandes-budget/${id}/valider`);
+  expect(refus.status()).toBe(403);
+  expect((await refus.json()).error).toMatch(/campagne/);
+  await valideur.fermer();
+
+  const { page, fermer } = await connecter(browser, ADMIN.email, ADMIN.password);
   await page.goto(`/budget/demandes/${id}`);
   await expect(page.getByText("Validation requise")).toBeVisible();
   await expect(page.getByRole("button", { name: "Tout valider" })).toBeDisabled();
@@ -211,8 +221,8 @@ test("6. Demandeur : joint le scan du budget signé (nom de fichier normalisé)"
   await fermer();
 });
 
-test("7. Valideur : accorde la ligne 1, ajuste la ligne 2 → budget validé", async ({ browser }) => {
-  const { page, fermer } = await connecter(browser, ctx.users.valideur, ctx.password);
+test("7. Admin : accorde la ligne 1, ajuste la ligne 2 → budget de campagne validé", async ({ browser }) => {
+  const { page, fermer } = await connecter(browser, ADMIN.email, ADMIN.password);
   const id = readRunContext().budgetCampagneId!;
   await page.goto(`/budget/demandes/${id}`);
   await ligne(page, `${ctx.run} Hôtesses`).getByRole("button", { name: "Accorder" }).click();

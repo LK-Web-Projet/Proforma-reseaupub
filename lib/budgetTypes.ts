@@ -16,7 +16,7 @@ export const TYPE_BUDGET_META: Record<TypeBudgetValue, { label: string; descript
   },
   CAMPAGNE: {
     label: 'Campagne',
-    description: 'Budget d’une campagne client : au moins une proforma liée, les dépenses lui sont imputées.',
+    description: 'Budget d’une campagne client : sa proforma liée, les dépenses lui sont imputées (validé par l’administrateur).',
     className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   },
   TIERS: {
@@ -25,6 +25,17 @@ export const TYPE_BUDGET_META: Record<TypeBudgetValue, { label: string; descript
     className: 'bg-amber-50 text-amber-700 border-amber-200',
   },
 };
+
+/**
+ * Types toujours validés au niveau administrateur (« Valider les budgets mensuels, de campagne et
+ * au-dessus du plafond »), quel que soit le montant. Les autres (ponctuel, tiers) peuvent l'être
+ * par le rôle délégué jusqu'au plafond. Partagé par le serveur (lib/budgetAuth.ts) et l'écran.
+ */
+export const TYPES_VALIDATION_ADMIN: readonly TypeBudgetValue[] = ['MENSUEL', 'CAMPAGNE'];
+
+export function typeValideParAdmin(type: string): boolean {
+  return (TYPES_VALIDATION_ADMIN as readonly string[]).includes(type);
+}
 
 export function typeBudgetLabel(type: string | null | undefined): string {
   return TYPE_BUDGET_META[type as TypeBudgetValue]?.label ?? 'Ponctuel';

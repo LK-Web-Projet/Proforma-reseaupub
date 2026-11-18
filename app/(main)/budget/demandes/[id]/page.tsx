@@ -30,7 +30,7 @@ import { DemandeBudgetAddDocumentsDialog } from '@/components/DemandeBudgetAddDo
 import { DemandeBudgetStatusBadge, DemandeBudgetStatus } from '@/components/DemandeBudgetStatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
-import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel, modePaiementLabel, totauxParModePaiement } from '@/lib/budgetTypes';
+import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel, modePaiementLabel, totauxParModePaiement, typeValideParAdmin } from '@/lib/budgetTypes';
 import { echeanceJustificatif, etatJustificatif } from '@/lib/justificatifs';
 import { generateBudgetPdf } from '@/lib/pdf/budgetPdf';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
@@ -412,13 +412,15 @@ export default function DemandeBudgetDetailPage() {
   const peutAjouterDocuments = (budgetOuvert || enValidation) && (role.isImplique || estDemandeur);
 
   // Même matrice que lib/budgetAuth.ts (refusValidation) — le serveur reste juge en dernier ressort.
-  const requiertAdmin = demande.type === 'MENSUEL' || Number(demande.montantTotal) > role.plafond;
+  const requiertAdmin = typeValideParAdmin(demande.type) || Number(demande.montantTotal) > role.plafond;
   const peutValider =
     !estDemandeur && (requiertAdmin ? role.canValidateMensuel : role.canValidate || role.canValidateMensuel);
   const valideurAttendu =
     demande.type === 'MENSUEL'
       ? "l'administrateur (budget mensuel)"
-      : requiertAdmin
+      : demande.type === 'CAMPAGNE'
+        ? "l'administrateur (budget de campagne)"
+        : requiertAdmin
         ? "l'administrateur (montant au-dessus du plafond délégué)"
         : "l'Assistant-Direction ou l'administrateur";
 

@@ -47,15 +47,15 @@ type BudgetFlag = "canValidateBudgetMensuel" | "canValidateBudget" | "canPayBudg
 const BUDGET_FLAGS: { key: BudgetFlag; label: string; short: string; description: string }[] = [
   {
     key: "canValidateBudgetMensuel",
-    label: "Valider les budgets mensuels et au-dessus du plafond",
+    label: "Valider les budgets mensuels, de campagne et au-dessus du plafond",
     short: "Valid. admin",
-    description: "Niveau administrateur : budgets mensuels, budgets dépassant le plafond délégué. Peut ouvrir un commentaire sur une ligne.",
+    description: "Niveau administrateur : budgets mensuels, budgets de campagne, budgets dépassant le plafond délégué. Peut ouvrir un commentaire sur une ligne.",
   },
   {
     key: "canValidateBudget",
-    label: "Valider les budgets (hors mensuels)",
+    label: "Valider les budgets (hors mensuels et campagne)",
     short: "Valid. déléguée",
-    description: "Budgets ponctuels, de campagne et pour tiers, jusqu'au plafond délégué (ex. Assistant-Direction).",
+    description: "Budgets ponctuels et pour tiers, jusqu'au plafond délégué (ex. Assistant-Direction).",
   },
   {
     key: "canPayBudget",
@@ -356,8 +356,8 @@ export default function RolesPage() {
           <div>
             <p className="text-sm font-medium">Plafond de validation déléguée (FCFA)</p>
             <p className="text-xs text-muted-foreground">
-              Un budget non mensuel jusqu&apos;à ce montant peut être validé par un rôle « Valider les budgets (hors mensuels) ».
-              Au-dessus, il doit être validé par un rôle « Valider les budgets mensuels et au-dessus du plafond ».
+              Un budget ponctuel ou pour tiers jusqu&apos;à ce montant peut être validé par un rôle « Valider les budgets (hors mensuels et campagne) ».
+              Au-dessus, et pour tout budget mensuel ou de campagne, il doit être validé par un rôle « Valider les budgets mensuels, de campagne et au-dessus du plafond ».
             </p>
           </div>
           <div className="flex items-center gap-2 max-w-sm">

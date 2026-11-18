@@ -56,8 +56,8 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
 
 | Acteur | Droit à cocher sur son rôle | Ce qu'il fait dans Proforma |
 |---|---|---|
-| Directrice générale | Valider les budgets mensuels et au-dessus du plafond | Valide les budgets, signe les bons de commande, approuve les dépassements, annule une dépense |
-| Assistant(e) de direction | Valider les budgets (hors mensuels) | Valide les budgets ponctuels, de campagne et pour tiers jusqu'au plafond délégué |
+| Directrice générale | Valider les budgets mensuels, de campagne et au-dessus du plafond | Valide les budgets (seule pour les mensuels, les campagnes et au-dessus du plafond), signe les bons de commande, approuve les dépassements, annule une dépense |
+| Assistant(e) de direction | Valider les budgets (hors mensuels et campagne) | Valide les budgets ponctuels et pour tiers jusqu'au plafond délégué |
 | Comptable | Enregistrer les dépenses de budget | Applique le paiement des factures, verse les avances, enregistre les dépenses, rattache les paiements Camptrack |
 | Accueil | Saisir les petites dépenses (espèces, plafonnées) | Réparations, imprévus… sur une ligne de budget, **en espèces**, jusqu'au maximum réglé dans Paramètres → Rôles (50 000 F par défaut). Ne paie ni bon de commande ni facture |
 | Caisse | Saisir au journal de caisse (hors budget) | Saisie directe au journal : dépenses des campagnes sans budget, apports, transferts |
