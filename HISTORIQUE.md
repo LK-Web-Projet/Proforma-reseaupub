@@ -25,6 +25,33 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-19 (suite 6) — Sécurité : Next.js 15.4.4 → 15.5.29 (déploiement Vercel bloqué)
+
+**Demande / Contexte**
+Le build passait sur Vercel, mais le déploiement était refusé : « Vulnerable version of Next.js detected, please update immediately ». Next.js 15.4.4 est touché par les failles des React Server Components de fin 2025 (CVE-2025-66478 / CVE-2025-55182 : exécution de code à distance, puis déni de service et exposition de code source). La branche 15.4 ne reçoit plus de correctifs depuis 15.4.11 (janvier 2026) ; la branche 15.5 est celle que Next.js maintient encore en version 15 (tag npm `backport`). Passage à **15.5.29**, sans aller en 16 (changements cassants : middleware renommé, `next lint` supprimé, Turbopack par défaut).
+
+**Modifications apportées**
+- `package.json` : `next` et `eslint-config-next` passent de 15.4.4 à **15.5.29** (versions exactes). React reste en 19.1.0 (Next embarque sa propre copie corrigée de `react-server-dom`).
+- `pnpm-lock.yaml` (utilisé par Vercel) : seuls `next`, `@next/env`, `@next/eslint-plugin-next`, `@next/swc-*` et `eslint-config-next` changent.
+- `package-lock.json` (utilisé par `npm ci` dans `infra/Dockerfile`, VPS) : synchronisé avec `npm install --package-lock-only` ; mêmes paquets, plus la plage facultative de `sharp` élargie par Next (`^0.34.3 || ^0.35.5`), la version installée ne change pas.
+- Aucun changement de code.
+
+**Vérifications (Next 15.5.29)**
+- `tsc` et `next lint` sans erreur ; `next build` de production réussi (42 pages, JS partagé 103 kB).
+- Tests de non-régression : logique budget 89, budget en base 37, routes API 16, BC et ligne de budget 24, factures 11, service de dépense 18, budget signé 26, Lot C 19, lots CampTrack 24, pipeline des lots 16 : tous OK.
+- `d-routes` (15/11) : 2 échecs hors sujet, le test envoie des lignes de lot sans `reference`, exigée depuis l'alignement sur le contrat CampTrack du 16/11 (couvert par les tests des lots ci-dessus).
+
+**Erreurs rencontrées & solutions**
+- `node_modules/next` local était incomplet (dossier `dist` absent) : `npx next build` ne démarrait pas → `pnpm install --frozen-lockfile --force` (relie tous les paquets depuis le lockfile).
+- `next build` réécrit `tsconfig.json` (ajout de `.next-verif/types/**/*.ts`) quand on compile dans `.next-verif` → fichier restauré avec `git checkout`, à ne pas commiter.
+
+**À tester / points d'attention**
+- `next lint` affiche maintenant « deprecated » : sans effet en 15.5, mais il faudra passer à la CLI ESLint avant une future montée en Next 16 (`npx @next/codemod@canary next-lint-to-eslint-cli .`).
+- Le VPS avait la même faille (Docker ne bloque pas) : redéployer aussi le VPS.
+- Après fusion sur `main`, redéployer sur Vercel (sans cache si besoin) et vérifier connexion Clerk, proformas, budgets, bons de commande, journal de caisse.
+
+---
+
 ## 2026-11-19 (suite 5) — Cloche des notifications : à gauche de « Recherche », bleue ou rouge
 
 **Demande / Contexte**
