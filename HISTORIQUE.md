@@ -25,6 +25,52 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite) — Page Aide : schémas fléchés et mise en page en couleurs
+
+**Demande / Contexte**
+Rendre le guide de la page Aide plus visuel : des schémas simples avec des flèches (qui fait quoi, comment), plus de couleurs, pour donner envie de lire.
+
+**Modifications apportées**
+- `lib/aideSchemas.ts` (nouveau) : rendu du guide avec une instance `Marked` dédiée.
+  - Bloc ` ```flux ` : étapes numérotées reliées par des flèches, chaque étape avec son acteur (pastille de couleur) et son action. Jusqu'à 4 étapes sur une ligne, au-delà deux rangées régulières (6 → 3 + 3).
+  - Bloc ` ```choix ` : une question ou une action (bandeau en dégradé) qui mène à plusieurs cas.
+  - Syntaxe d'une ligne : `étiquette | texte | couleur` (bleu, violet, vert, orange, rouge, ambre, cyan, rose, gris), gras Markdown accepté ; `titre:` et `question:` facultatifs. Texte échappé.
+  - Citations `> …` → encadrés « bon à savoir » (💡) ; `> ⚠️ …` → encadré d'alerte orange.
+  - Le Markdown téléchargé reste lisible : les schémas y sont de simples listes de texte.
+- `app/(main)/aide/page.tsx` : utilise `rendreGuide` ; nouveaux styles :
+  - sommaire numéroté en dégradé ;
+  - titre en dégradé ; sections avec une barre et un fond de couleur, en alternance (indigo, cyan, vert, orange, violet, rose) ;
+  - tableaux à en-tête coloré et lignes alternées ; puces colorées ;
+  - schémas en cartes, lisibles sur téléphone (une étape par ligne, flèches ⬇) ;
+  - couleurs conservées à l'impression / PDF, schémas jamais coupés entre deux pages.
+- `public/docs/procedure-paiement-plateforme.md` : **13 schémas** ajoutés :
+  - le parcours d'une dépense de campagne ;
+  - « une sortie d'argent = une seule opération » (remplace l'arbre en texte) ;
+  - où saisir une dépense ;
+  - qui valide un budget ;
+  - du budget demandé au budget ouvert ;
+  - la vie d'un bon de commande ;
+  - les pièces de la liasse ;
+  - quelle facture, rattachée à quoi ;
+  - appliquer le paiement ;
+  - où saisir une petite dépense ;
+  - qui peut la saisir ;
+  - un lot Camptrack ;
+  - le justificatif d'une dépense.
+
+  Quelques remarques importantes sont passées en encadrés (séparation des tâches, annulation par la DG, solde de caisse, rapport).
+
+**Erreurs rencontrées & solutions**
+- Captures de contrôle : le navigateur attendu par la version de Playwright du projet n'était pas installé → utilisation du Chromium déjà présent sur le poste (aucun téléchargement).
+- Première version : étapes en `flex-wrap`, rangées inégales et flèche orpheline en bout de ligne → grille à colonnes fixes, flèches dessinées entre les cartes. Sur téléphone, flèche mal placée sur la carte qui commence la 2ᵉ rangée → règle commune à toutes les cartes sauf la première.
+
+**À tester / points d'attention**
+- Contrôle par captures (page de prévisualisation hors serveur, 1100 px et 390 px) : 13 schémas rendus, aucun bloc brut restant, aucun débordement horizontal. `tsc` et lint sans erreur.
+- À vérifier dans l'application : page **Aide** (sommaire, schémas), et *Imprimer / PDF*.
+- Pour ajouter un schéma : écrire un bloc ` ```flux ` ou ` ```choix ` dans le guide (syntaxe en tête de `lib/aideSchemas.ts`).
+
+---
+
 ## 2026-11-20 — Liasse du bon de commande : proforma fournisseur, BAT signé, bordereau signé, facture, autres documents
 
 **Demande / Contexte**

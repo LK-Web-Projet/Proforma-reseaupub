@@ -15,25 +15,41 @@
 
 Rien n'est à ressaisir ailleurs, et rien n'est compté deux fois : la caisse ne voit qu'**une écriture** par sortie, que la proforma et le budget affichent chacun de leur côté.
 
+```flux
+titre: Le parcours d'une dépense de campagne
+Commercial | **Proforma client** validée | bleu
+Chef de projet | **Budget** de la campagne, lié à la proforma | violet
+DG | Accorde les lignes et **signe le budget** | rose
+Chef de projet | **Bon de commande** sur une ligne accordée | orange
+Fournisseur | Livre, puis envoie sa **facture** | cyan
+Comptable | **Appliquer le paiement** | vert
 ```
-Proforma validée (client)
-   └── Budget (lignes accordées par la DG, budget signé joint)
-         ├── Petites dépenses hors bon (réparations, imprévus…)
-         └── Bon de commande (émis sur une ligne → validé d'office, scan signé à joindre)
-               ├── Avance (fiche du bon)
-               └── Facture du fournisseur (même montant que le bon)
-                     └── « Appliquer le paiement » (liste des factures)
-                           ├── sort de la caisse choisie (solde contrôlé)
-                           ├── consomme la ligne de budget (plafond contrôlé)
-                           ├── est imputé à la proforma de la campagne
-                           └── facture « payée », bon « payé »
+
+```choix
+titre: Une sortie d'argent = une seule opération, qui met tout à jour
+question: « Appliquer le paiement », « Dépense » ou lot Camptrack
+Caisse | **Une écriture** dans le journal, solde contrôlé | vert
+Budget | La **ligne est consommée**, plafond contrôlé | violet
+Proforma | La dépense entre dans la **marge** de la campagne | bleu
+Bon et facture | Facture **payée**, bon **payé** s'il ne reste rien | orange
 ```
+
+> Les petites dépenses hors bon (réparations, imprévus…) suivent le même principe : elles sont saisies directement sur une ligne du budget.
 
 ---
 
 ## Qui saisit quoi, et où
 
 **La règle tient en une phrase : un budget lié à une proforma se saisit sur la proforma ; tous les autres sur la fiche budget. Les factures se paient depuis la liste des factures.**
+
+```choix
+titre: J'ai une dépense à enregistrer : où aller ?
+question: De quoi s'agit-il ?
+Petite dépense | **Proforma → Dépense** si le budget est lié à une proforma ; sinon **fiche budget → Dépense** | bleu
+Avance fournisseur | **Fiche du bon de commande → Verser une avance** | orange
+Facture à payer | **Prestataires → Liste Factures → Appliquer le paiement** | vert
+Prestataires terrain | **Camptrack**, avec la ligne de budget du lot | violet
+```
 
 | Dépense | Où la saisir | Qui |
 |---|---|---|
@@ -63,11 +79,28 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
 | Caisse | Saisir au journal de caisse (hors budget) | Saisie directe au journal : dépenses des campagnes sans budget, apports, transferts |
 | Chef de projet / demandeur | Aucun droit particulier | Prépare le budget, corrige les lignes renvoyées, joint le budget signé, crée les bons de commande |
 
-**Séparation des tâches** : la personne qui a validé un budget, ou accordé une ligne, ne peut pas en enregistrer les dépenses. Personne ne valide sa propre demande.
+```choix
+titre: Qui valide un budget ?
+question: Quel est le type du budget, et son montant ?
+Mensuel ou campagne | **La DG** (administrateur), quel que soit le montant | rose
+Au-dessus du plafond délégué | **La DG** (administrateur), quel que soit le type | violet
+Ponctuel ou tiers, sous le plafond | **L'assistant(e) de direction** (ou la DG) | cyan
+```
+
+> ⚠️ **Séparation des tâches** : la personne qui a validé un budget, ou accordé une ligne, ne peut pas en enregistrer les dépenses. Personne ne valide sa propre demande.
 
 ---
 
 ## 2. Le budget de campagne
+
+```flux
+titre: Du budget demandé au budget ouvert aux dépenses
+Chef de projet | Crée le budget, lié à **la** proforma du client, avec ses lignes | violet
+DG | Décide **ligne par ligne** : accorder, ajuster ou faire corriger | rose
+Chef de projet | **Imprime** le budget, le fait **signer** par la DG | orange
+Chef de projet | **Joint le scan signé** sur la fiche du budget | bleu
+Plateforme | Budget **validé** : dépenses possibles sur les lignes accordées | vert
+```
 
 1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche.
 2. La **DG (ou le valideur) décide d'abord sur la plateforme**, ligne par ligne : **Accorder**, **Ajuster** (un montant plus bas, avec un motif) ou **Demander une correction**. Le bouton *Tout valider* accorde d'un coup toutes les lignes en attente. Le demandeur corrige ou retire les lignes renvoyées.
@@ -89,6 +122,16 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
 
 ## 3. Le bon de commande
 
+```flux
+titre: La vie d'un bon de commande
+Chef de projet | Crée le bon, avec **une** proforma et une **ligne accordée** | orange
+Plateforme | Bon **validé d'office** (il tient dans le reste de la ligne) | vert
+DG | **Signe** le bon imprimé ; le scan est joint sur la fiche | rose
+Fournisseur | Exécute : **BAT**, livraison, **bordereau signé** | cyan
+Fournisseur | Envoie sa **facture** (même montant que le bon) | violet
+Comptable | **Appliquer le paiement** : bon **payé** | vert
+```
+
 1. Le bon est créé dans **Prestataires → Bons de commande**, avec **une seule proforma**. Le champ **« Ligne de budget »** propose :
    - **proforma liée à un budget** : **uniquement les lignes accordées de ce budget**, avec ce qui reste à engager sur chacune ;
    - **pas de proforma** (achat interne) ou **proforma sans budget** : les lignes des budgets sans proforma (mensuel, ponctuel…).
@@ -107,6 +150,15 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
 
 Chaque pièce a sa ligne sur la fiche du bon. **Tant qu'une pièce attendue manque, sa ligne est en rouge, avec un bouton « À joindre » qui clignote.**
 
+```flux
+titre: Les pièces de la liasse, dans l'ordre où elles arrivent
+Avant le budget | **Proforma fournisseur** (à fournir) | cyan
+Émission | **Bon de commande signé** par la DG (requis) | rouge
+Exécution | **BAT signé** (facultatif) | gris
+Livraison | **Bordereau signé** ou attestation de service fait (requis) | orange
+Fin | **Facture** du prestataire (requise) | violet
+```
+
 | Pièce | Statut | Quand |
 |---|---|---|
 | Bon de commande signé (DG) | **Requise** : aucun paiement sans elle | Dès l'émission du bon |
@@ -118,7 +170,7 @@ Chaque pièce a sa ligne sur la fiche du bon. **Tant qu'une pièce attendue manq
 
 **Proforma fournisseur jointe au budget** : à la création du budget (ou plus tard, « Ajouter des documents »), choisir le type « Proforma fournisseur (devis) » et **indiquer le fournisseur** : son nom est ajouté au nom du fichier. Sur la fiche du bon, la ligne « Proforma fournisseur » liste les proformas du budget : cliquer **« Utiliser pour ce bon »** sur celle du fournisseur du bon. Si aucune ne correspond (ou si le bon n'est pas encore rattaché à un budget), joindre directement la proforma au bon.
 
-Le rapport n'est plus demandé ; les rapports déjà joints restent visibles dans « Autres documents ».
+> Le rapport n'est plus demandé ; les rapports déjà joints restent visibles dans « Autres documents ».
 
 **Statuts du bon** : Brouillon → Validé → Livré → **Payé**. Le statut Payé est **automatique** : il est posé quand le reste du bon tombe à zéro. Une annulation rétablit le statut précédent.
 
@@ -132,6 +184,21 @@ Le rapport n'est plus demandé ; les rapports déjà joints restent visibles dan
 - La facture d'un **prestataire interne ou externe** n'a pas de bon : elle est rattachée **directement à une ligne de budget** (par exemple le budget mensuel de la comptabilité pour la paie des employés). La ligne peut être choisie à l'enregistrement ou au moment de payer.
 
 ### Appliquer le paiement (comptable)
+
+```choix
+titre: Quelle facture, rattachée à quoi ?
+question: Qui est le prestataire ?
+Fournisseur | Facture rattachée à **son bon de commande**, même montant que le bon | orange
+Prestataire interne ou externe | Pas de bon : facture rattachée **directement à une ligne de budget** (ex. paie sur le budget mensuel) | violet
+```
+
+```flux
+titre: Appliquer le paiement, en un clic
+Comptable | Ouvre la **liste des factures**, bouton *Appliquer le paiement* | vert
+Comptable | Choisit la **caisse**, le moyen, la date ; joint la **preuve de paiement** | cyan
+Plateforme | Contrôle : **scan du bon**, liasse, budget ouvert, solde de caisse | ambre
+Plateforme | Caisse, budget, proforma mis à jour ; **facture et bon payés** | vert
+```
 
 Dans **Prestataires → Liste Factures**, chaque facture « en attente » a un bouton **Appliquer le paiement** (aussi sur la fiche du prestataire et sur la fiche du bon). La fenêtre indique la facture, le bon, la ligne de budget et **le montant à payer**, fixé au reste (facture − avances déjà versées). On choisit :
 
@@ -147,13 +214,28 @@ En un clic : sortie de caisse, ligne de budget consommée, dépense sur la profo
 
 Sur la fiche du bon, **Verser une avance** (comptable) : montant libre jusqu'au reste du bon, même fenêtre, preuve de paiement obligatoire. L'avance reste **« non justifiée »** tant que la liasse n'est pas complète. Le solde, payé ensuite depuis la facture, déduit les avances.
 
-**Annuler une dépense** est réservé à la DG. L'annulation passe une contre-écriture dans la caisse et la proforma. La facture redevient à payer et le bon retrouve son statut précédent. Une dépense n'est jamais supprimée.
+> ⚠️ **Annuler une dépense** est réservé à la DG. L'annulation passe une contre-écriture dans la caisse et la proforma. La facture redevient à payer et le bon retrouve son statut précédent. Une dépense n'est jamais supprimée.
 
 ---
 
 ## 5. Les petites dépenses (hors bon de commande)
 
 La fenêtre *Dépense* (proforma ou fiche budget) ne sert plus qu'aux **dépenses hors bon** : réparations, imprévus, carburant, petites fournitures…
+
+```choix
+titre: Où saisir une petite dépense ?
+question: Le budget est-il lié à une proforma ?
+Oui (campagne) | Sur la **proforma** : bouton *Dépense*, puis choix de la ligne | bleu
+Non (mensuel, ponctuel…) | Sur la **fiche budget** : bouton *Dépense* sur la ligne | violet
+Pas de budget du tout | Sur la proforma, directement en caisse (droit *Saisir au journal de caisse*) | gris
+```
+
+```choix
+titre: Qui peut la saisir ?
+question: Montant et moyen de paiement
+Accueil | En **espèces**, jusqu'à **50 000 F** (réglable) | cyan
+Comptable | Tout montant, tout moyen de paiement | vert
+```
 
 - **Budget lié à une proforma** (campagne) : sur la **proforma**, bouton *Dépense*, puis choix de la ligne de budget.
 - **Budget sans proforma** (mensuel, ponctuel…) : sur la **fiche budget**, bouton *Dépense* sur la ligne.
@@ -175,6 +257,14 @@ Si le budget existe mais n'est pas encore validé, si son budget signé manque, 
 
 Les prestataires sont payés **par lots**, un lot par campagne : un état de paiement MoMo ou un virement groupé. Camptrack envoie à Proforma le **résumé du lot** : référence, nombre de bénéficiaires, total et détail.
 
+```choix
+titre: Un lot Camptrack arrive dans Proforma
+question: La campagne a-t-elle un budget ?
+Oui | Dépense sur la **ligne de budget** choisie dans Camptrack (plafond et caisse contrôlés) | violet
+Non | Dépense directe sur la **proforma** de la campagne | bleu
+Ligne pas encore envoyée | Marqué **« à rattacher »** : le comptable choisit la ligne sur la fiche budget | ambre
+```
+
 - **La campagne a un budget** : le comptable choisit dans Camptrack la **ligne de budget** du lot. Le plafond et la caisse sont contrôlés. Le lot devient une dépense de budget, et son détail s'ouvre depuis la fiche budget (*Lot … — N bénéficiaire(s)*).
 - **La campagne n'a pas de budget** : le lot devient une dépense sur la proforma.
 - Un lot envoyé deux fois, par exemple après une coupure réseau, **n'est jamais payé deux fois**.
@@ -189,11 +279,19 @@ Les prestataires sont payés **par lots**, un lot par campagne : un état de pai
 ## 7. Dépenses courantes et caisse
 
 - La saisie directe au journal de caisse (dépense, recette, transfert, création de caisse) demande le droit **Saisir au journal de caisse**. Les autres rôles consultent le journal sans pouvoir y écrire.
-- **Aucune sortie ne dépasse le solde** de la caisse : saisie manuelle, transfert, budget, proforma et Camptrack sont tous contrôlés.
+> **Aucune sortie ne dépasse le solde** de la caisse : saisie manuelle, transfert, budget, proforma et Camptrack sont tous contrôlés.
 
 ---
 
 ## 8. Justificatifs
+
+```flux
+titre: Le justificatif d'une dépense
+Jour J | Dépense enregistrée : **Justificatif reçu ? Non** | bleu
+24 h ouvrées | Délai pour joindre le justificatif (lundi au vendredi) | ambre
+Au-delà | La dépense passe **en rouge** et figure dans l'état du soir | rouge
+Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
+```
 
 - Chaque dépense affiche une colonne **« Justificatif reçu : Oui / Non »**.
 - Le justificatif est attendu sous **24 h ouvrées** (du lundi au vendredi). Passé ce délai, la dépense passe **en rouge**.
