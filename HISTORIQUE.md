@@ -25,6 +25,26 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite 2) — Build Vercel : client Prisma régénéré à chaque build
+
+**Demande / Contexte**
+Build Vercel en échec après la liasse du bon de commande : `Type '"PROFORMA_FOURNISSEUR"' is not assignable to type 'TypeDocumentCommande …'` dans `app/api/fournisseurs/commandes/[commandeId]/documents/route.ts`.
+
+**Cause**
+Le schéma et la migration étaient bien dans le commit (`c931c21`). Mais Vercel réutilise en cache les dépendances (`node_modules`) d'un déploiement à l'autre, et le client Prisma n'est généré qu'au postinstall de `@prisma/client`. Avec le cache, il n'est pas régénéré : le client restait celui de l'ancien schéma, sans les nouvelles valeurs de l'enum. Le Docker du VPS n'était pas concerné (`RUN npx prisma generate` avant `npm run build`).
+
+**Modifications apportées**
+- `package.json` : script `build` = `prisma generate && next build`. Le client est toujours généré depuis le schéma du commit, cache ou pas. Dans le Docker, le client est simplement généré deux fois.
+
+**Erreurs rencontrées & solutions**
+- Voir la cause ci-dessus.
+
+**À tester / points d'attention**
+- Redéployer sur Vercel après avoir poussé ce changement. Contournement immédiat sans attendre : *Redeploy* en décochant « Use existing Build Cache ».
+- La migration `20261120100000_liasse_bon_commande` doit être appliquée à la base (`npx prisma migrate deploy`) avant la mise en ligne, sinon la fiche d'un bon de commande tombe en erreur (Vercel n'applique pas les migrations).
+
+---
+
 ## 2026-11-20 (suite) — Page Aide : schémas fléchés et mise en page en couleurs
 
 **Demande / Contexte**
