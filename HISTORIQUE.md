@@ -25,6 +25,43 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite 4) — Retards de paiement des prestataires : ligne rouge clignotante, notification, délais paramétrables
+
+**Demande / Contexte**
+Signaler les factures prestataires payées en retard, avec un bouton rouge clignotant (ou la ligne entière en rouge clignotant) et une notification. Délais par type : Fournisseur 30 jours, prestataire interne 7 jours, prestataire externe 3 jours, modifiables dans les paramètres.
+
+**Modifications apportées**
+- Base (`prisma/schema.prisma`, migration `20261121100000_retard_paiement_prestataires`, ajouts seulement) :
+  - `EntrepriseConfig.delaiPaiementFournisseur` (30), `delaiPaiementInterne` (7), `delaiPaiementExterne` (3) ;
+  - `FactureFournisseur.retardNotifieAt` : le retard n'est notifié qu'une fois par facture.
+- `lib/retardPaiement.ts` (nouveau, importable à l'écran) : `delaiPourType`, `etatEcheance` (échéance = date de la facture + délai, en jours calendaires ; en retard le lendemain de l'échéance ; « échéance proche » à 2 jours ou moins), `syntheseRetards` (par prestataire).
+- `lib/retardPaiementServeur.ts` (nouveau) : `getDelaisPaiement`, `notifierRetardsPaiement` (une notification récapitulative aux comptables et à la direction pour les factures passées en retard non encore notifiées, puis marquage).
+- `lib/taches/planificateur.ts` : tâche « retards-paiement » à 8 h, jours ouvrés (serveur avec `SCHEDULER_ENABLED=true`).
+- `lib/notifications/evenements.ts` : événement `FACTURE_PRESTATAIRE_RETARD` (canal réglable dans Paramètres → Notifications).
+- API :
+  - `GET /api/factures-fournisseurs` : chaque facture porte `echeance` ; `?retard=1` = factures en retard, toutes périodes ;
+  - `GET /api/fournisseurs` : `retard` par prestataire (nombre, montant, retard maximal) ;
+  - `GET /api/fournisseurs/[id]` : `echeance` sur chaque facture ;
+  - `PATCH /api/factures-fournisseurs/[id]` : date ou prestataire modifié → `retardNotifieAt` remis à zéro ;
+  - `/api/budget-config` : lecture et enregistrement des trois délais (1 à 365 jours) ; un changement remet les notifications à zéro pour les factures en attente.
+- Écran :
+  - `components/fournisseurs/RetardPaiement.tsx` (nouveau) : bouton rouge clignotant « En retard · n j — Payer » (ouvre *Appliquer le paiement*), mention d'échéance sous la date, pastille « n en retard · n j » ;
+  - `app/globals.css` : classe `ligne-retard` (ligne rouge, fond qui clignote doucement, liseré rouge à gauche, immobile si les animations sont réduites) ;
+  - liste des factures : carte rouge « En retard de paiement » (clic = filtre), filtre `?retard=1` (lien de la notification), lignes rouges et bouton clignotant ;
+  - liste des prestataires : bandeau rouge récapitulatif, ligne rouge et pastille clignotante qui ouvre les factures en retard du prestataire ;
+  - fiche du prestataire : bandeau et lignes rouges dans l'historique des factures ;
+  - Paramètres → Rôles : carte « Délais de paiement des prestataires (jours) ».
+- Guide (`public/docs/procedure-paiement-plateforme.md`) : section « Délais de paiement et retards » avec schéma.
+
+**Erreurs rencontrées & solutions**
+- `python` absent du poste → modification du schéma faite avec l'outil d'édition.
+- Page des factures statique : le filtre `?retard=1` est lu après le montage (sans `useSearchParams`, qui exigerait une Suspense au build).
+
+**À tester / points d'attention**
+- **Appliquer la migration avant de déployer** (`pnpm prisma migrate deploy`, jamais de reset) : sans les nouvelles colonnes, la lecture de la configuration échoue partout. La migration `20261120100000_liasse_bon_commande` doit l'être aussi.
+- Tests du calcul des échéances (7 cas : délais par type, jour d'échéance exact, payée/annulée, délais modifiés, synthèse) : OK. `tsc` et lint OK.
+- La notification part seulement depuis le serveur où le planificateur est actif (pas depuis Vercel ni un poste de développement). Le signal visuel, lui, est calculé à chaque affichage.
+
 ## 2026-11-20 (suite 3) — Cloche des notifications : plus discrète, sans cadre, badge non coupé
 
 **Demande / Contexte**

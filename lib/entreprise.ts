@@ -18,6 +18,9 @@ export const DEFAULT_ENTREPRISE: Omit<EntrepriseConfig, "updatedAt"> = {
     typesBudgetSigneRequis: [TypeBudget.CAMPAGNE, TypeBudget.MENSUEL],
     plafondPetiteDepense: new Prisma.Decimal(50000),
     liasseExigeePourSolde: true,
+    delaiPaiementFournisseur: 30,
+    delaiPaiementInterne: 7,
+    delaiPaiementExterne: 3,
 };
 
 /**

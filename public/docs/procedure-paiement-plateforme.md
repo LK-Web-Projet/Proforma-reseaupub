@@ -210,6 +210,30 @@ En un clic : sortie de caisse, ligne de budget consommée, dépense sur la profo
 
 **Liasse** : par défaut, le solde d'un bon exige aussi le bordereau de livraison signé (ou l'attestation de service fait) et la facture avec sa pièce. La proforma fournisseur et le BAT ne bloquent jamais le paiement. Ce réglage se change dans **Paramètres → Rôles** (« Exiger la liasse complète pour payer un bon de commande »). Le scan du bon signé reste toujours exigé.
 
+### Délais de paiement et retards
+
+Une facture « en attente » doit être payée dans un délai qui dépend du type du prestataire, compté **à partir de la date de la facture** :
+
+| Type de prestataire | Délai de paiement |
+|---|---|
+| Fournisseur | **30 jours** |
+| Prestataire interne | **7 jours** |
+| Prestataire externe | **3 jours** |
+
+```flux
+titre: Quand le délai est dépassé
+Plateforme | Sous la date : **échéance**, en orange 2 jours avant | ambre
+Plateforme | Délai dépassé : **ligne rouge** qui clignote, bouton rouge *En retard · n j — Payer* | rouge
+Plateforme | Le matin (jours ouvrés) : **notification** aux comptables et à la direction, une fois par facture | orange
+Comptable | Clique le bouton rouge : *Appliquer le paiement* ; la ligne redevient normale | vert
+```
+
+- **Liste des factures** : la carte rouge « En retard de paiement » donne le nombre et le montant, toutes périodes confondues ; un clic n'affiche que les factures en retard.
+- **Liste des prestataires** : un bandeau rouge résume les retards ; la ligne du prestataire est rouge, avec une pastille clignotante « n en retard · n j » qui ouvre ses factures en retard.
+- **Fiche du prestataire** : bandeau rouge et lignes rouges dans l'historique des factures.
+
+Les trois délais se changent dans **Paramètres → Rôles** (« Délais de paiement des prestataires »). Après un changement, les factures encore en retard sont de nouveau notifiées le lendemain matin. Le canal de la notification (email, application ou les deux) se règle dans **Paramètres → Notifications** (« Facture prestataire en retard de paiement »).
+
 ### L'avance
 
 Sur la fiche du bon, **Verser une avance** (comptable) : montant libre jusqu'au reste du bon, même fenêtre, preuve de paiement obligatoire. L'avance reste **« non justifiée »** tant que la liasse n'est pas complète. Le solde, payé ensuite depuis la facture, déduit les avances.

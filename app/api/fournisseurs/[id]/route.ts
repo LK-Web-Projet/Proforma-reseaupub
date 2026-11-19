@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
 import { safeCreatedById } from '@/lib/authz';
+import { etatEcheance } from '@/lib/retardPaiement';
+import { getDelaisPaiement } from '@/lib/retardPaiementServeur';
 
 // GET /api/fournisseurs/[id] - Récupérer un fournisseur par ID
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> },) {
@@ -26,7 +28,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     console.log(`[API] Successfully fetched fournisseur: ${fournisseur.entreprise}`);
-    return NextResponse.json(fournisseur);
+    // Échéance de paiement de chaque facture (délai selon le type du prestataire).
+    const delais = await getDelaisPaiement();
+    const maintenant = new Date();
+    return NextResponse.json({
+      ...fournisseur,
+      factures: fournisseur.factures.map((f) => ({
+        ...f,
+        echeance: etatEcheance(f, fournisseur.typeFournisseur, delais, maintenant),
+      })),
+    });
   } catch (error) {
     console.error(`[API] Critical error fetching fournisseur ${id}:`, error);
 

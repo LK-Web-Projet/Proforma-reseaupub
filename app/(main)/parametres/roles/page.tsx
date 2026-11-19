@@ -103,6 +103,9 @@ export default function RolesPage() {
   const [liasseExigee, setLiasseExigee] = useState(true);
   const [isSavingDepenses, setIsSavingDepenses] = useState(false);
   const [isSavingTypesSigne, setIsSavingTypesSigne] = useState(false);
+  // Délais de paiement des factures prestataires, selon le type (jours après la date de la facture).
+  const [delais, setDelais] = useState({ fournisseur: "", interne: "", externe: "" });
+  const [isSavingDelais, setIsSavingDelais] = useState(false);
 
   useEffect(() => {
     fetch("/api/budget-config")
@@ -113,9 +116,46 @@ export default function RolesPage() {
         setTypesSigne(data.typesBudgetSigneRequis ?? []);
         setPlafondPetite(String(data.plafondPetiteDepense ?? ""));
         setLiasseExigee(data.liasseExigeePourSolde ?? true);
+        if (data.delaisPaiement) {
+          setDelais({
+            fournisseur: String(data.delaisPaiement.fournisseur),
+            interne: String(data.delaisPaiement.interne),
+            externe: String(data.delaisPaiement.externe),
+          });
+        }
       })
       .catch(() => undefined);
   }, []);
+
+  const enregistrerDelais = async () => {
+    const valeurs = { fournisseur: Number(delais.fournisseur), interne: Number(delais.interne), externe: Number(delais.externe) };
+    if (Object.values(valeurs).some((v) => !Number.isInteger(v) || v < 1 || v > 365)) {
+      return void toast.error("Chaque délai doit être un nombre entier de jours, entre 1 et 365.");
+    }
+    setIsSavingDelais(true);
+    try {
+      const res = await fetch("/api/budget-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delaisPaiement: valeurs }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(typeof err.error === "string" ? err.error : "Erreur lors de l'enregistrement.");
+      }
+      const data = await res.json();
+      setDelais({
+        fournisseur: String(data.delaisPaiement.fournisseur),
+        interne: String(data.delaisPaiement.interne),
+        externe: String(data.delaisPaiement.externe),
+      });
+      toast.success("Délais de paiement enregistrés !");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erreur.");
+    } finally {
+      setIsSavingDelais(false);
+    }
+  };
 
   const enregistrerReglagesDepenses = async (reglages: { plafondPetiteDepense?: number; liasseExigeePourSolde?: boolean }) => {
     setIsSavingDepenses(true);
@@ -431,6 +471,44 @@ export default function RolesPage() {
             </span>
             <Switch checked={liasseExigee} disabled={isSavingDepenses} onCheckedChange={(on) => enregistrerReglagesDepenses({ liasseExigeePourSolde: on })} />
           </label>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardContent className="pt-6 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Délais de paiement des prestataires (jours)</p>
+            <p className="text-xs text-muted-foreground">
+              Une facture prestataire non payée est « en retard » quand ce délai, compté à partir de la date de la facture, est
+              dépassé : sa ligne passe en rouge avec un bouton clignotant (liste des factures, liste et fiche des prestataires), et
+              les comptables et la direction sont notifiés une fois, le matin (canal réglable dans Paramètres &gt; Notifications).
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-xl">
+            {(
+              [
+                { cle: "fournisseur", label: "Fournisseur" },
+                { cle: "interne", label: "Prestataire interne" },
+                { cle: "externe", label: "Prestataire externe" },
+              ] as const
+            ).map((d) => (
+              <div key={d.cle} className="space-y-1">
+                <Label htmlFor={`delai-${d.cle}`} className="text-xs">{d.label}</Label>
+                <Input
+                  id={`delai-${d.cle}`}
+                  type="number"
+                  min={1}
+                  max={365}
+                  step={1}
+                  value={delais[d.cle]}
+                  onChange={(e) => setDelais((prev) => ({ ...prev, [d.cle]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+          <Button onClick={enregistrerDelais} disabled={isSavingDelais}>
+            {isSavingDelais ? "..." : "Enregistrer les délais"}
+          </Button>
         </CardContent>
       </Card>
 
