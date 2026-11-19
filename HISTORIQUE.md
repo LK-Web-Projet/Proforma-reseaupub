@@ -36,7 +36,7 @@ Réduire la cloche, retirer le cadre carré arrondi, la rendre plus soignée ; l
   - couleur de la cloche : bleue sans non lues ; rouge et pleine avec des non lues ;
   - léger fond de couleur au survol et quand le menu est ouvert ;
   - badge plus petit (15 px), placé **dans** le bouton (`top-0.5 right-0.5`) avec un liseré de la couleur de la barre latérale.
-- `components/app-sidebar.tsx` : petit espace au-dessus de la ligne cloche + Recherche.
+- `components/app-sidebar.tsx` : petit espace au-dessus de la ligne ; la cloche passe **à droite** du bouton « Recherche », au bout de la ligne (plus cohérent).
 
 **Erreurs rencontrées & solutions**
 - Badge coupé : il dépassait du bouton (`-top-1.5`), or `SidebarContent` est une zone de défilement qui masque ce qui dépasse → badge ramené à l'intérieur du bouton.

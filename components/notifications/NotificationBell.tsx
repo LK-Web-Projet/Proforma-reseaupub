@@ -23,7 +23,7 @@ export interface NotificationItem {
 const RAFRAICHISSEMENT_MS = 60_000;
 
 /**
- * Cloche des notifications (barre latérale, à gauche de « Recherche ») : bleue sans non lues,
+ * Cloche des notifications (barre latérale, à droite de « Recherche ») : bleue sans non lues,
  * rouge et pleine avec la pastille du nombre de non lues ; rafraîchie chaque minute et au retour
  * sur l'onglet ; les 10 dernières dans un menu.
  */
