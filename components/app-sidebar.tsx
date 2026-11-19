@@ -252,7 +252,7 @@ export function AppSidebar() {
       <SidebarContent className="gap-2">
         {/* Cloche des notifications, bien visible à gauche de la Recherche (documents classés,
             résultats filtrés selon les droits). */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 pt-0.5">
           <NotificationBell />
           <SidebarMenu className="min-w-0 flex-1">
             <NavLink item={{ title: "Recherche", url: "/recherche", icon: Search }} />

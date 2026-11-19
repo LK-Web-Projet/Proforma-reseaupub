@@ -25,6 +25,27 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite 3) — Cloche des notifications : plus discrète, sans cadre, badge non coupé
+
+**Demande / Contexte**
+Réduire la cloche, retirer le cadre carré arrondi, la rendre plus soignée ; la cloche (son badge) passait sous le composant au-dessus.
+
+**Modifications apportées**
+- `components/notifications/NotificationBell.tsx` :
+  - bouton icône rond sans bordure ni fond (32 px au lieu de 36, icône 18 px) ;
+  - couleur de la cloche : bleue sans non lues ; rouge et pleine avec des non lues ;
+  - léger fond de couleur au survol et quand le menu est ouvert ;
+  - badge plus petit (15 px), placé **dans** le bouton (`top-0.5 right-0.5`) avec un liseré de la couleur de la barre latérale.
+- `components/app-sidebar.tsx` : petit espace au-dessus de la ligne cloche + Recherche.
+
+**Erreurs rencontrées & solutions**
+- Badge coupé : il dépassait du bouton (`-top-1.5`), or `SidebarContent` est une zone de défilement qui masque ce qui dépasse → badge ramené à l'intérieur du bouton.
+
+**À tester / points d'attention**
+- `tsc` et lint sans erreur. À vérifier à l'écran : cloche sans et avec notifications non lues, survol, menu ouvert, barre latérale repliée et mobile.
+
+---
+
 ## 2026-11-20 (suite 2) — Build Vercel : client Prisma régénéré à chaque build
 
 **Demande / Contexte**

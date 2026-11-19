@@ -79,21 +79,21 @@ export function NotificationBell() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
           title={nonLues ? `${nonLues} notification(s) non lue(s)` : 'Notifications'}
           className={cn(
-            'relative h-9 w-9 shrink-0 transition-colors',
-            nonLues > 0
-              ? 'border-red-300 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700'
-              : 'border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700'
+            'relative h-8 w-8 shrink-0 rounded-full transition-colors',
+            nonLues > 0 ? 'text-red-600 hover:bg-red-50 hover:text-red-700' : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700',
+            open && (nonLues > 0 ? 'bg-red-50' : 'bg-blue-50')
           )}
           aria-label={`Notifications${nonLues ? ` (${nonLues} non lues)` : ''}`}
         >
-          {/* Non lues : cloche rouge pleine ; sinon bleue. */}
-          <Bell className={cn('h-5 w-5', nonLues > 0 && 'fill-current')} />
+          {/* Non lues : cloche rouge pleine ; sinon bleue. Badge DANS le bouton : la zone de défilement
+              de la barre latérale coupe tout ce qui dépasse. */}
+          <Bell className={cn('h-[18px] w-[18px]', nonLues > 0 && 'fill-current')} />
           {nonLues > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-[18px] text-center ring-2 ring-white">
+            <span className="pointer-events-none absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-red-600 text-white text-[9px] font-bold leading-[15px] text-center ring-2 ring-sidebar">
               {nonLues > 99 ? '99+' : nonLues}
             </span>
           )}
