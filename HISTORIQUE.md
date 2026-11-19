@@ -25,6 +25,29 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite 6) — Liste des budgets épurée : budgets actifs par défaut, cartes de statut cliquables, mini-cartes de type
+
+**Demande / Contexte**
+La liste des budgets (Budget → Demandes) affichait tous les budgets mélangés. Il fallait n'afficher par défaut que ceux qui sont validés, partiellement validés ou en cours, rendre les cartes du haut cliquables pour afficher les autres statuts, et ajouter à côté de « Filtres » des mini-cartes pour filtrer par type (mensuel, ponctuel, campagne, tiers).
+
+**Modifications apportées**
+- `app/(main)/budget/demandes/page.tsx` :
+  - les 4 cartes de synthèse sont remplacées par 5 **cartes de statut cliquables** : *Budgets actifs* (validés, partiellement validés, en cours), *En attente de validation* (soumis), *Soldés / clôturés*, *Rejetés*, *Tous les budgets*. Chacune affiche le nombre de budgets et le montant demandé ; la carte des actifs affiche aussi le montant dépensé ;
+  - **par défaut, seule la carte « Budgets actifs » est sélectionnée** ;
+  - **mini-cartes de type** à côté du bouton « Filtres » : *Tous types*, *Mensuel*, *Ponctuel*, *Campagne*, *Tiers*, chacune avec son nombre de budgets dans le statut choisi. Un second clic retire le filtre. Les compteurs des cartes de statut tiennent compte du type choisi ;
+  - une pastille ambre (rouge s'il y a des retards) « n sans justificatif » remplace l'ancienne carte. Un clic filtre les budgets concernés ;
+  - les listes déroulantes *Statut* et *Type* du panneau « Filtres » sont retirées, car remplacées par les cartes. Le panneau garde le mois et les deux interrupteurs ;
+  - le statut et le type sont filtrés à l'écran, à partir d'une seule requête. Les autres filtres sont toujours envoyés au serveur ;
+  - les paramètres d'URL `?statut=`, `?type=`, `?sansJustificatif=1` et `?depassementEnAttente=1` sont lus à l'ouverture. Le lien de l'e-mail « dépenses sans justificatif » ouvre donc la liste filtrée, sur tous les statuts ;
+  - si aucun budget ne correspond, le message le dit et propose « Voir tous les budgets ».
+- L'API `/api/demandes-budget` n'est pas modifiée.
+
+**Erreurs rencontrées & solutions**
+- Aucune. `tsc` et lint OK.
+
+**À tester / points d'attention**
+- Vérifier à l'écran les cartes et les mini-cartes, sur ordinateur et sur mobile.
+
 ## 2026-11-20 (suite 5) — PDF du bon de commande : plus de chevauchement, mise en page aérée
 
 **Demande / Contexte**

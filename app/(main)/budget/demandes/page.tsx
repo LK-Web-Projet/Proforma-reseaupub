@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DemandeBudgetStatusBadge, DemandeBudgetStatus } from '@/components/DemandeBudgetStatusBadge';
@@ -12,7 +11,21 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
 import { TYPE_BUDGET_VALUES, TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel } from '@/lib/budgetTypes';
-import { Plus, Eye, Wallet, CheckCircle2, Clock, X, SlidersHorizontal, ChevronDown, FileQuestion, FileWarning, TrendingUp } from 'lucide-react';
+import {
+  Plus,
+  Eye,
+  Wallet,
+  CheckCircle2,
+  Clock,
+  X,
+  SlidersHorizontal,
+  ChevronDown,
+  FileQuestion,
+  FileWarning,
+  TrendingUp,
+  Archive,
+  XCircle,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -41,18 +54,74 @@ interface DemandeBudget {
 const formatMontant = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value);
 
-const STATUT_OPTIONS: { value: DemandeBudgetStatus; label: string }[] = [
-  { value: 'SOUMISE', label: 'Soumise' },
-  { value: 'VALIDATION_PARTIELLE', label: 'Validation partielle' },
-  { value: 'VALIDEE', label: 'Validée' },
-  { value: 'EN_COURS', label: 'En cours' },
-  { value: 'REJETEE', label: 'Rejetée' },
-  { value: 'PAYEE', label: 'Soldée / clôturée' },
+// Groupes de statut affichés en cartes cliquables. Par défaut, seuls les budgets « actifs »
+// (dépensables) sont listés ; les autres groupes s'affichent en cliquant sur leur carte.
+type GroupeStatut = 'ACTIFS' | 'SOUMISE' | 'PAYEE' | 'REJETEE' | 'TOUS';
+
+const GROUPES: {
+  value: GroupeStatut;
+  label: string;
+  detail: string;
+  statuts: DemandeBudgetStatus[] | null;
+  icon: React.ElementType;
+  couleur: { bordure: string; icone: string; anneau: string };
+}[] = [
+  {
+    value: 'ACTIFS',
+    label: 'Budgets actifs',
+    detail: 'Validés, partiellement validés ou en cours',
+    statuts: ['VALIDEE', 'VALIDATION_PARTIELLE', 'EN_COURS'],
+    icon: CheckCircle2,
+    couleur: { bordure: 'border-t-blue-500', icone: 'bg-blue-100 text-blue-700', anneau: 'ring-blue-500 bg-blue-50/40' },
+  },
+  {
+    value: 'SOUMISE',
+    label: 'En attente de validation',
+    detail: 'Soumis, pas encore accordés',
+    statuts: ['SOUMISE'],
+    icon: Clock,
+    couleur: { bordure: 'border-t-orange-500', icone: 'bg-orange-100 text-orange-700', anneau: 'ring-orange-500 bg-orange-50/40' },
+  },
+  {
+    value: 'PAYEE',
+    label: 'Soldés / clôturés',
+    detail: 'Entièrement consommés ou clôturés',
+    statuts: ['PAYEE'],
+    icon: Archive,
+    couleur: { bordure: 'border-t-green-500', icone: 'bg-green-100 text-green-700', anneau: 'ring-green-500 bg-green-50/40' },
+  },
+  {
+    value: 'REJETEE',
+    label: 'Rejetés',
+    detail: 'Refusés à la validation',
+    statuts: ['REJETEE'],
+    icon: XCircle,
+    couleur: { bordure: 'border-t-red-500', icone: 'bg-red-100 text-red-700', anneau: 'ring-red-500 bg-red-50/40' },
+  },
+  {
+    value: 'TOUS',
+    label: 'Tous les budgets',
+    detail: 'Tous statuts confondus',
+    statuts: null,
+    icon: Wallet,
+    couleur: { bordure: 'border-t-slate-500', icone: 'bg-slate-100 text-slate-700', anneau: 'ring-slate-500 bg-slate-50/60' },
+  },
 ];
 
+const dansGroupe = (groupe: GroupeStatut, statut: DemandeBudgetStatus) => {
+  const statuts = GROUPES.find((g) => g.value === groupe)?.statuts;
+  return !statuts || statuts.includes(statut);
+};
+
+/** Groupe correspondant à un statut passé dans l'URL (?statut=SOUMISE…). */
+const groupeDuStatut = (statut: string): GroupeStatut | null => {
+  const g = GROUPES.find((x) => x.statuts?.includes(statut as DemandeBudgetStatus));
+  return g ? g.value : null;
+};
+
+// Filtres envoyés au serveur ; le statut et le type sont filtrés à l'écran pour que les
+// cartes et les mini-cartes affichent leurs compteurs sans requête supplémentaire.
 const defaultFilters = {
-  statut: '',
-  type: '',
   mois: '',
   departement: '',
   sansJustificatif: false,
@@ -63,17 +132,40 @@ export default function DemandesBudgetListPage() {
   const [demandes, setDemandes] = useState<DemandeBudget[]>([]);
   const [role, setRole] = useState({ isImplique: false });
   const [filters, setFilters] = useState(defaultFilters);
+  const [groupe, setGroupe] = useState<GroupeStatut>('ACTIFS');
+  const [typeFiltre, setTypeFiltre] = useState<TypeBudgetValue | ''>('');
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [paramsLus, setParamsLus] = useState(false);
   const router = useRouter();
 
   const isImplique = role.isImplique;
 
+  // Liens entrants (ex. e-mail « dépenses sans justificatif » → ?sansJustificatif=1).
+  // Lu au montage plutôt qu'avec useSearchParams (pas de Suspense requise au build).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const statut = p.get('statut');
+    const type = p.get('type');
+    if (statut) {
+      const g = groupeDuStatut(statut);
+      if (g) setGroupe(g);
+    }
+    if (type && (TYPE_BUDGET_VALUES as readonly string[]).includes(type)) setTypeFiltre(type as TypeBudgetValue);
+    if (p.get('sansJustificatif') === '1' || p.get('depassementEnAttente') === '1') {
+      setGroupe((g) => (statut ? g : 'TOUS'));
+      setFilters((f) => ({
+        ...f,
+        sansJustificatif: p.get('sansJustificatif') === '1',
+        depassementEnAttente: p.get('depassementEnAttente') === '1',
+      }));
+    }
+    setParamsLus(true);
+  }, []);
+
   const fetchDemandes = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filters.statut) params.append('statut', filters.statut);
-    if (filters.type) params.append('type', filters.type);
     if (filters.mois) params.append('mois', filters.mois);
     if (filters.departement) params.append('departement', filters.departement);
     if (filters.sansJustificatif) params.append('sansJustificatif', '1');
@@ -99,23 +191,16 @@ export default function DemandesBudgetListPage() {
   }, []);
 
   useEffect(() => {
-    fetchDemandes();
-  }, [fetchDemandes]);
+    if (paramsLus) fetchDemandes();
+  }, [fetchDemandes, paramsLus]);
 
-  const resetFilters = () => setFilters(defaultFilters);
+  const resetFilters = () => {
+    setFilters(defaultFilters);
+    setTypeFiltre('');
+  };
 
   const activeFilterChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
-    if (filters.statut) {
-      chips.push({
-        key: 'statut',
-        label: STATUT_OPTIONS.find((s) => s.value === filters.statut)?.label ?? filters.statut,
-        onRemove: () => setFilters((p) => ({ ...p, statut: '' })),
-      });
-    }
-    if (filters.type) {
-      chips.push({ key: 'type', label: typeBudgetLabel(filters.type), onRemove: () => setFilters((p) => ({ ...p, type: '' })) });
-    }
     if (filters.mois) {
       chips.push({
         key: 'mois',
@@ -135,22 +220,51 @@ export default function DemandesBudgetListPage() {
     return chips;
   }, [filters]);
 
-  const summary = useMemo(() => {
-    const total = demandes.reduce((sum, d) => sum + Number(d.montantTotal), 0);
-    const soumises = demandes.filter((d) => d.statut === 'SOUMISE').reduce((sum, d) => sum + Number(d.montantTotal), 0);
-    const consomme = demandes.reduce((sum, d) => sum + Number(d.montantConsomme), 0);
-    const sansJustificatif = demandes.reduce((sum, d) => sum + d.nbDepensesSansJustificatif, 0);
-    const justificatifsEnRetard = demandes.reduce((sum, d) => sum + (d.nbJustificatifsEnRetard ?? 0), 0);
-    return { total, soumises, consomme, sansJustificatif, justificatifsEnRetard, count: demandes.length };
-  }, [demandes]);
+  // Compteurs des cartes de statut : tiennent compte du type choisi.
+  const parGroupe = useMemo(() => {
+    const res = {} as Record<GroupeStatut, { count: number; montant: number; consomme: number }>;
+    for (const g of GROUPES) {
+      const liste = demandes.filter((d) => dansGroupe(g.value, d.statut) && (!typeFiltre || d.type === typeFiltre));
+      res[g.value] = {
+        count: liste.length,
+        montant: liste.reduce((s, d) => s + Number(d.montantTotal), 0),
+        consomme: liste.reduce((s, d) => s + Number(d.montantConsomme), 0),
+      };
+    }
+    return res;
+  }, [demandes, typeFiltre]);
+
+  // Budgets du groupe de statut choisi (avant le filtre de type) : base des mini-cartes de type.
+  const duGroupe = useMemo(() => demandes.filter((d) => dansGroupe(groupe, d.statut)), [demandes, groupe]);
+
+  const parType = useMemo(() => {
+    const res = {} as Record<TypeBudgetValue, number>;
+    for (const t of TYPE_BUDGET_VALUES) res[t] = duGroupe.filter((d) => d.type === t).length;
+    return res;
+  }, [duGroupe]);
+
+  const visibles = useMemo(
+    () => (typeFiltre ? duGroupe.filter((d) => d.type === typeFiltre) : duGroupe),
+    [duGroupe, typeFiltre]
+  );
+
+  const sansJustif = useMemo(() => {
+    const nb = visibles.reduce((s, d) => s + d.nbDepensesSansJustificatif, 0);
+    const retard = visibles.reduce((s, d) => s + (d.nbJustificatifsEnRetard ?? 0), 0);
+    return { nb, retard };
+  }, [visibles]);
+
+  const groupeCourant = GROUPES.find((g) => g.value === groupe)!;
+  const nbColonnes = isImplique ? 9 : 8;
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold">{isImplique ? 'Demandes de Budget' : 'Mes Demandes de Budget'}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {summary.count} demande(s){isImplique ? ' — toutes les demandes' : ''}
+            {visibles.length} budget(s) affiché(s) — {groupeCourant.label.toLowerCase()}
+            {typeFiltre ? ` · ${typeBudgetLabel(typeFiltre)}` : ''}
           </p>
         </div>
         <Button onClick={() => router.push('/budget/nouvelle-demande')}>
@@ -159,46 +273,41 @@ export default function DemandesBudgetListPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="border-t-4 border-t-blue-500">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Total demandé</p>
-              <p className="text-xl font-bold">{formatMontant(summary.total)}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-blue-100 text-blue-700"><Wallet className="w-5 h-5" /></div>
-          </CardContent>
-        </Card>
-        <Card className="border-t-4 border-t-orange-500">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">En attente de validation</p>
-              <p className="text-xl font-bold">{formatMontant(summary.soumises)}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-orange-100 text-orange-700"><Clock className="w-5 h-5" /></div>
-          </CardContent>
-        </Card>
-        <Card className="border-t-4 border-t-green-500">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Dépensé (journal de caisse)</p>
-              <p className="text-xl font-bold">{formatMontant(summary.consomme)}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-green-100 text-green-700"><CheckCircle2 className="w-5 h-5" /></div>
-          </CardContent>
-        </Card>
-        <Card className="border-t-4 border-t-amber-500">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Dépenses sans justificatif</p>
-              <p className="text-xl font-bold">{summary.sansJustificatif}</p>
-              {summary.justificatifsEnRetard > 0 && (
-                <p className="text-xs font-medium text-red-600">dont {summary.justificatifsEnRetard} en retard (+ de 24 h ouvrées)</p>
+      {/* Cartes de statut : cliquer sur une carte affiche les budgets de ce groupe. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6" role="group" aria-label="Statut des budgets">
+        {GROUPES.map((g) => {
+          const Icon = g.icon;
+          const actif = groupe === g.value;
+          const stats = parGroupe[g.value];
+          return (
+            <button
+              key={g.value}
+              type="button"
+              onClick={() => setGroupe(g.value)}
+              aria-pressed={actif}
+              className={cn(
+                'text-left rounded-xl border border-t-4 bg-card shadow-sm transition-all',
+                'hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                g.couleur.bordure,
+                actif ? cn('ring-2 shadow-md', g.couleur.anneau) : 'opacity-80 hover:opacity-100'
               )}
-            </div>
-            <div className="p-3 rounded-xl bg-amber-100 text-amber-700"><FileWarning className="w-5 h-5" /></div>
-          </CardContent>
-        </Card>
+            >
+              <div className="p-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={cn('text-sm', actif ? 'font-semibold text-foreground' : 'text-muted-foreground')}>{g.label}</p>
+                  <p className="text-2xl font-bold leading-tight mt-1">{stats.count}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{formatMontant(stats.montant)}</p>
+                  {g.value === 'ACTIFS' && (
+                    <p className="text-xs text-green-700 mt-0.5 truncate">Dépensé : {formatMontant(stats.consomme)}</p>
+                  )}
+                </div>
+                <div className={cn('p-2.5 rounded-xl shrink-0', g.couleur.icone)}>
+                  <Icon className="w-5 h-5" />
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       <div className="mb-6">
@@ -211,6 +320,60 @@ export default function DemandesBudgetListPage() {
             )}
             <ChevronDown className={cn('h-4 w-4 transition-transform', showFilters && 'rotate-180')} />
           </Button>
+
+          {/* Mini-cartes de type : un clic filtre, un second clic retire le filtre. */}
+          <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label="Type de budget">
+            <button
+              type="button"
+              onClick={() => setTypeFiltre('')}
+              aria-pressed={!typeFiltre}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors',
+                !typeFiltre ? 'bg-foreground text-background border-foreground' : 'bg-card hover:bg-muted'
+              )}
+            >
+              Tous types
+              <span className={cn('text-xs tabular-nums', !typeFiltre ? 'opacity-80' : 'text-muted-foreground')}>{duGroupe.length}</span>
+            </button>
+            {TYPE_BUDGET_VALUES.map((t) => {
+              const actif = typeFiltre === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFiltre(actif ? '' : t)}
+                  aria-pressed={actif}
+                  title={TYPE_BUDGET_META[t].description}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors',
+                    actif ? cn(TYPE_BUDGET_META[t].className, 'ring-1 ring-current font-medium') : 'bg-card hover:bg-muted',
+                    parType[t] === 0 && !actif && 'text-muted-foreground'
+                  )}
+                >
+                  {TYPE_BUDGET_META[t].label}
+                  <span className={cn('text-xs tabular-nums', !actif && 'text-muted-foreground')}>{parType[t]}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {(sansJustif.nb > 0 || filters.sansJustificatif) && (
+            <button
+              type="button"
+              onClick={() => setFilters((p) => ({ ...p, sansJustificatif: !p.sansJustificatif }))}
+              aria-pressed={filters.sansJustificatif}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors',
+                sansJustif.retard > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800',
+                filters.sansJustificatif && 'ring-1 ring-current font-medium'
+              )}
+              title="Afficher seulement les budgets ayant des dépenses sans justificatif"
+            >
+              <FileWarning className="h-3.5 w-3.5" />
+              {sansJustif.nb} sans justificatif
+              {sansJustif.retard > 0 && <span className="text-xs">({sansJustif.retard} en retard)</span>}
+            </button>
+          )}
 
           {activeFilterChips.map((chip) => (
             <Badge key={chip.key} variant="outline" className="gap-1.5 py-1.5 pl-3 pr-2 font-normal">
@@ -226,7 +389,7 @@ export default function DemandesBudgetListPage() {
             </Badge>
           ))}
 
-          {activeFilterChips.length > 0 && (
+          {(activeFilterChips.length > 0 || typeFiltre) && (
             <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground">
               Tout effacer
             </Button>
@@ -235,23 +398,7 @@ export default function DemandesBudgetListPage() {
 
         {showFilters && (
           <Card className="mt-3">
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-6 items-center">
-              <Select value={filters.statut} onValueChange={(value) => setFilters((prev) => ({ ...prev, statut: value }))}>
-                <SelectTrigger><SelectValue placeholder="Tous les statuts" /></SelectTrigger>
-                <SelectContent>
-                  {STATUT_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={filters.type} onValueChange={(value) => setFilters((prev) => ({ ...prev, type: value }))}>
-                <SelectTrigger><SelectValue placeholder="Tous les types" /></SelectTrigger>
-                <SelectContent>
-                  {TYPE_BUDGET_VALUES.map((t) => (
-                    <SelectItem key={t} value={t}>{TYPE_BUDGET_META[t].label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 items-center">
               <Input
                 type="month"
                 value={filters.mois}
@@ -277,7 +424,6 @@ export default function DemandesBudgetListPage() {
           </Card>
         )}
       </div>
-
       <div className="rounded-md border bg-white overflow-x-auto">
         <Table>
           <TableHeader>
@@ -295,13 +441,31 @@ export default function DemandesBudgetListPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={isImplique ? 9 : 8} className="h-24 text-center">Chargement...</TableCell></TableRow>
-            ) : demandes.length === 0 ? (
+              <TableRow><TableCell colSpan={nbColonnes} className="h-24 text-center">Chargement...</TableCell></TableRow>
+            ) : visibles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isImplique ? 9 : 8} className="h-40 text-center">
+                <TableCell colSpan={nbColonnes} className="h-40 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <FileQuestion className="h-8 w-8" />
-                    {isImplique ? (
+                    {demandes.length > 0 ? (
+                      <>
+                        <p>
+                          Aucun budget « {groupeCourant.label.toLowerCase()} »
+                          {typeFiltre ? ` de type ${typeBudgetLabel(typeFiltre).toLowerCase()}` : ''}.
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2"
+                          onClick={() => {
+                            setGroupe('TOUS');
+                            setTypeFiltre('');
+                          }}
+                        >
+                          Voir tous les budgets
+                        </Button>
+                      </>
+                    ) : isImplique ? (
                       <p>Aucune demande de budget trouvée.</p>
                     ) : (
                       <>
@@ -315,7 +479,7 @@ export default function DemandesBudgetListPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              demandes.map((demande) => (
+              visibles.map((demande) => (
                 <TableRow key={demande.id} className="hover:bg-muted/30">
                   <TableCell className="font-mono text-sm">{demande.numero}</TableCell>
                   <TableCell>
