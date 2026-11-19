@@ -70,6 +70,8 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         fournisseur: true,
+        // Bon de commande réglé par la facture (colonne de la liste des factures).
+        commande: { select: { id: true, numero: true, fournisseurId: true } },
       },
       orderBy: {
         date: "desc",

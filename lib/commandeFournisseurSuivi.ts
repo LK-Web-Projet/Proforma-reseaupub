@@ -78,7 +78,7 @@ export async function controlerPaiementCommande(
   }
   let facture: { id: string } | null = null;
   if (opts.nature === NatureDepense.SOLDE) {
-    // Liasse complète (bordereau ou attestation + rapport) exigée par défaut ; réglable dans
+    // Liasse complète (bordereau signé ou attestation + facture) exigée par défaut ; réglable dans
     // Paramètres → Rôles. La facture du bon reste exigée dans tous les cas (ci-dessous).
     const config = await tx.entrepriseConfig.findUnique({ where: { id: "singleton" }, select: { liasseExigeePourSolde: true } });
     const liasseExigee = config?.liasseExigeePourSolde ?? true;

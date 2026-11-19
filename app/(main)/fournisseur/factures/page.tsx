@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -35,6 +36,8 @@ interface FactureFournisseur {
   fournisseurId: string;
   fournisseur: Fournisseur;
   commandeId?: string | null;
+  /** Bon de commande réglé par la facture (enregistrée depuis sa fiche ou rattachée ici). */
+  commande?: { id: string; numero: string; fournisseurId: string } | null;
   ligneBudgetId?: string | null;
 }
 
@@ -352,6 +355,7 @@ export default function FacturesListPage() {
             <TableRow className="bg-muted/40">
               <TableHead>Prestataire</TableHead>
               <TableHead>Référence</TableHead>
+              <TableHead>Bon de commande</TableHead>
               <TableHead>Date</TableHead>
               <TableHead className="text-right">Montant</TableHead>
               <TableHead>Statut</TableHead>
@@ -361,9 +365,9 @@ export default function FacturesListPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Chargement...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-24 text-center">Chargement...</TableCell></TableRow>
             ) : factures.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Aucune facture trouvée.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucune facture trouvée.</TableCell></TableRow>
             ) : (
               factures.map((facture) => {
                 const isLocked = facture.status === 'PAYEE' || facture.status === 'ANNULEE';
@@ -378,6 +382,18 @@ export default function FacturesListPage() {
                     </div>
                   </TableCell>
                   <TableCell>{facture.reference}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {facture.commande ? (
+                      <Link
+                        href={`/fournisseur/${facture.commande.fournisseurId}/commandes/${facture.commande.id}`}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        {facture.commande.numero}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{format(new Date(facture.date), "dd/MM/yyyy")}</TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(facture.montant)}</TableCell>
                   <TableCell>

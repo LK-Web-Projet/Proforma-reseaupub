@@ -6,8 +6,10 @@
 export const DOCUMENT_UPLOAD_TYPES = ["DEVIS", "FACTURE", "BON_COMMANDE", "BUDGET_SIGNE", "AUTRE"] as const;
 export type DocumentUploadType = (typeof DOCUMENT_UPLOAD_TYPES)[number];
 
+// DEVIS = proforma fournisseur (devis du fournisseur, obtenu avant le budget) : son fournisseur est
+// demandé à l'upload et inscrit dans le nom du fichier, pour la reprendre dans la liasse d'un bon.
 export const ATTACHMENT_TYPE_LABELS: Record<string, string> = {
-  DEVIS: "Devis",
+  DEVIS: "Proforma fournisseur (devis)",
   FACTURE: "Facture / Preuve de dépense",
   BON_COMMANDE: "Bon de commande",
   PREUVE_PAIEMENT: "Preuve de décaissement",

@@ -372,7 +372,8 @@ model CommandeFournisseur {
 }
 
 // Pièces de la « liasse » d'un bon de commande (procédure, section 4) : BC signé par la DG,
-// bordereau de livraison ou attestation de service fait, facture, rapport.
+// proforma fournisseur, BAT signé (facultatif), bordereau de livraison signé ou attestation de
+// service fait, facture, autres documents (libellé précisé).
 model CommandeFournisseurDocument {
   id             String               @id @default(uuid())
   commandeId     String
@@ -380,6 +381,8 @@ model CommandeFournisseurDocument {
   url            String
   fileName       String
   fileType       String
+  // Précision du document (obligatoire pour « Autre ») ou origine (proforma reprise du budget).
+  libelle        String?
   createdByEmail String
   createdAt      DateTime             @default(now())
   commande       CommandeFournisseur  @relation(fields: [commandeId], references: [id], onDelete: Cascade)
@@ -387,10 +390,12 @@ model CommandeFournisseurDocument {
 
 enum TypeDocumentCommande {
   BC_SIGNE
+  PROFORMA_FOURNISSEUR
+  BAT_SIGNE
   BORDEREAU_LIVRAISON
   ATTESTATION_SERVICE_FAIT
   FACTURE
-  RAPPORT
+  RAPPORT // plus demandé ; conservé pour les pièces déjà jointes
   AUTRE
 }
 

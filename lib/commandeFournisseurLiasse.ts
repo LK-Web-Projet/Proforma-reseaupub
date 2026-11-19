@@ -1,30 +1,44 @@
 // Liasse d'un bon de commande fournisseur (procédure de paiement, section 4) — calculs purs,
-// importables côté navigateur. La liasse est complète avec :
-//   1. le bon de commande signé par la DG ;
-//   2. le bordereau de livraison OU l'attestation de service fait ;
-//   3. la facture (document « Facture », ou facture fournisseur rattachée avec sa pièce) ;
-//   4. le rapport.
-// L'avance est versée sur BC signé ; elle reste « non justifiée » (rouge) tant que la liasse est
-// incomplète, et le solde n'est payable qu'avec la liasse complète.
+// importables côté navigateur. Pièces de la liasse :
+//   1. le bon de commande signé par la DG (requis : aucun paiement sans lui) ;
+//   2. la proforma fournisseur (attendue, en rouge si absente, mais ne bloque pas le paiement) :
+//      jointe au bon, ou reprise des proformas fournisseur jointes au budget ;
+//   3. le BAT signé (facultatif) ;
+//   4. le bordereau de livraison signé OU l'attestation de service fait (requis pour le solde) ;
+//   5. la facture (facture fournisseur rattachée avec sa pièce, ou document « Facture ») (requise
+//      pour le solde) ;
+//   + autant de documents « Autre » que nécessaire (libellé précisé). Le rapport n'est plus demandé.
+// L'avance est versée sur BC signé ; elle reste « non justifiée » (rouge) tant que les pièces
+// requises du solde manquent, et le solde n'est payable qu'avec elles (réglage « liasse exigée »).
 
+/** Types proposés à l'ajout d'une pièce (RAPPORT n'est plus proposé). */
 export const TYPES_DOCUMENT_COMMANDE = [
   "BC_SIGNE",
+  "PROFORMA_FOURNISSEUR",
+  "BAT_SIGNE",
   "BORDEREAU_LIVRAISON",
   "ATTESTATION_SERVICE_FAIT",
   "FACTURE",
-  "RAPPORT",
   "AUTRE",
 ] as const;
-export type TypeDocumentCommandeValue = (typeof TYPES_DOCUMENT_COMMANDE)[number];
+export type TypeDocumentCommandeValue = (typeof TYPES_DOCUMENT_COMMANDE)[number] | "RAPPORT";
 
 export const TYPE_DOCUMENT_COMMANDE_LABELS: Record<TypeDocumentCommandeValue, string> = {
   BC_SIGNE: "Bon de commande signé (DG)",
-  BORDEREAU_LIVRAISON: "Bordereau de livraison",
+  PROFORMA_FOURNISSEUR: "Proforma fournisseur",
+  BAT_SIGNE: "BAT signé",
+  BORDEREAU_LIVRAISON: "Bordereau de livraison signé",
   ATTESTATION_SERVICE_FAIT: "Attestation de service fait",
   FACTURE: "Facture",
-  RAPPORT: "Rapport",
-  AUTRE: "Autre",
+  RAPPORT: "Rapport (ancien)",
+  AUTRE: "Autre document",
 };
+
+/** Libellé affiché d'une pièce : son type, précisé par le libellé pour « Autre ». */
+export function libellePiece(d: { kind: string; libelle?: string | null }): string {
+  const type = TYPE_DOCUMENT_COMMANDE_LABELS[d.kind as TypeDocumentCommandeValue] ?? d.kind;
+  return d.libelle ? (d.kind === "AUTRE" ? d.libelle : `${type} — ${d.libelle}`) : type;
+}
 
 /** Statuts suivants autorisés d'un bon de commande (aucun retour en arrière). VALIDEE = signé par la DG. */
 export const TRANSITIONS_COMMANDE: Record<string, readonly string[]> = {
@@ -43,13 +57,21 @@ export const NATURE_DEPENSE_LABELS: Record<string, string> = {
 
 export interface EtatLiasse {
   bcSigne: boolean;
-  livraison: boolean; // bordereau OU attestation de service fait
+  proformaFournisseur: boolean;
+  bat: boolean; // facultatif
+  livraison: boolean; // bordereau signé OU attestation de service fait
   facture: boolean;
-  rapport: boolean;
+  /** Pièces requises pour le solde présentes : BC signé, livraison, facture. */
   complete: boolean;
-  nbPieces: number; // sur 4
+  /** Pièces attendues présentes (BC signé, proforma fournisseur, livraison, facture), sur NB_PIECES_ATTENDUES. */
+  nbPieces: number;
+  /** Pièces requises pour le solde qui manquent (messages de blocage). */
   manquantes: string[];
+  /** Toutes les pièces attendues qui manquent (y compris la proforma fournisseur) : rappels en rouge. */
+  aJoindre: string[];
 }
+
+export const NB_PIECES_ATTENDUES = 4;
 
 export function etatLiasse(
   documents: { kind: string }[],
@@ -57,23 +79,31 @@ export function etatLiasse(
 ): EtatLiasse {
   const a = (kind: string) => documents.some((d) => d.kind === kind);
   const bcSigne = a("BC_SIGNE");
+  const proformaFournisseur = a("PROFORMA_FOURNISSEUR");
+  const bat = a("BAT_SIGNE");
   const livraison = a("BORDEREAU_LIVRAISON") || a("ATTESTATION_SERVICE_FAIT");
   const facture = a("FACTURE") || factures.some((f) => !!f.pieceJointe && f.status !== "ANNULEE");
-  const rapport = a("RAPPORT");
   const manquantes = [
     !bcSigne && "bon de commande signé",
-    !livraison && "bordereau de livraison ou attestation de service fait",
+    !livraison && "bordereau de livraison signé ou attestation de service fait",
     !facture && "facture",
-    !rapport && "rapport",
+  ].filter(Boolean) as string[];
+  const aJoindre = [
+    !bcSigne && "bon de commande signé",
+    !proformaFournisseur && "proforma fournisseur",
+    !livraison && "bordereau de livraison signé ou attestation de service fait",
+    !facture && "facture",
   ].filter(Boolean) as string[];
   return {
     bcSigne,
+    proformaFournisseur,
+    bat,
     livraison,
     facture,
-    rapport,
     complete: manquantes.length === 0,
-    nbPieces: 4 - manquantes.length,
+    nbPieces: NB_PIECES_ATTENDUES - aJoindre.length,
     manquantes,
+    aJoindre,
   };
 }
 

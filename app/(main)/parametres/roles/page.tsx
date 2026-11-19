@@ -424,8 +424,9 @@ export default function RolesPage() {
             <span>
               <span className="block text-sm font-medium">Exiger la liasse complète pour payer un bon de commande</span>
               <span className="block text-xs text-muted-foreground">
-                Activé : le solde d&apos;un bon exige le bordereau de livraison (ou l&apos;attestation de service fait) et le rapport, en plus de la
-                facture. Désactivé : la facture suffit. Le scan du bon signé reste toujours exigé.
+                Activé : le solde d&apos;un bon exige le bordereau de livraison signé (ou l&apos;attestation de service fait), en plus de la
+                facture. Désactivé : la facture suffit. Le scan du bon signé reste toujours exigé. La proforma fournisseur et le BAT
+                ne bloquent jamais le paiement.
               </span>
             </span>
             <Switch checked={liasseExigee} disabled={isSavingDepenses} onCheckedChange={(on) => enregistrerReglagesDepenses({ liasseExigeePourSolde: on })} />

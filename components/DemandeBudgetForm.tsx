@@ -61,6 +61,8 @@ interface ExistingAttachment {
 interface DocumentRow {
   type: DocumentUploadType;
   file: File | null;
+  /** Fournisseur d'une proforma fournisseur (DEVIS) : inscrit dans le nom du fichier. */
+  precision: string;
 }
 
 // Moyen de paiement d'une nouvelle ligne.
@@ -167,7 +169,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   // Une seule proforma par budget (0 ou 1 élément ; tableau conservé pour l'API).
   const [proformaIds, setProformaIds] = useState<string[]>([]);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-  const [documents, setDocuments] = useState<DocumentRow[]>([{ type: 'DEVIS', file: null }]);
+  const [documents, setDocuments] = useState<DocumentRow[]>([{ type: 'DEVIS', file: null, precision: '' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -235,7 +237,14 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     });
   };
 
-  const addDocument = () => setDocuments((prev) => [...prev, { type: 'DEVIS', file: null }]);
+  const addDocument = () => setDocuments((prev) => [...prev, { type: 'DEVIS', file: null, precision: '' }]);
+  const updateDocumentPrecision = (index: number, precision: string) => {
+    setDocuments((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], precision };
+      return next;
+    });
+  };
   const removeDocument = (index: number) => setDocuments((prev) => prev.filter((_, i) => i !== index));
   const updateDocumentType = (index: number, type: DocumentUploadType) => {
     setDocuments((prev) => {
@@ -273,6 +282,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     }
     if (lignesValides.some((l) => !l.categorie)) {
       toast.error('Choisissez une catégorie pour chaque ligne.');
+      return;
+    }
+    if (documents.some((d) => d.file && d.type === 'DEVIS' && !d.precision.trim())) {
+      toast.error('Indiquez le fournisseur de chaque proforma fournisseur : il sert à la retrouver dans la liasse du bon de commande.');
       return;
     }
 
@@ -341,7 +354,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         )
       );
       documents.forEach((doc) => {
-        if (doc.file) data.append(`documents_${doc.type}`, doc.file);
+        if (!doc.file) return;
+        data.append(`documents_${doc.type}`, doc.file);
+        data.append(`precisions_${doc.type}`, doc.type === 'DEVIS' ? doc.precision.trim() : '');
       });
 
       const url = mode === 'edit' ? `/api/demandes-budget/${demandeId}/resoumettre` : '/api/demandes-budget';
@@ -621,14 +636,19 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label>Documents {initialData ? 'à ajouter' : '(devis, facture, bon de commande...)'}</label>
+          <label>Documents {initialData ? 'à ajouter' : '(proformas fournisseur, facture, bon de commande...)'}</label>
           <Button type="button" variant="outline" size="sm" onClick={addDocument}>
             <Plus className="mr-2 h-4 w-4" /> Ajouter un document
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Proforma fournisseur (facultatif) : indiquez son fournisseur ; il est ajouté au nom du fichier pour la reprendre
+          ensuite dans la liasse du bon de commande.
+        </p>
         <div className="space-y-2">
           {documents.map((doc, index) => (
-            <div key={index} className="flex items-center gap-2">
+            <div key={index} className="space-y-1.5">
+            <div className="flex items-center gap-2">
               <Select value={doc.type} onValueChange={(v) => updateDocumentType(index, v as DocumentUploadType)}>
                 <SelectTrigger className="w-[220px] shrink-0"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -660,6 +680,14 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}
+            </div>
+            {doc.type === 'DEVIS' && (
+              <Input
+                placeholder="Fournisseur de cette proforma * (ex. Imprimerie X)"
+                value={doc.precision}
+                onChange={(e) => updateDocumentPrecision(index, e.target.value)}
+              />
+            )}
             </div>
           ))}
         </div>

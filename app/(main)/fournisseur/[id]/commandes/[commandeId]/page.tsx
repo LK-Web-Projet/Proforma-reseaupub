@@ -644,7 +644,7 @@ export default function CommandeDetailPage() {
                 </div>
             </Card>
 
-            {/* Procédure de paiement : budget, liasse (BC signé, livraison, facture, rapport), paiements */}
+            {/* Procédure de paiement : budget, liasse (BC signé, proforma fournisseur, BAT, livraison, facture, autres), paiements */}
             <CommandeLiasseCard commande={commande} onChange={fetchCommande} />
 
             {/* Informations Prestataire */}

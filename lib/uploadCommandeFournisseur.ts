@@ -11,7 +11,11 @@ const TAILLE_MAX = 10 * 1024 * 1024; // 10 Mo, comme les pièces de budget
  * (fichiers accessibles seulement connecté, voir middleware.ts), nommées
  * date_campagne_document_montant : « campagne » = client de la proforma liée (ou prestataire) + numéro du BC.
  */
-export async function saveCommandeFiles(commandeId: string, files: File[], kind: string): Promise<SavedFile[]> {
+/**
+ * `precision` complète le nom normalisé : libellé d'un document « Autre » ; pour une proforma
+ * fournisseur, le nom du fournisseur du bon est utilisé par défaut.
+ */
+export async function saveCommandeFiles(commandeId: string, files: File[], kind: string, precision?: string): Promise<SavedFile[]> {
   if (files.length === 0) return [];
   for (const file of files) {
     assertAllowedUpload(file);
@@ -33,7 +37,8 @@ export async function saveCommandeFiles(commandeId: string, files: File[], kind:
   await mkdir(dossier, { recursive: true });
   const saved: SavedFile[] = [];
   for (const [index, file] of files.entries()) {
-    const nom = nomNormalise(reference, { date: new Date(), montant: Number(commande.montantNet), kind }, file.name, index);
+    const precisionNom = precision || (kind === "PROFORMA_FOURNISSEUR" ? commande.fournisseur.entreprise : undefined);
+    const nom = nomNormalise(reference, { date: new Date(), montant: Number(commande.montantNet), kind, precision: precisionNom }, file.name, index);
     const filename = `${Date.now()}-${nom}`;
     await writeFile(path.join(dossier, filename), Buffer.from(await file.arrayBuffer()));
     saved.push({ url: `/Upload/CommandeFournisseur/${commandeId}/${filename}`, fileName: nom, fileType: file.type });

@@ -101,7 +101,24 @@ Les droits sont réglés dans **Paramètres → Rôles**. Aucun nom n'est inscri
    - un rappel est envoyé au demandeur et à la direction ;
    - **aucun paiement** (avance ou solde) n'est possible.
 4. Un bon sans ligne de budget (campagne sans budget) suit l'ancien circuit : la DG le valide une fois le scan joint.
-5. La fiche du bon affiche la **liasse** (BC signé, bordereau de livraison ou attestation de service fait, facture, rapport), le **payé et le reste par ligne de produit**, les avances et le solde.
+5. La fiche du bon affiche la **liasse**, le **payé et le reste par ligne de produit**, les avances et le solde.
+
+### La liasse du bon de commande
+
+Chaque pièce a sa ligne sur la fiche du bon. **Tant qu'une pièce attendue manque, sa ligne est en rouge, avec un bouton « À joindre » qui clignote.**
+
+| Pièce | Statut | Quand |
+|---|---|---|
+| Bon de commande signé (DG) | **Requise** : aucun paiement sans elle | Dès l'émission du bon |
+| Proforma fournisseur | À fournir (en rouge si absente), **ne bloque pas le paiement** | Obtenue avant le budget : jointe au budget à sa création, ou au bon ensuite |
+| BAT signé | Facultatif | Si un bon à tirer a été validé |
+| Bordereau de livraison signé **ou** attestation de service fait | **Requise pour le solde** | À la livraison / fin de la prestation |
+| Facture du prestataire | **Requise pour le solde** | Enregistrée sur le bon (« Enregistrer la facture ») : elle apparaît dans la liasse et dans la liste des factures |
+| Autre document | Facultatif, à préciser (ex. PV de réception, photos de la pose) | Au besoin |
+
+**Proforma fournisseur jointe au budget** : à la création du budget (ou plus tard, « Ajouter des documents »), choisir le type « Proforma fournisseur (devis) » et **indiquer le fournisseur** : son nom est ajouté au nom du fichier. Sur la fiche du bon, la ligne « Proforma fournisseur » liste les proformas du budget : cliquer **« Utiliser pour ce bon »** sur celle du fournisseur du bon. Si aucune ne correspond (ou si le bon n'est pas encore rattaché à un budget), joindre directement la proforma au bon.
+
+Le rapport n'est plus demandé ; les rapports déjà joints restent visibles dans « Autres documents ».
 
 **Statuts du bon** : Brouillon → Validé → Livré → **Payé**. Le statut Payé est **automatique** : il est posé quand le reste du bon tombe à zéro. Une annulation rétablit le statut précédent.
 
@@ -124,7 +141,7 @@ Dans **Prestataires → Liste Factures**, chaque facture « en attente » a un b
 
 En un clic : sortie de caisse, ligne de budget consommée, dépense sur la proforma de la campagne, facture **« payée »**, et bon **« payé »** s'il ne reste rien. Si quelque chose bloque (scan du bon manquant, liasse incomplète, budget pas ouvert), la fenêtre l'indique en rouge.
 
-**Liasse** : par défaut, le paiement d'un bon exige aussi le bordereau de livraison (ou l'attestation de service fait) et le rapport. Ce réglage se change dans **Paramètres → Rôles** (« Exiger la liasse complète pour payer un bon de commande »). Le scan du bon signé reste toujours exigé.
+**Liasse** : par défaut, le solde d'un bon exige aussi le bordereau de livraison signé (ou l'attestation de service fait) et la facture avec sa pièce. La proforma fournisseur et le BAT ne bloquent jamais le paiement. Ce réglage se change dans **Paramètres → Rôles** (« Exiger la liasse complète pour payer un bon de commande »). Le scan du bon signé reste toujours exigé.
 
 ### L'avance
 
@@ -212,7 +229,7 @@ Les prestataires sont payés **par lots**, un lot par campagne : un état de pai
 | « La ligne … n'appartient pas au budget de la proforma de ce bon » | Choisir une ligne du budget de la proforma du bon, ou changer de proforma |
 | « Joignez la preuve de paiement » | Joindre le reçu Mobile Money, l'ordre de virement ou la décharge |
 | « Montant au-dessus du maximum des petites dépenses » | Faire enregistrer la dépense par le comptable |
-| « Solde impossible : la liasse … est incomplète » | Joindre les pièces manquantes indiquées : bordereau ou attestation, facture, rapport |
+| « Solde impossible : la liasse … est incomplète » | Joindre les pièces manquantes indiquées : bordereau signé ou attestation, facture |
 | « Vous avez validé ce budget … séparation des tâches » | Une autre personne enregistre la dépense |
 | « Le budget … n'est pas ouvert aux dépenses » | Faire valider le budget, ou en créer un nouveau s'il est clôturé |
 | « Le budget signé n'est pas encore joint » | Le demandeur imprime le budget, le fait signer par la DG et joint le scan sur la fiche du budget |

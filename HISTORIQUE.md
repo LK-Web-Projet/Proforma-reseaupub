@@ -25,6 +25,56 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 — Liasse du bon de commande : proforma fournisseur, BAT signé, bordereau signé, facture, autres documents
+
+**Demande / Contexte**
+Revoir les pièces de la liasse d'un bon de commande :
+- **proforma fournisseur** (obtenue avant le budget) : jointe au budget à sa création (facultatif) ou à la liasse ensuite ;
+- **BAT signé** (facultatif) ;
+- **bordereau de livraison signé** ;
+- **facture** : celle rattachée au bon apparaît dans la liasse (fin d'exécution) ;
+- **autre document** avec un libellé à préciser ;
+- le **rapport** n'est plus demandé ;
+- toute pièce manquante en rouge avec un bouton clignotant de rappel.
+
+Choix de l'utilisateur :
+- les proformas fournisseur du budget sont proposées dans la liasse et reprises en un clic, ou envoyées directement si aucune ne correspond (ou si le bon n'a pas de budget) ;
+- au solde, seuls le **bordereau (ou l'attestation de service fait, conservée en alternative) et la facture** sont exigés, en plus du BC signé : la proforma fournisseur et le BAT ne bloquent pas.
+
+Question posée : une facture enregistrée sur la fiche du bon apparaît-elle dans la liste des factures ? Oui (même table `FactureFournisseur`), à condition que la période filtrée couvre sa date. La colonne « Bon de commande » y est ajoutée.
+
+**Modifications apportées**
+- **Base (migration `20261120100000_liasse_bon_commande`, ajouts seulement)** : valeurs `PROFORMA_FOURNISSEUR` et `BAT_SIGNE` dans `TypeDocumentCommande` ; colonne `CommandeFournisseurDocument.libelle` (facultative). `RAPPORT` reste dans l'enum pour les pièces déjà jointes.
+- `lib/commandeFournisseurLiasse.ts` :
+  - types proposés : BC signé, proforma fournisseur, BAT signé, bordereau de livraison signé, attestation de service fait, facture, autre document ;
+  - `etatLiasse` renvoie `proformaFournisseur`, `bat`, `complete` (BC signé + livraison + facture : pièces du solde), `nbPieces` sur `NB_PIECES_ATTENDUES` = 4, `manquantes` (solde) et `aJoindre` (rappels, proforma fournisseur comprise) ;
+  - `libellePiece` (libellé d'une pièce, précisé pour « Autre »).
+- `app/api/fournisseurs/commandes/[commandeId]/documents/route.ts` :
+  - `GET` : proformas fournisseur jointes au budget de la ligne du bon et aux budgets de sa proforma client ;
+  - `POST` : `libelle` (obligatoire pour « Autre ») ; `attachmentId` pour reprendre une proforma fournisseur du budget (même fichier, libellé « reprise du budget DB-… », pas de doublon) ; `RAPPORT` refusé.
+- `components/fournisseurs/CommandeLiasseCard.tsx` :
+  - une ligne par pièce (requise / à fournir / facultatif), **rouge avec bouton « À joindre » clignotant** tant qu'elle manque (BAT : pointillés, sans alerte) ;
+  - fichiers affichés sous leur pièce ;
+  - ligne « Facture » : factures du bon (référence, montant, état, aperçu) et bouton « Enregistrer la facture » ;
+  - ligne « Proforma fournisseur » : proformas du budget avec « Utiliser pour ce bon » ;
+  - bouton « Autre document » (libellé demandé) ; section « Autres documents » (autres + anciens rapports) ;
+  - badge « Liasse n/4 — x à joindre » et rappel des pièces requises pour le solde.
+- Budget : type « Devis » renommé **« Proforma fournisseur (devis) »** (`lib/demandeBudgetAttachmentTypes.ts`) ; à l'upload (création, modification, « Ajouter des documents »), **le fournisseur est demandé** et ajouté au nom normalisé (`…_Proforma-fournisseur-<Fournisseur>_…`) : `components/DemandeBudgetForm.tsx`, `components/DemandeBudgetAddDocumentsDialog.tsx`, `lib/uploadDemandeBudget.ts` (`precision`, champ `precisions_<type>`).
+- `lib/uploadCommandeFournisseur.ts` : précision dans le nom (libellé « Autre » ; fournisseur du bon pour une proforma fournisseur).
+- Liste des factures (`app/(main)/fournisseur/factures/page.tsx`, `app/api/factures-fournisseurs/route.ts`) : colonne **« Bon de commande »** (numéro, lien vers la fiche du bon).
+- Textes : réglage « Exiger la liasse complète » (Paramètres → Rôles), guide des équipes (nouvelle section « La liasse du bon de commande », messages), commentaires.
+
+**Erreurs rencontrées & solutions**
+- `prisma migrate deploy` refusé par le mode automatique (écriture sur la base de production) → migration **non appliquée**, à lancer par l'utilisateur.
+- Le nom d'origine des pièces de budget n'est pas conservé (nommage normalisé) : plusieurs proformas fournisseur auraient eu le même nom → le fournisseur est demandé à l'upload et inscrit dans le nom.
+
+**À tester / points d'attention**
+- **Appliquer la migration avant tout déploiement** (`npx prisma migrate deploy`) : le client Prisma lit la nouvelle colonne `libelle` ; sans elle, la fiche d'un bon de commande tombe en erreur (Vercel n'applique pas les migrations ; le Docker du VPS le fait au démarrage).
+- Tests : liasse et nommage 12/12 ; `tsc` et lint sans erreur. Tests en base et envoi réel de pièces (nouveaux types) : après la migration.
+- À vérifier à l'écran : fiche d'un bon (lignes rouges clignotantes, reprise d'une proforma du budget, « Autre document »), budget avec une proforma fournisseur (fournisseur demandé), liste des factures (colonne Bon de commande).
+
+---
+
 ## 2026-11-19 (suite 8) — Validation des budgets de campagne réservée à l'administrateur
 
 **Demande / Contexte**
