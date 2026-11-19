@@ -25,6 +25,41 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite 5) — PDF du bon de commande : plus de chevauchement, mise en page aérée
+
+**Demande / Contexte**
+Dans le PDF téléchargé depuis la fiche d'un bon de commande, un texte long (désignation, nom ou adresse du prestataire, objet de la proforma) débordait sur les lignes du dessous et rendait le document illisible. Il fallait un PDF plus aéré et lisible, quelle que soit la longueur des textes.
+
+**Cause**
+pdf-lib coupe un texte en plusieurs lignes quand on lui donne `maxWidth`, mais chaque ligne du tableau gardait une hauteur fixe de 20 pt. Les lignes suivantes étaient donc dessinées par-dessus. Même problème pour l'en-tête et l'encadré du prestataire, de hauteur fixe. Enfin, tout tenait sur une seule page, sans saut de page.
+
+**Modifications apportées**
+- `lib/pdf/bonCommandePdf.ts` (nouveau), `genererBonCommandePdf` :
+  - le texte est coupé ligne par ligne par `couperTexte` : par mots, et caractère par caractère pour un mot plus large que la colonne (référence, adresse email) ;
+  - les retours à la ligne saisis sont conservés ;
+  - la hauteur de chaque bloc est calculée sur son texte le plus long : bandeau d'en-tête, encadré du prestataire, chaque ligne du tableau (et son en-tête), proformas.
+- **Sauts de page automatiques** :
+  - un bandeau de rappel « BON DE COMMANDE N° … (suite) » en haut des pages suivantes ;
+  - l'en-tête du tableau est répété ;
+  - un en-tête n'est jamais laissé seul en bas de page.
+  - Pied de page « Page n / N » sur toutes les pages.
+- **Mise en page plus aérée** :
+  - marges intérieures de 6 à 7 pt dans les cellules et interligne de 1,4 ;
+  - montants alignés à droite, total de la ligne en gras, fines séparations grises entre les lignes ;
+  - récapitulatif plus large (240 pt) ;
+  - proformas présentées sous forme de liste avec un liseré rose.
+- Un caractère que la police du PDF ne sait pas écrire (emoji…) est remplacé par « ? » au lieu de faire échouer tout le PDF.
+- `app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx` : l'ancien `generatePDF` (environ 290 lignes) est retiré ; le bouton appelle `genererBonCommandePdf`.
+
+**Erreurs rencontrées & solutions**
+- Le rendu du PDF en image (pdf.js chargé depuis un CDN) a été refusé par le contrôle de sécurité. Remplacé par une vérification calculée : tous les textes dessinés sont relevés, puis on vérifie qu'aucun n'en chevauche un autre et qu'aucun ne sort des marges.
+
+**À tester / points d'attention**
+- Vérification calculée : 0 chevauchement et 0 texte hors marge sur 3 cas : bon court (1 page), 14 lignes très longues (3 pages), 40 lignes très longues (5 pages).
+  - Les cas longs utilisent un nom de prestataire de plus de 100 caractères, une adresse et un email très longs, une référence de 60 caractères sans espace et des montants de plusieurs milliards.
+- `tsc` et lint OK.
+- À regarder à l'œil : télécharger le PDF d'un vrai bon qui a des désignations longues.
+
 ## 2026-11-20 (suite 4) — Retards de paiement des prestataires : ligne rouge clignotante, notification, délais paramétrables
 
 **Demande / Contexte**
