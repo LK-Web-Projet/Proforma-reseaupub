@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { cloturerBudgetsMensuelsEchus } from "@/lib/budgetSuivi";
 import { construireEtatSoir, envoyerEtatSoir } from "@/lib/rapports/etatSoir";
+import { notifierRetardsPaiement } from "@/lib/retardPaiementServeur";
 
 /**
  * Minuterie interne : l'application déclenche elle-même ses tâches à heure fixe, sans crontab.
@@ -34,6 +35,14 @@ const TACHES: Tache[] = [
       const clotures = await cloturerBudgetsMensuelsEchus(prisma);
       return `${clotures.length} budget(s) mensuel(s) clôturé(s)`;
     },
+  },
+  {
+    // Factures prestataires passées en retard de paiement (délai selon le type, Paramètres > Rôles) :
+    // une notification aux comptables et à la direction, une seule fois par facture.
+    nom: "retards-paiement",
+    heure: 8,
+    joursOuvresSeulement: true,
+    executer: () => notifierRetardsPaiement(),
   },
   {
     nom: "etat-soir",
@@ -112,7 +121,7 @@ const globalPlanif = globalThis as unknown as { __planificateurDemarre?: boolean
 export function demarrerPlanificateur() {
   if (globalPlanif.__planificateurDemarre) return; // une seule minuterie par processus (rechargements en dev)
   globalPlanif.__planificateurDemarre = true;
-  console.log("[planificateur] démarré (clôture des mensuels à 6 h, état du soir à 19 h les jours ouvrés, heure du Bénin)");
+  console.log("[planificateur] démarré (clôture des mensuels à 6 h, retards de paiement à 8 h et état du soir à 19 h les jours ouvrés, heure du Bénin)");
   setTimeout(() => void tick(), 30_000); // premier passage peu après le démarrage (rattrapage du jour)
   setInterval(() => void tick(), INTERVALLE_MS).unref?.();
 }

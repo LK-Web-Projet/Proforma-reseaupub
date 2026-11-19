@@ -27,6 +27,8 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 interface DocumentRow {
   type: DocumentUploadType;
   file: File | null;
+  /** Fournisseur d'une proforma fournisseur (DEVIS) : inscrit dans le nom du fichier. */
+  precision: string;
 }
 
 interface DemandeBudgetAddDocumentsDialogProps {
@@ -39,15 +41,22 @@ interface DemandeBudgetAddDocumentsDialogProps {
 }
 
 export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, demandeId, defaultType = 'DEVIS' }: DemandeBudgetAddDocumentsDialogProps) {
-  const [documents, setDocuments] = useState<DocumentRow[]>([{ type: defaultType, file: null }]);
+  const [documents, setDocuments] = useState<DocumentRow[]>([{ type: defaultType, file: null, precision: '' }]);
 
   // Chaque ouverture repart du type demandé.
   useEffect(() => {
-    if (isOpen) setDocuments([{ type: defaultType, file: null }]);
+    if (isOpen) setDocuments([{ type: defaultType, file: null, precision: '' }]);
   }, [isOpen, defaultType]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const addDocument = () => setDocuments((prev) => [...prev, { type: 'DEVIS', file: null }]);
+  const addDocument = () => setDocuments((prev) => [...prev, { type: 'DEVIS', file: null, precision: '' }]);
+  const updateDocumentPrecision = (index: number, precision: string) => {
+    setDocuments((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], precision };
+      return next;
+    });
+  };
   const removeDocument = (index: number) => setDocuments((prev) => prev.filter((_, i) => i !== index));
   const updateDocumentType = (index: number, type: DocumentUploadType) => {
     setDocuments((prev) => {
@@ -66,7 +75,7 @@ export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, de
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-      setDocuments([{ type: 'DEVIS', file: null }]);
+      setDocuments([{ type: 'DEVIS', file: null, precision: '' }]);
       onClose();
     }
   };
@@ -79,12 +88,18 @@ export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, de
       toast.error('Sélectionnez au moins un fichier à ajouter.');
       return;
     }
+    if (documentsValides.some((d) => d.type === 'DEVIS' && !d.precision.trim())) {
+      toast.error('Indiquez le fournisseur de chaque proforma fournisseur : il sert à la retrouver dans la liasse du bon de commande.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       const data = new FormData();
       documentsValides.forEach((doc) => {
-        if (doc.file) data.append(`documents_${doc.type}`, doc.file);
+        if (!doc.file) return;
+        data.append(`documents_${doc.type}`, doc.file);
+        data.append(`precisions_${doc.type}`, doc.type === 'DEVIS' ? doc.precision.trim() : '');
       });
 
       const res = await fetch(`/api/demandes-budget/${demandeId}/documents`, { method: 'POST', body: data });
@@ -120,7 +135,8 @@ export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, de
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             {documents.map((doc, index) => (
-              <div key={index} className="flex items-center gap-2">
+              <div key={index} className="space-y-1.5">
+              <div className="flex items-center gap-2">
                 <Select value={doc.type} onValueChange={(v) => updateDocumentType(index, v as DocumentUploadType)}>
                   <SelectTrigger className="w-[200px] shrink-0"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -153,8 +169,19 @@ export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, de
                   </Button>
                 )}
               </div>
+              {doc.type === 'DEVIS' && (
+                <Input
+                  placeholder="Fournisseur de cette proforma * (ex. Imprimerie X)"
+                  value={doc.precision}
+                  onChange={(e) => updateDocumentPrecision(index, e.target.value)}
+                />
+              )}
+              </div>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground">
+            Proforma fournisseur : indiquez le fournisseur ; il est ajouté au nom du fichier pour la retrouver dans la liasse du bon de commande.
+          </p>
 
           <Button type="button" variant="outline" size="sm" onClick={addDocument}>
             <Plus className="mr-2 h-4 w-4" /> Ajouter une ligne

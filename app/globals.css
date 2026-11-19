@@ -146,3 +146,19 @@
     @apply bg-background text-foreground;
   }
 }
+/* Facture prestataire en retard de paiement (lib/retardPaiement.ts) : toute la ligne en rouge, dont
+   le fond clignote doucement (le texte reste lisible) ; immobile si l'utilisateur réduit les animations. */
+@keyframes ligne-retard-clignote {
+  0%, 100% { background-color: rgb(254 242 242); }
+  50% { background-color: rgb(254 202 202); }
+}
+.ligne-retard {
+  background-color: rgb(254 242 242);
+  animation: ligne-retard-clignote 1.6s ease-in-out infinite;
+}
+.ligne-retard > td:first-child {
+  box-shadow: inset 4px 0 0 rgb(220 38 38);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ligne-retard { animation: none; }
+}

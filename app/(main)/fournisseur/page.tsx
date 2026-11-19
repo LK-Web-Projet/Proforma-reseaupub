@@ -12,7 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { FournisseurTableSkeleton } from "@/components/FournisseurTableSkeleton";
 import { FournisseurModal, Fournisseur } from "@/components/FournisseurModal";
-import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2, Search, Copy } from 'lucide-react';
+import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2, Search, Copy, AlarmClock } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,11 +27,17 @@ import {
 } from "@/lib/typeFournisseur";
 import { PrestataireStatutBadge } from "@/components/fournisseurs/PrestataireStatutBadge";
 import { PrestataireStatutToggle } from "@/components/fournisseurs/PrestataireStatutToggle";
+import { PastilleRetardPrestataire } from "@/components/fournisseurs/RetardPaiement";
+import type { RetardPrestataire } from "@/lib/retardPaiement";
+import Link from "next/link";
+
+/** Prestataire avec ses factures en retard de paiement (calculées par /api/fournisseurs). */
+type FournisseurAvecRetard = Fournisseur & { retard?: RetardPrestataire | null };
 
 const TAB_ALL = "Tout";
 
 export default function FournisseursPage() {
-  const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
+  const [fournisseurs, setFournisseurs] = useState<FournisseurAvecRetard[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFournisseur, setSelectedFournisseur] = useState<Fournisseur | null>(null);
@@ -76,6 +82,15 @@ export default function FournisseursPage() {
       return searchTerms.every((term) => haystack.includes(term));
     });
   }, [fournisseurs, search, activeTab]);
+
+  const enRetard = useMemo(() => {
+    const avecRetard = fournisseurs.filter((f) => f.retard);
+    return {
+      prestataires: avecRetard.length,
+      factures: avecRetard.reduce((s, f) => s + (f.retard?.nombre ?? 0), 0),
+      montant: avecRetard.reduce((s, f) => s + (f.retard?.montant ?? 0), 0),
+    };
+  }, [fournisseurs]);
 
   const handleOpenModal = (fournisseur: Fournisseur | null = null) => {
     setSelectedFournisseur(fournisseur);
@@ -141,6 +156,23 @@ export default function FournisseursPage() {
           </div>
         </div>
 
+        {enRetard.factures > 0 && (
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <p className="flex items-center gap-2 text-sm text-red-800">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-white animate-pulse">
+                <AlarmClock className="h-4 w-4" />
+              </span>
+              <span>
+                <strong>{enRetard.factures} facture(s) en retard de paiement</strong> chez {enRetard.prestataires} prestataire(s) —{" "}
+                {new Intl.NumberFormat("fr-FR").format(enRetard.montant)} XOF. Délai dépassé selon le type (Paramètres &gt; Rôles).
+              </span>
+            </p>
+            <Button asChild size="sm" className="bg-red-600 hover:bg-red-700 text-white shrink-0">
+              <Link href="/fournisseur/factures?retard=1">Voir les factures en retard</Link>
+            </Button>
+          </div>
+        )}
+
         <div className="rounded-md border bg-white overflow-x-auto">
           <Table>
             <TableHeader>
@@ -176,14 +208,28 @@ export default function FournisseursPage() {
                       onClick={() =>
                         router.push(`/fournisseur/${fournisseur.id}`)
                       }
-                      className="cursor-pointer hover:bg-muted/30"
+                      className={cn("cursor-pointer", fournisseur.retard ? "ligne-retard" : "hover:bg-muted/30")}
                     >
                       <TableCell className="py-3 font-medium">
                         <div className="flex items-center gap-3">
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold uppercase">
+                          <span className={cn(
+                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold uppercase",
+                            fournisseur.retard ? "bg-red-600 text-white" : "bg-primary/10 text-primary"
+                          )}>
                             {fournisseur.entreprise.slice(0, 2)}
                           </span>
-                          <span className="truncate max-w-[200px]">{fournisseur.entreprise}</span>
+                          <div className="min-w-0">
+                            <span className="block truncate max-w-[200px]">{fournisseur.entreprise}</span>
+                            {fournisseur.retard && (
+                              <PastilleRetardPrestataire
+                                retard={fournisseur.retard}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/fournisseur/factures?retard=1&fournisseurId=${fournisseur.id}`);
+                                }}
+                              />
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="py-3">

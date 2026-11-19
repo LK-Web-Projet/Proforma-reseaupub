@@ -202,6 +202,11 @@ export async function PATCH(
         fournisseurId,
         status,
         pieceJointe: pieceJointeUrl,
+        // Nouvelle date ou autre prestataire : l'échéance change, le retard sera réévalué (et
+        // renotifié s'il y a lieu) par la tâche du matin.
+        ...(dateValue.getTime() !== existing.date.getTime() || fournisseurId !== existing.fournisseurId
+          ? { retardNotifieAt: null }
+          : {}),
       },
     });
 

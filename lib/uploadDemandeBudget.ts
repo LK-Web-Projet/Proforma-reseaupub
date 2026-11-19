@@ -28,10 +28,17 @@ export interface NommageDocument {
   montant: number;
   /** Type de pièce (TypeAttachmentDemande) — détermine le mot « document » du nom. */
   kind?: string;
+  /**
+   * Précision ajoutée au mot « document » : fournisseur d'une proforma fournisseur, libellé d'un
+   * document « Autre » (ex. `Proforma-fournisseur-IMPRIMERIE-X`), pour la retrouver dans la liasse.
+   */
+  precision?: string;
 }
 
 const NOM_DOCUMENT: Record<string, string> = {
-  DEVIS: "Devis",
+  DEVIS: "Proforma-fournisseur",
+  PROFORMA_FOURNISSEUR: "Proforma-fournisseur",
+  BAT_SIGNE: "BAT-signe",
   FACTURE: "Facture",
   BON_COMMANDE: "Bon-commande",
   BUDGET_SIGNE: "Budget-signe",
@@ -66,7 +73,8 @@ async function referenceNommage(demandeBudgetId: string): Promise<string> {
 /** Nom affiché d'une pièce : date_campagne_document_montant[-n].ext */
 export function nomNormalise(reference: string, nommage: NommageDocument, original: string, index = 0): string {
   const date = nommage.date.toISOString().slice(0, 10);
-  const document = NOM_DOCUMENT[nommage.kind ?? "AUTRE"] ?? "Document";
+  const base = NOM_DOCUMENT[nommage.kind ?? "AUTRE"] ?? "Document";
+  const document = nommage.precision?.trim() ? `${base}-${segmentNom(nommage.precision, 30)}` : base;
   const montant = `${Math.round(nommage.montant)}F`;
   const ext = fileExtension(original);
   return `${date}_${reference}_${document}_${montant}${index > 0 ? `-${index + 1}` : ""}${ext ? `.${ext}` : ""}`;
@@ -97,9 +105,18 @@ export async function saveTypedDemandeBudgetAttachments(
   const rows: (SavedFile & { demandeBudgetId: string; kind: DocumentUploadType })[] = [];
 
   for (const type of DOCUMENT_UPLOAD_TYPES) {
-    const files = (formData.getAll(`documents_${type}`) as File[]).filter((f) => f && f.size > 0);
-    if (files.length === 0) continue;
-    const saved = await saveDemandeBudgetFiles(demandeBudgetId, files, { ...nommage, kind: type });
+    // `precisions_<type>` (même ordre que les fichiers) : fournisseur d'une proforma fournisseur.
+    const precisions = formData.getAll(`precisions_${type}`).map((p) => String(p));
+    const paires = (formData.getAll(`documents_${type}`) as File[])
+      .map((file, i) => ({ file, precision: precisions[i] ?? "" }))
+      .filter((p) => p.file && p.file.size > 0);
+    if (paires.length === 0) continue;
+    const saved = await saveDemandeBudgetFiles(
+      demandeBudgetId,
+      paires.map((p) => p.file),
+      { ...nommage, kind: type },
+      paires.map((p) => p.precision)
+    );
     rows.push(...saved.map((f) => ({ demandeBudgetId, kind: type, ...f })));
   }
 
@@ -109,7 +126,9 @@ export async function saveTypedDemandeBudgetAttachments(
 export async function saveDemandeBudgetFiles(
   demandeBudgetId: string,
   files: File[],
-  nommage: NommageDocument
+  nommage: NommageDocument,
+  /** Précision propre à chaque fichier (même ordre), sinon celle de `nommage`. */
+  precisions?: string[]
 ): Promise<SavedFile[]> {
   if (files.length === 0) return [];
 
@@ -127,7 +146,7 @@ export async function saveDemandeBudgetFiles(
   const saved: SavedFile[] = [];
   for (const [index, file] of files.entries()) {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const nom = nomNormalise(reference, nommage, file.name, index);
+    const nom = nomNormalise(reference, { ...nommage, precision: precisions?.[index] || nommage.precision }, file.name, index);
     // Préfixe horodaté sur le disque seulement : deux envois du même jour ne s'écrasent pas.
     const filename = `${Date.now()}-${nom}`;
     await writeFile(path.join(uploadDir, filename), buffer);

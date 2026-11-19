@@ -6,6 +6,8 @@ import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/upload
 import { safeCreatedById } from "@/lib/authz";
 import { exigeBonDeCommande } from "@/lib/typeFournisseur";
 import { refusLigneBudgetCommande, refusMontantFactureCommande } from "@/lib/commandeFournisseurSuivi";
+import { etatEcheance } from "@/lib/retardPaiement";
+import { getDelaisPaiement } from "@/lib/retardPaiementServeur";
 
 // GET /api/factures-fournisseurs - Récupérer toutes les factures fournisseurs
 export async function GET(req: NextRequest) {
@@ -17,6 +19,8 @@ export async function GET(req: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const year = searchParams.get("year");
+    // ?retard=1 : seulement les factures en retard de paiement, toutes périodes confondues.
+    const retardSeulement = searchParams.get("retard") === "1";
 
     const where: Prisma.FactureFournisseurWhereInput = {};
 
@@ -34,7 +38,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (year === "ALL") {
+    if (retardSeulement) {
+      // Une facture en retard reste à payer, quelle que soit sa date.
+      where.status = "EN_ATTENTE";
+    } else if (year === "ALL") {
       // Aucun filtre de date : toutes les périodes.
     } else if (year) {
       const parsedYear = parseInt(year, 10);
@@ -70,13 +77,26 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         fournisseur: true,
+        // Bon de commande réglé par la facture (colonne de la liste des factures).
+        commande: { select: { id: true, numero: true, fournisseurId: true } },
       },
       orderBy: {
         date: "desc",
       },
     });
 
-    return NextResponse.json(factures, { status: 200 });
+    // Échéance de paiement selon le type du prestataire (ligne rouge et bouton clignotant à l'écran).
+    const delais = await getDelaisPaiement();
+    const maintenant = new Date();
+    const avecEcheance = factures.map((f) => ({
+      ...f,
+      echeance: etatEcheance(f, f.fournisseur.typeFournisseur, delais, maintenant),
+    }));
+
+    return NextResponse.json(
+      retardSeulement ? avecEcheance.filter((f) => f.echeance?.enRetard) : avecEcheance,
+      { status: 200 },
+    );
   } catch (error) {
     console.error(
       "Erreur lors de la récupération des factures fournisseurs:",

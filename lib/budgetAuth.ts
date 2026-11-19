@@ -3,14 +3,15 @@ import { NextResponse } from "next/server";
 import type { TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { getEntrepriseConfig } from "@/lib/entreprise";
+import { typeValideParAdmin } from "@/lib/budgetTypes";
 
 /**
  * Droits du circuit budget de l'utilisateur connecté. Ils viennent UNIQUEMENT des cases
  * cochées sur son rôle (Paramètres > Rôles) — aucun nom de rôle ni aucune liste d'emails
  * n'est codé en dur, pour que ces droits puissent changer de main sans toucher au code :
- * - canValidateMensuel : valide les budgets mensuels et tout budget au-dessus du plafond délégué
- *   (rôle "Admin" en pratique) ; seul à pouvoir ouvrir un commentaire de ligne avec le comptable ;
- * - canValidate : valide les budgets non mensuels jusqu'au plafond (rôle "Assistant-Direction") ;
+ * - canValidateMensuel : valide les budgets mensuels, de campagne et tout budget au-dessus du
+ *   plafond délégué (rôle "Admin" en pratique) ; seul à pouvoir ouvrir un commentaire de ligne ;
+ * - canValidate : valide les budgets ponctuels et pour tiers jusqu'au plafond (rôle "Assistant-Direction") ;
  * - canPay : enregistre les dépenses dans le journal de caisse (rôle "Comptable") ;
  * - canSaisirCaisse : saisie directe au journal de caisse, hors budget (opérations manuelles,
  *   transferts, caisses, dépenses imputées à une proforma).
@@ -103,10 +104,11 @@ export function isSameEmail(a: string | null | undefined, b: string | null | und
 
 /**
  * Un budget doit-il remonter au niveau "admin" (canValidateMensuel) ? Oui pour tout budget
- * mensuel, et pour tout autre budget dont le montant dépasse le plafond délégué.
+ * mensuel ou de campagne (TYPES_VALIDATION_ADMIN), et pour tout autre budget dont le montant
+ * dépasse le plafond délégué.
  */
 export function requiresValidationAdmin(demande: { type: TypeBudget; montantTotal: unknown }, plafond: number): boolean {
-  return demande.type === "MENSUEL" || Number(demande.montantTotal) > plafond;
+  return typeValideParAdmin(demande.type) || Number(demande.montantTotal) > plafond;
 }
 
 /**
@@ -124,7 +126,9 @@ export function refusValidation(
     if (!caps.canValidateMensuel) {
       return demande.type === "MENSUEL"
         ? "Les budgets mensuels sont validés par l'administrateur."
-        : `Ce budget dépasse le plafond de validation déléguée (${caps.plafond.toLocaleString("fr-FR")} FCFA) : il doit être validé par l'administrateur.`;
+        : demande.type === "CAMPAGNE"
+          ? "Les budgets de campagne sont validés par l'administrateur."
+          : `Ce budget dépasse le plafond de validation déléguée (${caps.plafond.toLocaleString("fr-FR")} FCFA) : il doit être validé par l'administrateur.`;
     }
     return null;
   }

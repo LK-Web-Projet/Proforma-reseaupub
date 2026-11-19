@@ -39,6 +39,7 @@ export const EVENEMENTS_NOTIFICATION = {
   BC_VALIDE: { groupe: "Fournisseurs", libelle: "Bon de commande signé et validé", destinataires: "Comptables" },
   BC_EMIS: { groupe: "Fournisseurs", libelle: "Bon de commande émis sur une ligne de budget (validé d'office)", destinataires: "Demandeur du budget, comptables et direction" },
   BC_SCAN_A_JOINDRE: { groupe: "Fournisseurs", libelle: "Scan du bon de commande signé à joindre", destinataires: "Demandeur du budget et direction" },
+  FACTURE_PRESTATAIRE_RETARD: { groupe: "Fournisseurs", libelle: "Facture prestataire en retard de paiement (délai dépassé)", destinataires: "Comptables et direction" },
 } as const satisfies Record<string, EvenementMeta>;
 
 export type EvenementNotification = keyof typeof EVENEMENTS_NOTIFICATION;

@@ -77,6 +77,11 @@ model EntrepriseConfig {
   plafondPetiteDepense      Decimal      @default(50000) @db.Decimal(12, 2)
   // Solde d'un bon de commande : exiger la liasse complète (bordereau ou attestation + rapport).
   liasseExigeePourSolde     Boolean      @default(true)
+  // Délai de paiement d'une facture prestataire (jours à compter de la date de la facture), selon le
+  // type du prestataire ; au-delà, la facture est « en retard » (ligne rouge, notification).
+  delaiPaiementFournisseur  Int          @default(30)
+  delaiPaiementInterne      Int          @default(7)
+  delaiPaiementExterne      Int          @default(3)
   updatedAt                 DateTime     @updatedAt
 }
 
@@ -294,28 +299,30 @@ model FournisseurDocument {
 }
 
 model FactureFournisseur {
-  id            String                   @id @default(cuid())
-  reference     String                   @unique
-  montant       Decimal                  @db.Decimal(10, 2)
-  date          DateTime
-  pieceJointe   String?
-  status        StatutFactureFournisseur @default(EN_ATTENTE)
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
-  fournisseurId String
-  createdById   String?
-  fournisseur   Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
-  createdBy     User?                    @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
+  id              String                   @id @default(cuid())
+  reference       String                   @unique
+  montant         Decimal                  @db.Decimal(10, 2)
+  date            DateTime
+  pieceJointe     String?
+  status          StatutFactureFournisseur @default(EN_ATTENTE)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  fournisseurId   String
+  createdById     String?
+  fournisseur     Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  createdBy       User?                    @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
   // Bon de commande réglé par cette facture (Lot C) ; la facture passe PAYEE quand une dépense de
   // budget de nature SOLDE la règle — jamais à la main.
-  commandeId    String?
-  commande      CommandeFournisseur?     @relation(fields: [commandeId], references: [id])
-  depenses      BudgetDepense[]
+  commandeId      String?
+  commande        CommandeFournisseur?     @relation(fields: [commandeId], references: [id])
+  depenses        BudgetDepense[]
   // Prestataire interne / externe (pas de bon de commande obligatoire) : la facture peut être
   // rattachée directement à une ligne de budget (ex. budget mensuel de la comptabilité pour la paie)
   // et réglée par des dépenses sur cette ligne ; elle passe PAYEE quand elle est entièrement réglée.
-  ligneBudgetId String?
-  ligneBudget   DemandeBudgetLigne?      @relation(fields: [ligneBudgetId], references: [id])
+  ligneBudgetId   String?
+  ligneBudget     DemandeBudgetLigne?      @relation(fields: [ligneBudgetId], references: [id])
+  // Retard de paiement déjà notifié (une seule fois par facture ; remis à zéro si la date change).
+  retardNotifieAt DateTime?
 }
 
 model ProduitFournisseur {
@@ -372,7 +379,8 @@ model CommandeFournisseur {
 }
 
 // Pièces de la « liasse » d'un bon de commande (procédure, section 4) : BC signé par la DG,
-// bordereau de livraison ou attestation de service fait, facture, rapport.
+// proforma fournisseur, BAT signé (facultatif), bordereau de livraison signé ou attestation de
+// service fait, facture, autres documents (libellé précisé).
 model CommandeFournisseurDocument {
   id             String               @id @default(uuid())
   commandeId     String
@@ -380,6 +388,8 @@ model CommandeFournisseurDocument {
   url            String
   fileName       String
   fileType       String
+  // Précision du document (obligatoire pour « Autre ») ou origine (proforma reprise du budget).
+  libelle        String?
   createdByEmail String
   createdAt      DateTime             @default(now())
   commande       CommandeFournisseur  @relation(fields: [commandeId], references: [id], onDelete: Cascade)
@@ -387,10 +397,12 @@ model CommandeFournisseurDocument {
 
 enum TypeDocumentCommande {
   BC_SIGNE
+  PROFORMA_FOURNISSEUR
+  BAT_SIGNE
   BORDEREAU_LIVRAISON
   ATTESTATION_SERVICE_FAIT
   FACTURE
-  RAPPORT
+  RAPPORT // plus demandé ; conservé pour les pièces déjà jointes
   AUTRE
 }
 

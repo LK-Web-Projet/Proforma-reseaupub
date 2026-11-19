@@ -16,7 +16,7 @@ import { FactureFournisseur, StatutFactureFournisseur } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Pencil, Wallet } from "lucide-react";
+import { AlarmClock, Pencil, Wallet } from "lucide-react";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import FournisseurProduits from "@/components/fournisseurs/FournisseurProduits";
@@ -32,6 +32,8 @@ import { cn } from "@/lib/utils";
 import { TYPE_FOURNISSEUR_COLORS, resolveTypeFournisseur } from "@/lib/typeFournisseur";
 import { PrestataireStatutBadge, PrestataireStatutDot } from "@/components/fournisseurs/PrestataireStatutBadge";
 import { PrestataireStatutToggle } from "@/components/fournisseurs/PrestataireStatutToggle";
+import { BoutonRetardPaiement, EcheanceFacture, classeLigneRetard } from "@/components/fournisseurs/RetardPaiement";
+import type { EtatEcheance } from "@/lib/retardPaiement";
 
 interface StatutHistoriqueEntry {
   id: string;
@@ -43,7 +45,8 @@ interface StatutHistoriqueEntry {
 }
 
 interface FournisseurDetails extends Fournisseur {
-  factures: FactureFournisseur[];
+  /** echeance : échéance de paiement selon le type du prestataire (null si payée ou annulée). */
+  factures: (FactureFournisseur & { echeance?: EtatEcheance | null })[];
   statutHistorique: StatutHistoriqueEntry[];
 }
 
@@ -99,7 +102,7 @@ export default function FournisseurDetailsPage() {
         return {
           ...prev,
           factures: prev.factures.map(f =>
-            f.id === factureId ? { ...f, status: newStatus } : f
+            f.id === factureId ? { ...f, status: newStatus, echeance: newStatus === 'EN_ATTENTE' ? f.echeance : null } : f
           )
         };
       });
@@ -119,6 +122,8 @@ export default function FournisseurDetailsPage() {
   const pendingInvoicesAmount = fournisseur?.factures
     ?.filter(inv => inv.status === 'EN_ATTENTE')
     .reduce((sum, inv) => sum + Number(inv.montant), 0) || 0;
+
+  const facturesEnRetard = fournisseur?.factures.filter(f => f.echeance?.enRetard) ?? [];
 
   const displayedFactures = statusFilter
     ? fournisseur?.factures.filter(f => f.status === statusFilter)
@@ -243,6 +248,19 @@ export default function FournisseurDetailsPage() {
             </Card>
           </div>
 
+          {facturesEnRetard.length > 0 && (
+            <div className="mb-4 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-white animate-pulse">
+                <AlarmClock className="h-4 w-4" />
+              </span>
+              <span>
+                <strong>{facturesEnRetard.length} facture(s) en retard de paiement</strong> —{" "}
+                {new Intl.NumberFormat("fr-FR").format(facturesEnRetard.reduce((s, f) => s + Number(f.montant), 0))} XOF.
+                Délai pour un « {type} » : {facturesEnRetard[0].echeance?.delai} jours après la date de la facture.
+              </span>
+            </div>
+          )}
+
           <h2 className="text-xl font-bold mb-4">Historique des Factures</h2>
           <div className="rounded-md border bg-white overflow-x-auto">
             <Table>
@@ -267,9 +285,12 @@ export default function FournisseurDetailsPage() {
                   displayedFactures.map((facture) => {
                     const isLocked = facture.status === 'PAYEE' || facture.status === 'ANNULEE';
                     return (
-                    <TableRow key={facture.id} className="hover:bg-muted/30">
+                    <TableRow key={facture.id} className={facture.echeance?.enRetard ? classeLigneRetard(facture.echeance) : "hover:bg-muted/30"}>
                       <TableCell>{facture.reference}</TableCell>
-                      <TableCell className="whitespace-nowrap">{format(new Date(facture.date), "dd/MM/yyyy")}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {format(new Date(facture.date), "dd/MM/yyyy")}
+                        <EcheanceFacture echeance={facture.echeance} />
+                      </TableCell>
                       <TableCell className="text-right font-medium whitespace-nowrap">{new Intl.NumberFormat('fr-FR').format(Number(facture.montant))} XOF</TableCell>
                       <TableCell>
                         {isLocked ? (
@@ -300,7 +321,9 @@ export default function FournisseurDetailsPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-2">
-                        {facture.status === "EN_ATTENTE" && (
+                        {facture.echeance?.enRetard ? (
+                          <BoutonRetardPaiement echeance={facture.echeance} onClick={() => setFactureAPayer(facture.id)} />
+                        ) : facture.status === "EN_ATTENTE" && (
                           <Button size="sm" className="h-8 gap-1" onClick={() => setFactureAPayer(facture.id)}>
                             <Wallet className="h-3.5 w-3.5" /> Appliquer le paiement
                           </Button>

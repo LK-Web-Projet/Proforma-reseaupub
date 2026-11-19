@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -13,10 +14,12 @@ import { FournisseurModal } from '@/components/FournisseurModal';
 import { FactureFournisseurModal } from '@/components/FactureFournisseurModal';
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { PayerFactureDialog } from '@/components/fournisseurs/PayerFactureDialog';
+import { BoutonRetardPaiement, EcheanceFacture, classeLigneRetard } from '@/components/fournisseurs/RetardPaiement';
+import type { EtatEcheance } from '@/lib/retardPaiement';
 import { FactureFournisseurStatusBadge, StatusDot } from '@/components/FactureFournisseurStatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  CalendarIcon, Pencil, Plus, X, Building2, Wallet, Clock, CheckCircle2,
+  CalendarIcon, Pencil, Plus, X, Building2, Wallet, Clock, CheckCircle2, AlarmClock,
   SlidersHorizontal, ChevronDown,
 } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
@@ -35,7 +38,11 @@ interface FactureFournisseur {
   fournisseurId: string;
   fournisseur: Fournisseur;
   commandeId?: string | null;
+  /** Bon de commande réglé par la facture (enregistrée depuis sa fiche ou rattachée ici). */
+  commande?: { id: string; numero: string; fournisseurId: string } | null;
   ligneBudgetId?: string | null;
+  /** Échéance de paiement selon le type du prestataire (null si payée ou annulée). */
+  echeance?: EtatEcheance | null;
 }
 
 const formatMontant = (value: number) => `${new Intl.NumberFormat('fr-FR').format(value)} XOF`;
@@ -62,6 +69,8 @@ const defaultFilters = {
   status: '',
   period: 'current' as Period,
   dateRange: undefined as DateRange | undefined,
+  /** Seulement les factures en retard de paiement (toutes périodes). */
+  retard: false,
 };
 
 export default function FacturesListPage() {
@@ -109,7 +118,9 @@ export default function FacturesListPage() {
     if (filters.fournisseurId) params.append('fournisseurId', filters.fournisseurId);
     if (filters.status && filters.status !== 'ALL') params.append('status', filters.status);
 
-    if (filters.period === 'current') {
+    if (filters.retard) {
+      params.append('retard', '1');
+    } else if (filters.period === 'current') {
       params.append('year', String(CURRENT_YEAR));
     } else if (filters.period === 'previous') {
       params.append('year', String(CURRENT_YEAR - 1));
@@ -136,6 +147,35 @@ export default function FacturesListPage() {
     fetchFactures();
   }, [fetchFactures]);
 
+  // Lien « Voir les factures en retard » (notification, liste des prestataires) : ?retard=1.
+  // Lu après le montage (pas de useSearchParams : la page reste statique au build).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('retard') === '1' || p.get('fournisseurId')) {
+      setFilters(prev => ({ ...prev, retard: p.get('retard') === '1', fournisseurId: p.get('fournisseurId') ?? '' }));
+    }
+  }, []);
+
+  // Factures en retard, toutes périodes confondues (carte rouge en tête de page).
+  const [retards, setRetards] = useState<{ nombre: number; montant: number }>({ nombre: 0, montant: 0 });
+  const fetchRetards = useCallback(async () => {
+    try {
+      const res = await fetch('/api/factures-fournisseurs?retard=1');
+      if (!res.ok) return;
+      const data: FactureFournisseur[] = await res.json();
+      setRetards({ nombre: data.length, montant: data.reduce((s, f) => s + Number(f.montant), 0) });
+    } catch {
+      // La carte reste à sa dernière valeur.
+    }
+  }, []);
+  useEffect(() => {
+    fetchRetards();
+  }, [fetchRetards]);
+  const rafraichir = () => {
+    fetchFactures();
+    fetchRetards();
+  };
+
   const resetFilters = () => {
     setFilters(defaultFilters);
   };
@@ -149,7 +189,9 @@ export default function FacturesListPage() {
     if (filters.status && filters.status !== 'ALL') {
       chips.push({ key: 'status', label: STATUS_LABELS[filters.status] ?? filters.status, onRemove: () => setFilters(prev => ({ ...prev, status: '' })) });
     }
-    if (filters.period !== 'current') {
+    if (filters.retard) {
+      chips.push({ key: 'retard', label: 'En retard de paiement (toutes périodes)', onRemove: () => setFilters(prev => ({ ...prev, retard: false })) });
+    } else if (filters.period !== 'current') {
       const label = filters.period === 'custom'
         ? (filters.dateRange?.from
             ? `${format(filters.dateRange.from, 'dd/MM/yy')} - ${filters.dateRange.to ? format(filters.dateRange.to, 'dd/MM/yy') : '...'}`
@@ -175,9 +217,10 @@ export default function FacturesListPage() {
 
         setFactures(prevFactures =>
           prevFactures.map(f =>
-            f.id === facture.id ? { ...f, status: newStatus } : f
+            f.id === facture.id ? { ...f, status: newStatus, echeance: newStatus === 'EN_ATTENTE' ? f.echeance : null } : f
           )
         );
+        fetchRetards();
         toast.success('Statut mis à jour avec succès !');
       } catch (error: unknown) {
         console.error(error);
@@ -209,7 +252,7 @@ export default function FacturesListPage() {
       <FactureFournisseurModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onSuccess={fetchFactures}
+        onSuccess={rafraichir}
         fournisseurs={fournisseurs}
         onFournisseurCreated={handleFournisseurCreated}
       />
@@ -218,17 +261,17 @@ export default function FacturesListPage() {
         onClose={() => setIsFournisseurModalOpen(false)}
         onSuccess={handleFournisseurCreated}
       />
-      <PayerFactureDialog cible={factureAPayer ? { type: 'facture', id: factureAPayer } : null} open={!!factureAPayer} onClose={() => setFactureAPayer(null)} onPaye={fetchFactures} />
+      <PayerFactureDialog cible={factureAPayer ? { type: 'facture', id: factureAPayer } : null} open={!!factureAPayer} onClose={() => setFactureAPayer(null)} onPaye={rafraichir} />
       <FactureFournisseurModal
         isOpen={!!editingFacture}
         onClose={() => setEditingFacture(null)}
-        onSuccess={fetchFactures}
+        onSuccess={rafraichir}
         fournisseurs={fournisseurs}
         onFournisseurCreated={handleFournisseurCreated}
         initialData={editingFacture}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="border-t-4 border-t-blue-500">
           <CardContent className="pt-6 flex items-center justify-between">
             <div>
@@ -256,6 +299,31 @@ export default function FacturesListPage() {
             <div className="p-3 rounded-xl bg-amber-100 text-amber-700"><Clock className="w-5 h-5" /></div>
           </CardContent>
         </Card>
+        {/* Retards de paiement (toutes périodes) : clignote tant qu'il en reste ; un clic filtre la liste. */}
+        <button
+          type="button"
+          onClick={() => setFilters(prev => ({ ...prev, retard: !prev.retard }))}
+          className="text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          title={retards.nombre > 0 ? 'Afficher seulement les factures en retard' : 'Aucune facture en retard'}
+        >
+          <Card className={cn(
+            'h-full border-t-4 transition-colors',
+            retards.nombre > 0 ? 'border-t-red-600 bg-red-50 hover:bg-red-100' : 'border-t-slate-300',
+            filters.retard && 'ring-2 ring-red-500'
+          )}>
+            <CardContent className="pt-6 flex items-center justify-between">
+              <div>
+                <p className={cn('text-sm', retards.nombre > 0 ? 'font-semibold text-red-700' : 'text-muted-foreground')}>
+                  En retard de paiement{retards.nombre > 0 ? ` (${retards.nombre})` : ''}
+                </p>
+                <p className={cn('text-xl font-bold', retards.nombre > 0 && 'text-red-700')}>{formatMontant(retards.montant)}</p>
+              </div>
+              <div className={cn('p-3 rounded-xl', retards.nombre > 0 ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-100 text-slate-500')}>
+                <AlarmClock className="w-5 h-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </button>
       </div>
 
       <div className="mb-6">
@@ -352,6 +420,7 @@ export default function FacturesListPage() {
             <TableRow className="bg-muted/40">
               <TableHead>Prestataire</TableHead>
               <TableHead>Référence</TableHead>
+              <TableHead>Bon de commande</TableHead>
               <TableHead>Date</TableHead>
               <TableHead className="text-right">Montant</TableHead>
               <TableHead>Statut</TableHead>
@@ -361,14 +430,14 @@ export default function FacturesListPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Chargement...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-24 text-center">Chargement...</TableCell></TableRow>
             ) : factures.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Aucune facture trouvée.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucune facture trouvée.</TableCell></TableRow>
             ) : (
               factures.map((facture) => {
                 const isLocked = facture.status === 'PAYEE' || facture.status === 'ANNULEE';
                 return (
-                <TableRow key={facture.id} className="hover:bg-muted/30">
+                <TableRow key={facture.id} className={facture.echeance?.enRetard ? classeLigneRetard(facture.echeance) : 'hover:bg-muted/30'}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -378,7 +447,22 @@ export default function FacturesListPage() {
                     </div>
                   </TableCell>
                   <TableCell>{facture.reference}</TableCell>
-                  <TableCell className="whitespace-nowrap">{format(new Date(facture.date), "dd/MM/yyyy")}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {facture.commande ? (
+                      <Link
+                        href={`/fournisseur/${facture.commande.fournisseurId}/commandes/${facture.commande.id}`}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        {facture.commande.numero}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {format(new Date(facture.date), "dd/MM/yyyy")}
+                    <EcheanceFacture echeance={facture.echeance} />
+                  </TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(facture.montant)}</TableCell>
                   <TableCell>
                     {isLocked ? (
@@ -411,7 +495,9 @@ export default function FacturesListPage() {
                   </TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-2">
-                    {facture.status === 'EN_ATTENTE' && (
+                    {facture.echeance?.enRetard ? (
+                      <BoutonRetardPaiement echeance={facture.echeance} onClick={() => setFactureAPayer(facture.id)} />
+                    ) : facture.status === 'EN_ATTENTE' && (
                       <Button size="sm" className="h-8 gap-1" onClick={() => setFactureAPayer(facture.id)}>
                         <Wallet className="h-3.5 w-3.5" /> Appliquer le paiement
                       </Button>

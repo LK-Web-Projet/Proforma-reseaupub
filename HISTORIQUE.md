@@ -25,6 +25,237 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite 5) — PDF du bon de commande : plus de chevauchement, mise en page aérée
+
+**Demande / Contexte**
+Dans le PDF téléchargé depuis la fiche d'un bon de commande, un texte long (désignation, nom ou adresse du prestataire, objet de la proforma) débordait sur les lignes du dessous et rendait le document illisible. Il fallait un PDF plus aéré et lisible, quelle que soit la longueur des textes.
+
+**Cause**
+pdf-lib coupe un texte en plusieurs lignes quand on lui donne `maxWidth`, mais chaque ligne du tableau gardait une hauteur fixe de 20 pt. Les lignes suivantes étaient donc dessinées par-dessus. Même problème pour l'en-tête et l'encadré du prestataire, de hauteur fixe. Enfin, tout tenait sur une seule page, sans saut de page.
+
+**Modifications apportées**
+- `lib/pdf/bonCommandePdf.ts` (nouveau), `genererBonCommandePdf` :
+  - le texte est coupé ligne par ligne par `couperTexte` : par mots, et caractère par caractère pour un mot plus large que la colonne (référence, adresse email) ;
+  - les retours à la ligne saisis sont conservés ;
+  - la hauteur de chaque bloc est calculée sur son texte le plus long : bandeau d'en-tête, encadré du prestataire, chaque ligne du tableau (et son en-tête), proformas.
+- **Sauts de page automatiques** :
+  - un bandeau de rappel « BON DE COMMANDE N° … (suite) » en haut des pages suivantes ;
+  - l'en-tête du tableau est répété ;
+  - un en-tête n'est jamais laissé seul en bas de page.
+  - Pied de page « Page n / N » sur toutes les pages.
+- **Mise en page plus aérée** :
+  - marges intérieures de 6 à 7 pt dans les cellules et interligne de 1,4 ;
+  - montants alignés à droite, total de la ligne en gras, fines séparations grises entre les lignes ;
+  - récapitulatif plus large (240 pt) ;
+  - proformas présentées sous forme de liste avec un liseré rose.
+- Un caractère que la police du PDF ne sait pas écrire (emoji…) est remplacé par « ? » au lieu de faire échouer tout le PDF.
+- `app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx` : l'ancien `generatePDF` (environ 290 lignes) est retiré ; le bouton appelle `genererBonCommandePdf`.
+
+**Erreurs rencontrées & solutions**
+- Le rendu du PDF en image (pdf.js chargé depuis un CDN) a été refusé par le contrôle de sécurité. Remplacé par une vérification calculée : tous les textes dessinés sont relevés, puis on vérifie qu'aucun n'en chevauche un autre et qu'aucun ne sort des marges.
+
+**À tester / points d'attention**
+- Vérification calculée : 0 chevauchement et 0 texte hors marge sur 3 cas : bon court (1 page), 14 lignes très longues (3 pages), 40 lignes très longues (5 pages).
+  - Les cas longs utilisent un nom de prestataire de plus de 100 caractères, une adresse et un email très longs, une référence de 60 caractères sans espace et des montants de plusieurs milliards.
+- `tsc` et lint OK.
+- À regarder à l'œil : télécharger le PDF d'un vrai bon qui a des désignations longues.
+
+## 2026-11-20 (suite 4) — Retards de paiement des prestataires : ligne rouge clignotante, notification, délais paramétrables
+
+**Demande / Contexte**
+Signaler les factures prestataires payées en retard, avec un bouton rouge clignotant (ou la ligne entière en rouge clignotant) et une notification. Délais par type : Fournisseur 30 jours, prestataire interne 7 jours, prestataire externe 3 jours, modifiables dans les paramètres.
+
+**Modifications apportées**
+- Base (`prisma/schema.prisma`, migration `20261121100000_retard_paiement_prestataires`, ajouts seulement) :
+  - `EntrepriseConfig.delaiPaiementFournisseur` (30), `delaiPaiementInterne` (7), `delaiPaiementExterne` (3) ;
+  - `FactureFournisseur.retardNotifieAt` : le retard n'est notifié qu'une fois par facture.
+- `lib/retardPaiement.ts` (nouveau, importable à l'écran) : `delaiPourType`, `etatEcheance` (échéance = date de la facture + délai, en jours calendaires ; en retard le lendemain de l'échéance ; « échéance proche » à 2 jours ou moins), `syntheseRetards` (par prestataire).
+- `lib/retardPaiementServeur.ts` (nouveau) : `getDelaisPaiement`, `notifierRetardsPaiement` (une notification récapitulative aux comptables et à la direction pour les factures passées en retard non encore notifiées, puis marquage).
+- `lib/taches/planificateur.ts` : tâche « retards-paiement » à 8 h, jours ouvrés (serveur avec `SCHEDULER_ENABLED=true`).
+- `lib/notifications/evenements.ts` : événement `FACTURE_PRESTATAIRE_RETARD` (canal réglable dans Paramètres → Notifications).
+- API :
+  - `GET /api/factures-fournisseurs` : chaque facture porte `echeance` ; `?retard=1` = factures en retard, toutes périodes ;
+  - `GET /api/fournisseurs` : `retard` par prestataire (nombre, montant, retard maximal) ;
+  - `GET /api/fournisseurs/[id]` : `echeance` sur chaque facture ;
+  - `PATCH /api/factures-fournisseurs/[id]` : date ou prestataire modifié → `retardNotifieAt` remis à zéro ;
+  - `/api/budget-config` : lecture et enregistrement des trois délais (1 à 365 jours) ; un changement remet les notifications à zéro pour les factures en attente.
+- Écran :
+  - `components/fournisseurs/RetardPaiement.tsx` (nouveau) : bouton rouge clignotant « En retard · n j — Payer » (ouvre *Appliquer le paiement*), mention d'échéance sous la date, pastille « n en retard · n j » ;
+  - `app/globals.css` : classe `ligne-retard` (ligne rouge, fond qui clignote doucement, liseré rouge à gauche, immobile si les animations sont réduites) ;
+  - liste des factures : carte rouge « En retard de paiement » (clic = filtre), filtre `?retard=1` (lien de la notification), lignes rouges et bouton clignotant ;
+  - liste des prestataires : bandeau rouge récapitulatif, ligne rouge et pastille clignotante qui ouvre les factures en retard du prestataire ;
+  - fiche du prestataire : bandeau et lignes rouges dans l'historique des factures ;
+  - Paramètres → Rôles : carte « Délais de paiement des prestataires (jours) ».
+- Guide (`public/docs/procedure-paiement-plateforme.md`) : section « Délais de paiement et retards » avec schéma.
+
+**Erreurs rencontrées & solutions**
+- `python` absent du poste → modification du schéma faite avec l'outil d'édition.
+- Page des factures statique : le filtre `?retard=1` est lu après le montage (sans `useSearchParams`, qui exigerait une Suspense au build).
+
+**À tester / points d'attention**
+- **Appliquer la migration avant de déployer** (`pnpm prisma migrate deploy`, jamais de reset) : sans les nouvelles colonnes, la lecture de la configuration échoue partout. La migration `20261120100000_liasse_bon_commande` doit l'être aussi.
+- Tests du calcul des échéances (7 cas : délais par type, jour d'échéance exact, payée/annulée, délais modifiés, synthèse) : OK. `tsc` et lint OK.
+- La notification part seulement depuis le serveur où le planificateur est actif (pas depuis Vercel ni un poste de développement). Le signal visuel, lui, est calculé à chaque affichage.
+
+## 2026-11-20 (suite 3) — Cloche des notifications : plus discrète, sans cadre, badge non coupé
+
+**Demande / Contexte**
+Réduire la cloche, retirer le cadre carré arrondi, la rendre plus soignée ; la cloche (son badge) passait sous le composant au-dessus.
+
+**Modifications apportées**
+- `components/notifications/NotificationBell.tsx` :
+  - bouton icône rond sans bordure ni fond (32 px au lieu de 36, icône 18 px) ;
+  - couleur de la cloche : bleue sans non lues ; rouge et pleine avec des non lues ;
+  - léger fond de couleur au survol et quand le menu est ouvert ;
+  - badge plus petit (15 px), placé **dans** le bouton (`top-0.5 right-0.5`) avec un liseré de la couleur de la barre latérale.
+- `components/app-sidebar.tsx` : petit espace au-dessus de la ligne ; la cloche passe **à droite** du bouton « Recherche », au bout de la ligne (plus cohérent).
+
+**Erreurs rencontrées & solutions**
+- Badge coupé : il dépassait du bouton (`-top-1.5`), or `SidebarContent` est une zone de défilement qui masque ce qui dépasse → badge ramené à l'intérieur du bouton.
+
+**À tester / points d'attention**
+- `tsc` et lint sans erreur. À vérifier à l'écran : cloche sans et avec notifications non lues, survol, menu ouvert, barre latérale repliée et mobile.
+
+---
+
+## 2026-11-20 (suite 2) — Build Vercel : client Prisma régénéré à chaque build
+
+**Demande / Contexte**
+Build Vercel en échec après la liasse du bon de commande : `Type '"PROFORMA_FOURNISSEUR"' is not assignable to type 'TypeDocumentCommande …'` dans `app/api/fournisseurs/commandes/[commandeId]/documents/route.ts`.
+
+**Cause**
+Le schéma et la migration étaient bien dans le commit (`c931c21`). Mais Vercel réutilise en cache les dépendances (`node_modules`) d'un déploiement à l'autre, et le client Prisma n'est généré qu'au postinstall de `@prisma/client`. Avec le cache, il n'est pas régénéré : le client restait celui de l'ancien schéma, sans les nouvelles valeurs de l'enum. Le Docker du VPS n'était pas concerné (`RUN npx prisma generate` avant `npm run build`).
+
+**Modifications apportées**
+- `package.json` : script `build` = `prisma generate && next build`. Le client est toujours généré depuis le schéma du commit, cache ou pas. Dans le Docker, le client est simplement généré deux fois.
+
+**Erreurs rencontrées & solutions**
+- Voir la cause ci-dessus.
+
+**À tester / points d'attention**
+- Redéployer sur Vercel après avoir poussé ce changement. Contournement immédiat sans attendre : *Redeploy* en décochant « Use existing Build Cache ».
+- La migration `20261120100000_liasse_bon_commande` doit être appliquée à la base (`npx prisma migrate deploy`) avant la mise en ligne, sinon la fiche d'un bon de commande tombe en erreur (Vercel n'applique pas les migrations).
+
+---
+
+## 2026-11-20 (suite) — Page Aide : schémas fléchés et mise en page en couleurs
+
+**Demande / Contexte**
+Rendre le guide de la page Aide plus visuel : des schémas simples avec des flèches (qui fait quoi, comment), plus de couleurs, pour donner envie de lire.
+
+**Modifications apportées**
+- `lib/aideSchemas.ts` (nouveau) : rendu du guide avec une instance `Marked` dédiée.
+  - Bloc ` ```flux ` : étapes numérotées reliées par des flèches, chaque étape avec son acteur (pastille de couleur) et son action. Jusqu'à 4 étapes sur une ligne, au-delà deux rangées régulières (6 → 3 + 3).
+  - Bloc ` ```choix ` : une question ou une action (bandeau en dégradé) qui mène à plusieurs cas.
+  - Syntaxe d'une ligne : `étiquette | texte | couleur` (bleu, violet, vert, orange, rouge, ambre, cyan, rose, gris), gras Markdown accepté ; `titre:` et `question:` facultatifs. Texte échappé.
+  - Citations `> …` → encadrés « bon à savoir » (💡) ; `> ⚠️ …` → encadré d'alerte orange.
+  - Le Markdown téléchargé reste lisible : les schémas y sont de simples listes de texte.
+- `app/(main)/aide/page.tsx` : utilise `rendreGuide` ; nouveaux styles :
+  - sommaire numéroté en dégradé ;
+  - titre en dégradé ; sections avec une barre et un fond de couleur, en alternance (indigo, cyan, vert, orange, violet, rose) ;
+  - tableaux à en-tête coloré et lignes alternées ; puces colorées ;
+  - schémas en cartes, lisibles sur téléphone (une étape par ligne, flèches ⬇) ;
+  - couleurs conservées à l'impression / PDF, schémas jamais coupés entre deux pages.
+- `public/docs/procedure-paiement-plateforme.md` : **13 schémas** ajoutés :
+  - le parcours d'une dépense de campagne ;
+  - « une sortie d'argent = une seule opération » (remplace l'arbre en texte) ;
+  - où saisir une dépense ;
+  - qui valide un budget ;
+  - du budget demandé au budget ouvert ;
+  - la vie d'un bon de commande ;
+  - les pièces de la liasse ;
+  - quelle facture, rattachée à quoi ;
+  - appliquer le paiement ;
+  - où saisir une petite dépense ;
+  - qui peut la saisir ;
+  - un lot Camptrack ;
+  - le justificatif d'une dépense.
+
+  Quelques remarques importantes sont passées en encadrés (séparation des tâches, annulation par la DG, solde de caisse, rapport).
+
+**Erreurs rencontrées & solutions**
+- Captures de contrôle : le navigateur attendu par la version de Playwright du projet n'était pas installé → utilisation du Chromium déjà présent sur le poste (aucun téléchargement).
+- Première version : étapes en `flex-wrap`, rangées inégales et flèche orpheline en bout de ligne → grille à colonnes fixes, flèches dessinées entre les cartes. Sur téléphone, flèche mal placée sur la carte qui commence la 2ᵉ rangée → règle commune à toutes les cartes sauf la première.
+
+**À tester / points d'attention**
+- Contrôle par captures (page de prévisualisation hors serveur, 1100 px et 390 px) : 13 schémas rendus, aucun bloc brut restant, aucun débordement horizontal. `tsc` et lint sans erreur.
+- À vérifier dans l'application : page **Aide** (sommaire, schémas), et *Imprimer / PDF*.
+- Pour ajouter un schéma : écrire un bloc ` ```flux ` ou ` ```choix ` dans le guide (syntaxe en tête de `lib/aideSchemas.ts`).
+
+---
+
+## 2026-11-20 — Liasse du bon de commande : proforma fournisseur, BAT signé, bordereau signé, facture, autres documents
+
+**Demande / Contexte**
+Revoir les pièces de la liasse d'un bon de commande :
+- **proforma fournisseur** (obtenue avant le budget) : jointe au budget à sa création (facultatif) ou à la liasse ensuite ;
+- **BAT signé** (facultatif) ;
+- **bordereau de livraison signé** ;
+- **facture** : celle rattachée au bon apparaît dans la liasse (fin d'exécution) ;
+- **autre document** avec un libellé à préciser ;
+- le **rapport** n'est plus demandé ;
+- toute pièce manquante en rouge avec un bouton clignotant de rappel.
+
+Choix de l'utilisateur :
+- les proformas fournisseur du budget sont proposées dans la liasse et reprises en un clic, ou envoyées directement si aucune ne correspond (ou si le bon n'a pas de budget) ;
+- au solde, seuls le **bordereau (ou l'attestation de service fait, conservée en alternative) et la facture** sont exigés, en plus du BC signé : la proforma fournisseur et le BAT ne bloquent pas.
+
+Question posée : une facture enregistrée sur la fiche du bon apparaît-elle dans la liste des factures ? Oui (même table `FactureFournisseur`), à condition que la période filtrée couvre sa date. La colonne « Bon de commande » y est ajoutée.
+
+**Modifications apportées**
+- **Base (migration `20261120100000_liasse_bon_commande`, ajouts seulement)** : valeurs `PROFORMA_FOURNISSEUR` et `BAT_SIGNE` dans `TypeDocumentCommande` ; colonne `CommandeFournisseurDocument.libelle` (facultative). `RAPPORT` reste dans l'enum pour les pièces déjà jointes.
+- `lib/commandeFournisseurLiasse.ts` :
+  - types proposés : BC signé, proforma fournisseur, BAT signé, bordereau de livraison signé, attestation de service fait, facture, autre document ;
+  - `etatLiasse` renvoie `proformaFournisseur`, `bat`, `complete` (BC signé + livraison + facture : pièces du solde), `nbPieces` sur `NB_PIECES_ATTENDUES` = 4, `manquantes` (solde) et `aJoindre` (rappels, proforma fournisseur comprise) ;
+  - `libellePiece` (libellé d'une pièce, précisé pour « Autre »).
+- `app/api/fournisseurs/commandes/[commandeId]/documents/route.ts` :
+  - `GET` : proformas fournisseur jointes au budget de la ligne du bon et aux budgets de sa proforma client ;
+  - `POST` : `libelle` (obligatoire pour « Autre ») ; `attachmentId` pour reprendre une proforma fournisseur du budget (même fichier, libellé « reprise du budget DB-… », pas de doublon) ; `RAPPORT` refusé.
+- `components/fournisseurs/CommandeLiasseCard.tsx` :
+  - une ligne par pièce (requise / à fournir / facultatif), **rouge avec bouton « À joindre » clignotant** tant qu'elle manque (BAT : pointillés, sans alerte) ;
+  - fichiers affichés sous leur pièce ;
+  - ligne « Facture » : factures du bon (référence, montant, état, aperçu) et bouton « Enregistrer la facture » ;
+  - ligne « Proforma fournisseur » : proformas du budget avec « Utiliser pour ce bon » ;
+  - bouton « Autre document » (libellé demandé) ; section « Autres documents » (autres + anciens rapports) ;
+  - badge « Liasse n/4 — x à joindre » et rappel des pièces requises pour le solde.
+- Budget : type « Devis » renommé **« Proforma fournisseur (devis) »** (`lib/demandeBudgetAttachmentTypes.ts`) ; à l'upload (création, modification, « Ajouter des documents »), **le fournisseur est demandé** et ajouté au nom normalisé (`…_Proforma-fournisseur-<Fournisseur>_…`) : `components/DemandeBudgetForm.tsx`, `components/DemandeBudgetAddDocumentsDialog.tsx`, `lib/uploadDemandeBudget.ts` (`precision`, champ `precisions_<type>`).
+- `lib/uploadCommandeFournisseur.ts` : précision dans le nom (libellé « Autre » ; fournisseur du bon pour une proforma fournisseur).
+- Liste des factures (`app/(main)/fournisseur/factures/page.tsx`, `app/api/factures-fournisseurs/route.ts`) : colonne **« Bon de commande »** (numéro, lien vers la fiche du bon).
+- Textes : réglage « Exiger la liasse complète » (Paramètres → Rôles), guide des équipes (nouvelle section « La liasse du bon de commande », messages), commentaires.
+
+**Erreurs rencontrées & solutions**
+- `prisma migrate deploy` refusé par le mode automatique (écriture sur la base de production) → migration **non appliquée**, à lancer par l'utilisateur.
+- Le nom d'origine des pièces de budget n'est pas conservé (nommage normalisé) : plusieurs proformas fournisseur auraient eu le même nom → le fournisseur est demandé à l'upload et inscrit dans le nom.
+
+**À tester / points d'attention**
+- **Appliquer la migration avant tout déploiement** (`npx prisma migrate deploy`) : le client Prisma lit la nouvelle colonne `libelle` ; sans elle, la fiche d'un bon de commande tombe en erreur (Vercel n'applique pas les migrations ; le Docker du VPS le fait au démarrage).
+- Tests : liasse et nommage 12/12 ; `tsc` et lint sans erreur. Tests en base et envoi réel de pièces (nouveaux types) : après la migration.
+- À vérifier à l'écran : fiche d'un bon (lignes rouges clignotantes, reprise d'une proforma du budget, « Autre document »), budget avec une proforma fournisseur (fournisseur demandé), liste des factures (colonne Bon de commande).
+
+---
+
+## 2026-11-19 (suite 8) — Validation des budgets de campagne réservée à l'administrateur
+
+**Demande / Contexte**
+Le rôle de validation déléguée (Assistant-Direction) validait les budgets ponctuels, de campagne et pour tiers jusqu'au plafond. Désormais il ne valide plus que les budgets **ponctuels et pour tiers** ; les budgets de **campagne**, comme les mensuels, sont validés par l'administrateur, quel que soit leur montant.
+
+**Modifications apportées**
+- `lib/budgetTypes.ts` : `TYPES_VALIDATION_ADMIN = ['MENSUEL', 'CAMPAGNE']` et `typeValideParAdmin(type)`, partagés par le serveur et l'écran ; description du type Campagne (« validé par l'administrateur »).
+- `lib/budgetAuth.ts` : `requiresValidationAdmin` utilise ces types → valider, rejeter, décider une ligne (routes `valider`, `rejeter`, `lignes/[ligneId]/decider`) et destinataires de la notification « budget soumis » (`lib/email/demandeBudget.ts`) suivent la nouvelle règle sans autre changement. Message : « Les budgets de campagne sont validés par l'administrateur. »
+- `app/(main)/budget/demandes/[id]/page.tsx` : même matrice à l'écran ; valideur attendu « l'administrateur (budget de campagne) ».
+- `app/(main)/parametres/roles/page.tsx` : droits renommés « Valider les budgets mensuels, de campagne et au-dessus du plafond » et « Valider les budgets (hors mensuels et campagne) » — « Budgets ponctuels et pour tiers, jusqu'au plafond délégué (ex. Assistant-Direction) » ; texte du plafond délégué mis à jour. Aucune case ni migration : les rôles gardent leurs droits.
+- `public/docs/procedure-paiement-plateforme.md` : tableau des acteurs mis à jour.
+- `e2e/procedure-paiement.spec.ts` : libellé du droit ; étape 5 → le valideur délégué voit « pas de votre niveau » et reçoit 403 sur la campagne, puis l'admin ne peut rien accorder sans budget signé ; étape 7 → c'est l'admin qui accorde les lignes ; choix de la proforma via le sélecteur simple (une seule proforma par budget).
+
+**Erreurs rencontrées & solutions**
+- Script de modification lancé dans une chaîne shell entre guillemets doubles : les backticks du code ont été interprétés par bash → seul le guide avait été modifié ; le fichier e2e a été modifié ensuite avec l'outil d'édition.
+
+**À tester / points d'attention**
+- Tests : règle de validation 8/8 (campagne → admin, délégué refusé, ponctuel et tiers sous le plafond acceptés, mensuel inchangé), logique budget 89/89 ; `tsc` et lint sans erreur. Le scénario Playwright n'a pas été relancé (identifiants réels nécessaires).
+- Budgets de campagne déjà en cours de validation au moment du changement : **DB-2026-0006** (validation partielle, 1 ligne accordée, 2 en attente) et **DB-2026-0008** (soumis). Leurs lignes restantes doivent maintenant être décidées par l'administrateur ; la notification « à valider » avait été envoyée au rôle délégué.
+
+---
+
 ## 2026-11-19 (suite 7) — Demande de budget : retrait de « Moyen de paiement principal », « Type de dépense » et « Bon de commande associé »
 
 **Demande / Contexte**
