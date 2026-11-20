@@ -1,3 +1,4 @@
+import { requireAnyPage, requirePermission } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma"; // Assuming prisma client is exported from here
 import { z } from "zod";
@@ -13,6 +14,8 @@ const productSchema = z.object({
 });
 
 export async function GET(request: Request) {
+  const refusAcces = await requireAnyPage(["fournisseurs"]);
+  if (refusAcces) return refusAcces;
     const { searchParams } = new URL(request.url);
     const fournisseurId = searchParams.get("fournisseurId");
 
@@ -58,6 +61,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const droitsAcces = await requirePermission("fournisseurs.produits");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
     try {
         const formData = await request.formData();
 

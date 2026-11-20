@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Trash2, ImagePlus } from "lucide-react";
+import { useDroits } from "@/components/DroitsProvider";
 
 export interface ProduitPhoto {
     id: string;
@@ -29,6 +30,8 @@ export function ProduitPhotosDialog({
 }: ProduitPhotosDialogProps) {
     const [uploading, setUploading] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const { peut } = useDroits();
+    const peutGerer = peut("fournisseurs.produits");
 
     const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!produitId || !e.target.files || e.target.files.length === 0) return;
@@ -98,6 +101,7 @@ export function ProduitPhotosDialog({
                             >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={photo.url} alt={photo.fileName} className="w-full h-full object-cover" />
+                                {peutGerer && (
                                 <button
                                     type="button"
                                     onClick={() => handleDeletePhoto(photo.id)}
@@ -107,11 +111,13 @@ export function ProduitPhotosDialog({
                                 >
                                     <Trash2 className="h-3.5 w-3.5" />
                                 </button>
+                                )}
                             </div>
                         ))}
                     </div>
                 )}
 
+                {peutGerer && (
                 <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-md p-4 cursor-pointer text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                     <ImagePlus className="h-4 w-4" />
                     {uploading ? "Envoi en cours..." : "Ajouter des photos"}
@@ -124,6 +130,7 @@ export function ProduitPhotosDialog({
                         disabled={uploading}
                     />
                 </label>
+                )}
             </DialogContent>
         </Dialog>
     );

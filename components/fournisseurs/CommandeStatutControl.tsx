@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import type { StatutCommandeFournisseur } from "@prisma/client";
 import { TRANSITIONS_COMMANDE } from "@/lib/commandeFournisseurLiasse";
+import { useDroits } from "@/components/DroitsProvider";
 
 export const STATUT_LABELS: Record<StatutCommandeFournisseur, string> = {
     BROUILLON: "Brouillon",
@@ -54,7 +55,11 @@ export function CommandeStatutControl({
     triggerClassName,
     badgeClassName,
 }: CommandeStatutControlProps) {
-    const suivants = TRANSITIONS_COMMANDE[statut] ?? [];
+    const { peut } = useDroits();
+    // Livrer et annuler ont chacun leur droit ; valider reste réservé à la direction (isAdmin).
+    const suivants = (TRANSITIONS_COMMANDE[statut] ?? []).filter((s) =>
+        s === "LIVREE" ? peut("fournisseurs.commandeLivrer") : s === "ANNULEE" ? peut("fournisseurs.commandeAnnuler") : true
+    );
     const isLocked = suivants.length === 0;
     const valideeImpossible = !isAdmin || bcSigne === false;
 

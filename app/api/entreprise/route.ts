@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getEntrepriseConfig } from "@/lib/entreprise";
@@ -13,6 +14,8 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const droitsAcces = await requirePermission("parametres.entreprise");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
     try {
         const body = await request.json();
 

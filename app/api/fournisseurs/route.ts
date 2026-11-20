@@ -1,3 +1,4 @@
+import { requireAnyPage, requirePermission } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { syntheseRetards } from '@/lib/retardPaiement';
@@ -5,6 +6,8 @@ import { getDelaisPaiement } from '@/lib/retardPaiementServeur';
 
 // GET /api/fournisseurs - Récupérer tous les fournisseurs
 export async function GET() {
+  const refusAcces = await requireAnyPage(["fournisseurs"]);
+  if (refusAcces) return refusAcces;
   try {
     const [fournisseurs, delais] = await Promise.all([
       prisma.fournisseur.findMany({
@@ -32,6 +35,8 @@ export async function GET() {
 
 // POST /api/fournisseurs - Créer un nouveau fournisseur
 export async function POST(req: Request) {
+  const droitsAcces = await requirePermission("fournisseurs.creer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const body = await req.json();
     const { nom, prenom, entreprise, contact, domaineActivite, adresse, email, typeFournisseur } = body;

@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useDroits } from '@/components/DroitsProvider';
 
 const MOTIF_OPTIONS_ACTIF = ['Nouveau contrat signé', 'Reconduction de contrat', 'Repris après une interruption'];
 const MOTIF_OPTIONS_INACTIF = ['Fin de contrat', 'Résiliation de contrat', 'Remplacé par un autre prestataire'];
@@ -33,6 +34,7 @@ export function PrestataireStatutToggle({ fournisseurId, entreprise, actif, onSu
   const [motifCustom, setMotifCustom] = useState('');
   const [dateContrat, setDateContrat] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { peut } = useDroits();
 
   const motifOptions = pendingActif ? MOTIF_OPTIONS_ACTIF : MOTIF_OPTIONS_INACTIF;
   const isOtherMotif = motifOption === 'Autre';
@@ -73,6 +75,9 @@ export function PrestataireStatutToggle({ fournisseurId, entreprise, actif, onSu
       setIsSubmitting(false);
     }
   };
+
+  // Sans le droit « Activer / désactiver », seul le badge de statut reste affiché.
+  if (!peut('fournisseurs.activer')) return null;
 
   return (
     <>

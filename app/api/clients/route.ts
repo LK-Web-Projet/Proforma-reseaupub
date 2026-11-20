@@ -1,9 +1,12 @@
+import { getDroits, peut, refusDroit, requireAnyPage } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { StatusFacture } from '@prisma/client';
 
 // GET /api/clients
 export async function GET() {
+  const refusAcces = await requireAnyPage(["client", "proforma"]);
+  if (refusAcces) return refusAcces;
   try {
     const clients = await prisma.client.findMany({
       include: {
@@ -51,6 +54,12 @@ export async function GET() {
 
 // POST /api/clients
 export async function POST(request: Request) {
+  // Créer un client : depuis la page Clients, ou depuis le formulaire de proforma.
+  const droits = await getDroits();
+  if (droits instanceof NextResponse) return droits;
+  if (!["client.creer", "proforma.creer", "proforma.modifier"].some((k) => peut(droits, k))) {
+    return refusDroit("client.creer");
+  }
   try {
     const data = await request.json();
     const nouveauClient = await prisma.client.create({ data });

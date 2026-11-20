@@ -25,6 +25,7 @@ model Role {
   canSaisirPetiteDepense   Boolean    @default(false)
   createdAt                DateTime   @default(now())
   pages                    RolePage[]
+  permissions              RolePermission[]
   users                    User[]
 }
 
@@ -36,6 +37,15 @@ model RolePage {
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([roleId, page])
+}
+
+// Droits d'action d'un rôle (clés « module.action » du catalogue lib/permissions.ts).
+model RolePermission {
+  roleId     String
+  permission String
+  role       Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permission])
 }
 
 model User {
@@ -176,6 +186,8 @@ model Gestionnaire {
   prenom    String
   email     String                @unique
   telephone String?
+  // Inactif : n'est plus proposé sur les nouvelles proformas, reste affiché sur les anciennes.
+  actif     Boolean               @default(true)
   factures  InvoiceGestionnaire[]
 }
 

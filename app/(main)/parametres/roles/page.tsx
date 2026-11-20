@@ -11,14 +11,12 @@ import {
   Card, CardContent,
 } from "@/components/ui/card";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { ChevronLeft, ShieldCheck, Plus, Pencil } from "lucide-react";
-import { PAGE_KEYS, PAGE_LABELS, PageKey } from "@/lib/permissions";
+import { PAGE_LABELS, PageKey, permissionsCoherentes } from "@/lib/permissions";
+import { useDroits } from "@/components/DroitsProvider";
 
 type TypeBudgetValue = "MENSUEL" | "PONCTUEL" | "CAMPAGNE" | "TIERS";
 const TYPES_BUDGET: { value: TypeBudgetValue; label: string }[] = [
@@ -38,6 +36,7 @@ interface Role {
   canSaisirCaisse: boolean;
   canSaisirPetiteDepense: boolean;
   pages: PageKey[];
+  permissions?: string[];
   nombreUtilisateurs: number;
 }
 
@@ -77,24 +76,10 @@ const BUDGET_FLAGS: { key: BudgetFlag; label: string; short: string; description
   },
 ];
 
-const emptyForm = {
-  nom: "",
-  pages: [] as PageKey[],
-  canManageUsers: false,
-  canValidateBudgetMensuel: false,
-  canValidateBudget: false,
-  canPayBudget: false,
-  canSaisirCaisse: false,
-  canSaisirPetiteDepense: false,
-};
-
 export default function RolesPage() {
+  const { peut, charge } = useDroits();
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingRole, setEditingRole] = useState<Role | null>(null);
-  const [form, setForm] = useState(emptyForm);
-  const [isSaving, setIsSaving] = useState(false);
   const [forbidden, setForbidden] = useState(false);
   const [plafond, setPlafond] = useState("");
   const [isSavingPlafond, setIsSavingPlafond] = useState(false);
@@ -249,60 +234,9 @@ export default function RolesPage() {
     fetchRoles();
   }, [fetchRoles]);
 
-  const openCreate = () => {
-    setEditingRole(null);
-    setForm(emptyForm);
-    setIsModalOpen(true);
-  };
+  const peutReglages = peut("parametres.reglages");
 
-  const openEdit = (role: Role) => {
-    setEditingRole(role);
-    setForm({
-      nom: role.nom,
-      pages: role.pages,
-      canManageUsers: role.canManageUsers,
-      canValidateBudgetMensuel: role.canValidateBudgetMensuel,
-      canValidateBudget: role.canValidateBudget,
-      canPayBudget: role.canPayBudget,
-      canSaisirCaisse: role.canSaisirCaisse,
-      canSaisirPetiteDepense: role.canSaisirPetiteDepense,
-    });
-    setIsModalOpen(true);
-  };
-
-  const togglePage = (page: PageKey) => {
-    setForm((prev) => ({
-      ...prev,
-      pages: prev.pages.includes(page) ? prev.pages.filter((p) => p !== page) : [...prev.pages, page],
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    try {
-      const url = editingRole ? `/api/roles/${editingRole.id}` : "/api/roles";
-      const method = editingRole ? "PATCH" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.nom?._errors?.[0] || err.error || "Erreur lors de l'enregistrement.");
-      }
-      toast.success(editingRole ? "Rôle mis à jour !" : "Rôle créé !");
-      setIsModalOpen(false);
-      await fetchRoles();
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Erreur.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  if (forbidden) {
+  if (forbidden && charge && !peutReglages) {
     return (
       <div className="max-w-4xl mx-auto text-center py-20 text-muted-foreground">
         Accès réservé aux administrateurs.
@@ -322,14 +256,19 @@ export default function RolesPage() {
             Rôles &amp; Permissions
           </h1>
           <p className="text-gray-500 mt-1 text-sm">
-            Définissez quelles sections de l&apos;application chaque rôle peut consulter.
+            Pour chaque rôle : les pages accessibles, puis les actions permises sur chaque page.
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> Nouveau rôle
-        </Button>
+        {!forbidden && (
+          <Button asChild>
+            <Link href="/parametres/roles/nouveau">
+              <Plus className="mr-2 h-4 w-4" /> Nouveau rôle
+            </Link>
+          </Button>
+        )}
       </div>
 
+      {!forbidden && (
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -337,7 +276,7 @@ export default function RolesPage() {
               <TableRow>
                 <TableHead>Rôle</TableHead>
                 <TableHead>Pages autorisées</TableHead>
-                <TableHead className="text-center">Gère les comptes</TableHead>
+                <TableHead className="text-center">Droits d&apos;action</TableHead>
                 <TableHead>Circuit budget</TableHead>
                 <TableHead className="text-center">Utilisateurs</TableHead>
                 <TableHead className="text-center">Actions</TableHead>
@@ -364,7 +303,9 @@ export default function RolesPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      {role.canManageUsers ? <Badge>Oui</Badge> : <span className="text-muted-foreground text-xs">Non</span>}
+                      <Badge variant="secondary" className="font-normal">
+                        {permissionsCoherentes(role.permissions ?? [], role.pages).length + (role.canManageUsers ? 1 : 0)}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -379,8 +320,10 @@ export default function RolesPage() {
                     </TableCell>
                     <TableCell className="text-center text-sm text-muted-foreground">{role.nombreUtilisateurs}</TableCell>
                     <TableCell className="text-center">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(role)}>
-                        <Pencil className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" asChild>
+                        <Link href={`/parametres/roles/${role.id}`} aria-label={`Modifier le rôle ${role.nom}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Link>
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -390,6 +333,10 @@ export default function RolesPage() {
           </Table>
         </CardContent>
       </Card>
+      )}
+
+      {peutReglages && (
+      <>
 
       <Card className="mt-6">
         <CardContent className="pt-6 space-y-3">
@@ -512,73 +459,8 @@ export default function RolesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingRole ? "Modifier le rôle" : "Nouveau rôle"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="nom">Nom du rôle</Label>
-              <Input
-                id="nom"
-                value={form.nom}
-                onChange={(e) => setForm((prev) => ({ ...prev, nom: e.target.value }))}
-                placeholder="Ex: Commercial, Comptable..."
-                required
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label>Pages accessibles</Label>
-              <div className="space-y-2 rounded-lg border p-3">
-                {PAGE_KEYS.map((page) => (
-                  <div key={page} className="flex items-center justify-between">
-                    <span className="text-sm">{PAGE_LABELS[page]}</span>
-                    <Switch checked={form.pages.includes(page)} onCheckedChange={() => togglePage(page)} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <p className="text-sm font-medium">Peut gérer les comptes</p>
-                <p className="text-xs text-muted-foreground">Créer des comptes, gérer les rôles et permissions.</p>
-              </div>
-              <Switch
-                checked={form.canManageUsers}
-                onCheckedChange={(v) => setForm((prev) => ({ ...prev, canManageUsers: v }))}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label>Circuit budget et caisse</Label>
-              <div className="space-y-3 rounded-lg border p-3">
-                {BUDGET_FLAGS.map((f) => (
-                  <div key={f.key} className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium">{f.label}</p>
-                      <p className="text-xs text-muted-foreground">{f.description}</p>
-                    </div>
-                    <Switch
-                      checked={form[f.key]}
-                      onCheckedChange={(v) => setForm((prev) => ({ ...prev, [f.key]: v }))}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Annuler</Button>
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? "Enregistrement..." : editingRole ? "Enregistrer" : "Créer le rôle"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      </>
+      )}
     </div>
   );
 }

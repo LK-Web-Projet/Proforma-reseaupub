@@ -1,3 +1,4 @@
+import { getDroits, peut, refusDroit } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
@@ -42,7 +43,19 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const droits = await getDroits();
+  if (droits instanceof NextResponse) return droits;
+  if (!droits.pages.includes("fournisseurs")) return refusDroit("fournisseurs.factureModifier");
   const { id } = await params;
+
+  // Droit selon le statut demandé : annuler → « Annuler une facture » ; marquer payée à la main
+  // (régularisation d'une facture liée à rien) → la direction ; sinon « Modifier une facture ».
+  const droitPourStatut = (actuel: StatutFactureFournisseur, cible: string | null): string | null => {
+    if (!cible || cible === actuel) return null;
+    if (cible === StatutFactureFournisseur.ANNULEE) return "fournisseurs.factureAnnuler";
+    if (cible === StatutFactureFournisseur.PAYEE) return "canValidateBudgetMensuel";
+    return "fournisseurs.factureModifier";
+  };
 
   try {
     const existing = await prisma.factureFournisseur.findUnique({
@@ -82,6 +95,8 @@ export async function PATCH(
           { status: 403 },
         );
       }
+      const droitStatut = droitPourStatut(existing.status, status);
+      if (droitStatut && !peut(droits, droitStatut)) return refusDroit(droitStatut);
       const refusStatut = await refusChangementStatut(id, existing.status, status);
       if (refusStatut) {
         return NextResponse.json({ message: refusStatut }, { status: 400 });
@@ -95,7 +110,8 @@ export async function PATCH(
       return NextResponse.json(updatedFacture);
     }
 
-    // Édition complète (FormData)
+    // Édition complète (FormData) : « Modifier une facture » (ajout de la pièce manquante compris).
+    if (!peut(droits, "fournisseurs.factureModifier")) return refusDroit("fournisseurs.factureModifier");
     const formData = await req.formData();
     const file = formData.get("pieceJointe") as File | null;
 
@@ -169,6 +185,8 @@ export async function PATCH(
       Object.values(StatutFactureFournisseur).find((s) => s === statusValue)
         ? (statusValue as StatutFactureFournisseur)
         : existing.status;
+    const droitStatutEdition = droitPourStatut(existing.status, status);
+    if (droitStatutEdition && !peut(droits, droitStatutEdition)) return refusDroit(droitStatutEdition);
     const refusStatut = await refusChangementStatut(id, existing.status, status);
     if (refusStatut) {
       return NextResponse.json({ message: refusStatut }, { status: 400 });

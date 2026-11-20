@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { requireCanManageUsers } from "@/lib/authz";
+import { requirePermission } from "@/lib/authz";
 import { getEntrepriseConfig } from "@/lib/entreprise";
 
 // Paramètres du circuit budget, réservés aux administrateurs (même garde que la page Rôles, où
@@ -30,8 +30,8 @@ const reponse = (config: {
 });
 
 export async function GET() {
-  const authError = await requireCanManageUsers();
-  if (authError) return authError;
+  const droitsAcces = await requirePermission("parametres.reglages");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
 
   return NextResponse.json(reponse(await getEntrepriseConfig()));
 }
@@ -55,8 +55,8 @@ const schema = z
   });
 
 export async function PUT(request: NextRequest) {
-  const authError = await requireCanManageUsers();
-  if (authError) return authError;
+  const droitsAcces = await requirePermission("parametres.reglages");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
 
   const validation = schema.safeParse(await request.json());
   if (!validation.success) {

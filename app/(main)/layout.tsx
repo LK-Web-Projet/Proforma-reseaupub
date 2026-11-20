@@ -13,6 +13,7 @@ import { SidebarProvider } from "../../components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { PositionedSidebarTrigger } from "@/components/positioned-sidebar-trigger";
+import { DroitsProvider } from "@/components/DroitsProvider";
 
 export default async function RootLayout({
   children,
@@ -20,6 +21,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    <DroitsProvider>
     <SidebarProvider>
       <AppSidebar />
       <PositionedSidebarTrigger />
@@ -28,5 +30,6 @@ export default async function RootLayout({
       </main>
       <Toaster />
     </SidebarProvider>
+    </DroitsProvider>
   );
 }

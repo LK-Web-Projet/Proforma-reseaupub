@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { StatutCommandeFournisseur } from '@prisma/client';
+import { useDroits } from '@/components/DroitsProvider';
 
 interface LigneCommande {
   id: string;
@@ -51,6 +52,7 @@ const defaultFilters = {
 };
 
 export default function CommandesFournisseursListPage() {
+  const { peut } = useDroits();
   const [commandes, setCommandes] = useState<CommandeFournisseur[]>([]);
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
   const [filters, setFilters] = useState(defaultFilters);
@@ -156,10 +158,12 @@ export default function CommandesFournisseursListPage() {
           <h1 className="text-2xl font-bold">Bons de Commande Prestataires</h1>
           <p className="text-sm text-muted-foreground mt-1">{summary.count} bon(s) de commande</p>
         </div>
+        {peut('fournisseurs.commandeCreer') && (
         <Button onClick={() => setIsAddModalOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Nouveau Bon de Commande
         </Button>
+        )}
       </div>
 
       <CommandeFournisseurModal

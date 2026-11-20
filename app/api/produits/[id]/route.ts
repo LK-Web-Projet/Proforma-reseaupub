@@ -1,3 +1,4 @@
+import { requireAnyPage, requirePermission } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -8,6 +9,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const refusAcces = await requireAnyPage(["produits", "proforma"]);
+  if (refusAcces) return refusAcces;
   try {
     const { id } = await params;
 
@@ -41,6 +44,8 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const droitsAcces = await requirePermission("produits.modifier");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const data = await request.json();
     const validation = produitUpdateSchema.safeParse(data);
@@ -72,6 +77,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const droitsAcces = await requirePermission("produits.supprimer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     await prisma.produit.delete({ where: { id: (await params).id } });
     return new NextResponse(null, { status: 204 }); // No Content

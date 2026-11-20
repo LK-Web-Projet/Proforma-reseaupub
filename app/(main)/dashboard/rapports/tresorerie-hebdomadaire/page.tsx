@@ -12,11 +12,13 @@ import { Calendar } from '@/components/ui/calendar';
 import { ArrowLeft, ArrowLeftRight, Calendar as CalendarIcon, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WeeklyTreasuryChart, type WeeklyTreasuryPoint } from '@/components/dashboard/WeeklyTreasuryChart';
+import { useDroits } from '@/components/DroitsProvider';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(value);
 
 export default function TresorerieHebdomadairePage() {
+  const { peut } = useDroits();
   const [weeks, setWeeks] = useState<WeeklyTreasuryPoint[] | null>(null);
   const [autresMouvementsTotal, setAutresMouvementsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -83,10 +85,12 @@ export default function TresorerieHebdomadairePage() {
           <h1 className="text-2xl font-extrabold tracking-tight">Trésorerie hebdomadaire</h1>
           <p className="text-sm text-muted-foreground mt-1">Recettes, dépenses et proformas validées, semaine par semaine.</p>
         </div>
+        {peut("dashboard.exporter") && (
         <Button onClick={handleExport} className="w-full md:w-auto">
           <Download className="mr-2 h-4 w-4" />
           Exporter (Excel)
         </Button>
+        )}
       </div>
 
       <Card>

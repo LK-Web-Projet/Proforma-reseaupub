@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
+import { useDroits } from "@/components/DroitsProvider";
 
 // Schéma de validation avec Zod
 const schema = z.object({
@@ -23,6 +24,7 @@ type GestionnaireFormType = z.infer<typeof schema>;
 export default function NewGestionnairePage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { peut, charge } = useDroits();
   const {
     register,
     handleSubmit,
@@ -53,6 +55,14 @@ export default function NewGestionnairePage() {
       setLoading(false);
     }
   };
+
+  if (charge && !peut("commercial.creer")) {
+    return (
+      <div className="container mx-auto p-4 text-center py-20 text-muted-foreground">
+        Votre rôle n&apos;a pas le droit de créer un commercial.
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 flex justify-center">

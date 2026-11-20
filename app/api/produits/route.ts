@@ -1,3 +1,4 @@
+import { requireAnyPage, requirePermission } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -5,6 +6,8 @@ import prisma from '@/lib/prisma';
 
 // GET /api/produits?actif=true|false - Liste des produits (sans paramètre : tous, utilisé par la page admin)
 export async function GET(request: Request) {
+  const refusAcces = await requireAnyPage(["produits", "proforma"]);
+  if (refusAcces) return refusAcces;
   try {
     const { searchParams } = new URL(request.url);
     const actifParam = searchParams.get('actif');
@@ -27,6 +30,8 @@ const produitSchema = z.object({
 
 // POST /api/produits - Créer un nouveau produit
 export async function POST(request: Request) {
+  const droitsAcces = await requirePermission("produits.creer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const data = await request.json();
     const validation = produitSchema.safeParse(data);

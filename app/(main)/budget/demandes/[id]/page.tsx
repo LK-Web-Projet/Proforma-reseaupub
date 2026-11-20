@@ -49,6 +49,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2, Printer, FileSignature, Clock } from 'lucide-react';
 import type { DocumentUploadType } from '@/lib/demandeBudgetAttachmentTypes';
+import { useDroits } from '@/components/DroitsProvider';
 
 interface BudgetDepense {
   id: string;
@@ -152,6 +153,7 @@ const formatMontant = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value);
 
 export default function DemandeBudgetDetailPage() {
+  const { peut } = useDroits();
   const [demande, setDemande] = useState<DemandeBudgetDetail | null>(null);
   const [role, setRole] = useState<BudgetRole>(EMPTY_ROLE);
   const [loading, setLoading] = useState(true);
@@ -485,9 +487,11 @@ export default function DemandeBudgetDetailPage() {
               {demande.type === 'MENSUEL' ? 'Reconduire au mois suivant' : 'Dupliquer'}
             </Button>
           )}
+          {peut('budget.exporter') && (
           <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} disabled={isPrinting} title="Imprimer le budget pour signature">
             <Printer className="h-4 w-4" /> {isPrinting ? 'Génération...' : 'Imprimer'}
           </Button>
+          )}
           <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} />
         </div>
       </div>

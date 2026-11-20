@@ -25,6 +25,129 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-20 (suite 8) — Droits par action : grille des rôles (page, puis créer, modifier, valider, annuler, supprimer, exporter)
+
+**Demande / Contexte**
+Jusqu'ici, un rôle cochait des pages : voir une page revenait à tout y faire. L'utilisateur veut une gestion descendante : d'abord l'accès à la page, puis chaque action de cette page. Cela vaut pour toutes les rubriques et toute fonctionnalité future.
+
+Décisions de l'utilisateur :
+1. Le statut d'une proforma se change à la main, avec un droit, et aussi automatiquement (encaissement → Payée).
+2. On annule ce qui a un historique ; on ne supprime que ce qui vient d'être créé.
+3. La portée « les siennes / toutes » se règle par rôle.
+4. Les Paramètres sont découpés en sous-droits.
+5. Les exports ont leur droit.
+6. Les commerciaux peuvent être modifiés et désactivés ; les prestataires se désactivent et ne se suppriment plus.
+7. Un droit par action.
+
+**Modifications apportées**
+- **Catalogue unique** `lib/permissions.ts` :
+  - `MODULES_DROITS` : 9 rubriques, 49 actions, dont 43 clés « module.action » et les 6 cases historiques de `Role` (budget, caisse, `canManageUsers`), qui restent la source de vérité du circuit budget ;
+  - fonctions utilitaires : `aLeDroit`, `permissionsCoherentes` (règle descendante), `pageDeCle`, `libelleDroit`, `droitChangementStatutProforma` (règle partagée par l'écran et le serveur) et `permissionsAvantGrille` (miroir de la reprise SQL).
+  - ➜ **Pour toute nouvelle fonctionnalité** : déclarer ses actions dans `MODULES_DROITS`. Elles apparaissent alors dans la grille, et la route les vérifie avec `requirePermission("module.action")`.
+- **Base** : migration `20261122100000_droits_par_action`.
+  - Elle crée la table `RolePermission(roleId, permission)` et la colonne `Gestionnaire.actif` (vrai par défaut).
+  - **Reprise** : chaque rôle reçoit toutes les actions des pages qu'il a déjà.
+  - Exceptions : gérer les caisses et recalculer les soldes exigent en plus « Saisir au journal de caisse » (comme avant) ; les délais, plafonds et notifications exigent « Gérer les rôles » ; le PDF d'un budget est donné à tous.
+  - Testée dans une transaction annulée sur la vraie base. Admin reçoit 43 droits, Comptable 40 et assistantDirection 26, exactement ce qu'ils pouvaient faire avant. Les 4 commerciaux sont actifs. La base n'est pas modifiée.
+- **Serveur** (`lib/authz.ts`) :
+  - `getDroits()` relit en base les pages, les clés et les cases historiques, à chaque appel ;
+  - `requirePermission(clé)` exige la page du module puis la clé, et renvoie un message en français ;
+  - `refusDroit`, `peut`.
+  - **Repli** tant que la migration n'est pas appliquée : les droits d'avant la grille (`permissionsAvantGrille`), avec un avertissement dans la console.
+- `lib/proformaPortee.ts` : `filtrePorteeProformas`, `proformaDansPortee`, `refusHorsPortee`. Sans « Voir toutes les proformas », seules les proformas créées par l'utilisateur ou dont il est le commercial (même e-mail) sont visibles.
+- `GET /api/me/droits` : les droits de l'utilisateur, pour l'écran.
+- **Routes** : 33 contrôles par page remplacés par des contrôles par action, et des cas particuliers.
+
+  | Domaine | Contrôles |
+  |---|---|
+  | Proforma | modification : contenu → « Modifier », Validée → « Valider », Annulée ou sortie d'Annulée → « Annuler », autres statuts → « Changer le statut », Payée et Soldée automatiques sans droit · portée sur la fiche, la liste, les statistiques (sans les totaux globaux de caisse), le PDF, l'e-mail, les pièces, les campagnes et la rentabilité · suppression · **encaissement client : droit « Enregistrer un encaissement »** (il n'exigeait jusqu'ici que la connexion) |
+  | Clients | création possible aussi avec « Créer » ou « Modifier » une proforma (formulaire de proforma) |
+  | Factures prestataires | annulation et modification ; marquer payée à la main (régularisation) est réservé à la direction, comme l'indiquait le commentaire du code, qui ne le vérifiait pas |
+  | Bons de commande | créer, modifier (PUT et changement de ligne de budget), livrer, annuler, joindre des pièces (le comptable et la direction gardent l'accès aux pièces) |
+  | Prestataires | `DELETE` renvoie 405 « désactivez-le » ; activation, documents, produits et photos |
+  | Produits, caisses, recalcul, justificatifs | chacun son droit |
+  | Paramètres | entreprise et logo, délais et plafonds (`budget-config`), notifications |
+
+- **Commerciaux** (nouveau) :
+  - `PUT /api/gestionnaires/[id]` pour modifier (e-mail unique) et `PATCH` pour désactiver ou réactiver ;
+  - sur la fiche : boutons Modifier (fenêtre) et Désactiver/Réactiver, badge « Inactif » ;
+  - dans la liste : les inactifs en fin, grisés ;
+  - un commercial inactif n'est plus proposé dans le formulaire de proforma, ni sur la fiche sauf s'il y est déjà choisi.
+- **Écran** : `components/DroitsProvider.tsx` (contexte chargé dans `app/(main)/layout.tsx`, `useDroits().peut(clé)`, `<SiDroit>`). Les boutons sont masqués sur :
+  - la fiche proforma : avec un seul droit de statut, le mode « Modifier » ne propose que les statuts permis et n'envoie que le statut ; nouveau bouton **Supprimer** pour un brouillon sans historique ;
+  - la liste des proformas (export Excel) et la nouvelle proforma ;
+  - la barre latérale : « Nouvelle Facture », « Nouveau Commercial », « Export journal » ;
+  - les clients, les commerciaux, les prestataires (liste, fiche, statut, documents, produits, photos) et les factures prestataires (statuts, paiement, modification) ;
+  - les bons de commande (création, modification, PDF, statut livré/annulé, liasse, facture, ligne de budget, avance) ;
+  - les produits, le journal de caisse (caisses, recalcul, justificatifs) et la page d'export ;
+  - les exports des rapports, le bouton « Imprimer » de l'en-tête d'un budget (l'impression pour signature reste toujours possible) ;
+  - Paramètres : cartes selon les sous-droits, formulaire de l'entreprise en consultation seule sans le droit.
+- **Paramètres → Rôles** :
+  - nouvelle page `/parametres/roles/[id]` (et `/parametres/roles/nouveau`) : une carte par rubrique avec l'interrupteur « Accès à la page », les actions avec leur description (grisées sans la page), le choix « Proformas visibles : toutes / seulement les siennes » et « Tout cocher / Tout décocher » ;
+  - la liste des rôles affiche le nombre de droits et renvoie vers cette page ; la boîte de dialogue est retirée ;
+  - les réglages (plafonds, budget signé, petites dépenses, délais) s'affichent avec le droit « Délais et plafonds ».
+  - Les routes `roles` acceptent `permissions` ; une page retirée retire les droits de son module.
+- Guide : `public/docs/procedure-paiement-plateforme.md`, nouvelle section « Rôles et droits : page, puis actions ».
+
+**Erreurs rencontrées & solutions**
+- Dans les scripts écrits par le shell, `\\` devient `\`. Les scripts de remplacement sont donc écrits avec l'outil d'écriture de fichiers.
+- Un retrait d'import a collé des lignes (retour chariot isolé) : séparées et vérifiées dans tous les fichiers.
+- Écart volontaire au plan : la liste réduite des proformas (choix d'une proforma depuis le formulaire de budget, sans montant) reste entière. Un demandeur de budget sans la page Proforma doit pouvoir rattacher la proforma de sa campagne.
+
+**À tester / points d'attention**
+- ⚠️ **Lancer `pnpm prisma migrate deploy`** (jamais de reset) **avant de redémarrer le serveur**. Le client Prisma régénéré lit `Gestionnaire.actif` : sans la migration, les écrans qui chargent les commerciaux (proformas, commerciaux) sont en erreur. Les droits, eux, ont un repli.
+- Vérifications faites :
+  - catalogue (98/98 : clés, règle descendante, règle de statut, reprise SQL = repli) ;
+  - migration en transaction annulée (3 rôles identiques à avant) ;
+  - portée sur les vraies données ;
+  - `tsc` et lint OK ;
+  - `next build` (dossier `.next-verif`) : compilation, types et 43 pages générées ; la limite de 10 minutes a été atteinte pendant la collecte des traces.
+- À l'écran : créer un rôle de test « siennes » sans « Valider » ; vérifier qu'il ne voit que ses proformas et ne peut pas choisir « Validée ».
+
+## 2026-11-20 (suite 7) — Sécurité : les routes API vérifient maintenant les droits de page ; suppressions limitées
+
+**Demande / Contexte**
+L'analyse des droits a montré que le contrôle par page (Paramètres → Rôles) ne bloquait que l'ouverture des écrans : le middleware ne vérifie pas `/api/*`. Une trentaine de routes ne vérifiaient que la connexion. N'importe quel compte connecté pouvait donc, en appelant l'API, modifier ou supprimer une proforma (ou la passer « Payée »), supprimer un client, un prestataire ou un produit, changer les informations et le logo de l'entreprise, annuler une facture prestataire ou lire tous les chiffres du tableau de bord. Règle donnée par l'utilisateur pour les suppressions : annuler ce qui a un historique, ne supprimer que ce qui vient d'être créé.
+
+**Modifications apportées**
+- `lib/authz.ts` :
+  - `getAllowedPages()` relit en base les sections du rôle ;
+  - `requireAnyPage([...])` accorde l'accès si le rôle a au moins une des sections, pour les routes partagées par plusieurs écrans ;
+  - `requirePage` s'appuie désormais dessus.
+- 48 fonctions de route reçoivent un contrôle en tête :
+
+  | Routes | Sections exigées |
+  |---|---|
+  | `clients` GET/POST | client ou proforma (création depuis le formulaire de proforma) |
+  | `clients/[id]` | client |
+  | `factures` POST, `factures/[id]` (GET, PATCH, PUT, DELETE), `send-email`, `upload`, `paiements/upload-proof`, `pdf`, `campagnes` | proforma |
+  | `fournisseurs/*` (fiche, documents, produits, photos), `factures-fournisseurs/*` | fournisseurs |
+  | `produits` GET et `produits/[id]` GET | produits ou proforma |
+  | `produits` POST, PUT, DELETE ; `produits/statistiques` | produits |
+  | `gestionnaires` GET | commercial ou proforma |
+  | `gestionnaires` POST, `gestionnaires/[id]` | commercial |
+  | `entreprise` PUT, `entreprise/logo` | parametres (GET reste ouvert : les PDF du budget et des BC lisent l'en-tête) |
+  | `cash-journal/[id]/upload` | finance |
+  | `dashboard`, `rapports/tresorerie-hebdomadaire` | dashboard |
+  | `statistiques` | proforma |
+
+- `GET /api/factures` :
+  - avec la section Proforma ou Clients : liste complète ;
+  - sinon : seulement `id`, numéro, objet, statut et nom du client. Ce minimum sert au formulaire de demande de budget (ouvert à tous) et au choix de la proforma d'un bon de commande. Ni montant ni ligne.
+- Suppressions limitées (règle n° 2) :
+  - proforma : seulement si elle est **en brouillon** et sans encaissement, dépense, budget ni bon de commande. Sinon, erreur 409 « annulez-la » ;
+  - client : refusé s'il a des proformas ;
+  - prestataire : refusé s'il a des factures ou des bons de commande. Le schéma supprime ses factures **en cascade** : avant, supprimer un prestataire effaçait toutes ses factures, même payées. Le message propose de le désactiver.
+- Les routes d'intégration (clé API), budget, caisse, BC, rôles et utilisateurs ne changent pas : elles étaient déjà protégées.
+
+**Erreurs rencontrées & solutions**
+- Le script d'insertion ne trouvait pas les fonctions : `\b` y avait été transformé en caractère d'effacement. Corrigé par un test `startsWith`.
+
+**À tester / points d'attention**
+- Rôles en base au 2026-11-20 : Admin (toutes les sections), Comptable (toutes sauf Paramètres), assistantDirection (Proforma et Prestataires). Les écrans qu'ils utilisent restent accessibles. Le Comptable ne peut plus modifier les informations de l'entreprise par l'API, ce que l'écran ne lui permettait déjà pas.
+- Après un changement de rôle, l'API applique les nouveaux droits immédiatement, car elle relit la base.
+- Contrôle à l'écran non fait : tester avec le compte assistantDirection la création d'une proforma (choix du client, des produits, du commercial) et la création d'un bon de commande.
+
 ## 2026-11-20 (suite 6) — Liste des budgets épurée : budgets actifs par défaut, cartes de statut cliquables, mini-cartes de type
 
 **Demande / Contexte**

@@ -1,3 +1,4 @@
+import { requireAnyPage } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { StatusFacture, OperationType, PaiementType } from '@prisma/client';
@@ -567,6 +568,8 @@ async function getMonthView(now: Date, visibleIds: number[], visibleIdsSet: Set<
 }
 
 export async function GET(request: Request) {
+  const refusAcces = await requireAnyPage(["dashboard"]);
+  if (refusAcces) return refusAcces;
   try {
     const { searchParams } = new URL(request.url);
     const view = searchParams.get('view') === 'month' ? 'month' : 'global';

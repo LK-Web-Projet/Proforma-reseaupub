@@ -18,11 +18,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { useDroits } from "@/components/DroitsProvider";
 
 const formatMontant = (value: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "XOF" }).format(value);
 
 export default function ProduitsPage() {
+  const { peut } = useDroits();
   const [produits, setProduits] = useState<Produit[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -119,10 +121,12 @@ export default function ProduitsPage() {
               {loading ? "Chargement..." : `${filteredProduits.length} / ${produits.length} produit(s)`}
             </p>
           </div>
+          {peut("produits.creer") && (
           <Button onClick={() => handleOpenModal()}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Ajouter un produit
           </Button>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 mb-4 sm:items-center">
@@ -186,7 +190,7 @@ export default function ProduitsPage() {
                     <TableCell className="py-3 text-right">{formatMontant(produit.prixUnitaire)}</TableCell>
                     <TableCell className="py-3">
                       <div className="flex items-center gap-2">
-                        <Switch checked={produit.actif} onCheckedChange={() => handleToggleActif(produit)} />
+                        <Switch checked={produit.actif} onCheckedChange={() => handleToggleActif(produit)} disabled={!peut("produits.modifier")} />
                         {!produit.actif && (
                           <Badge variant="destructive" className="text-[10px]">
                             Inactif
@@ -196,6 +200,7 @@ export default function ProduitsPage() {
                     </TableCell>
                     <TableCell className="py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {peut("produits.modifier") && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -204,6 +209,8 @@ export default function ProduitsPage() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        )}
+                        {peut("produits.supprimer") && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -212,6 +219,7 @@ export default function ProduitsPage() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

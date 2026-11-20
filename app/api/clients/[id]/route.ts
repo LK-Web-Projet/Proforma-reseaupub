@@ -1,3 +1,4 @@
+import { requireAnyPage, requirePermission } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
@@ -6,6 +7,8 @@ export async function GET(
   request: Request,
   {params}: { params: Promise<{ id: string }> }
 ) {
+  const refusAcces = await requireAnyPage(["client"]);
+  if (refusAcces) return refusAcces;
   try {
     const { id } = await params;
     const client = await prisma.client.findUnique({
@@ -29,6 +32,8 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const droitsAcces = await requirePermission("client.modifier");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const data = await request.json();
     const { id } = await params;
@@ -48,8 +53,18 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const droitsAcces = await requirePermission("client.supprimer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const { id } = await params;
+    // Un client qui a déjà des proformas garde son historique : suppression refusée.
+    const nbProformas = await prisma.invoice.count({ where: { clientId: id } });
+    if (nbProformas > 0) {
+      return NextResponse.json(
+        { error: `Ce client a ${nbProformas} proforma(s) : il ne peut pas être supprimé.` },
+        { status: 409 }
+      );
+    }
     await prisma.client.delete({ where: { id: id } });
     return new NextResponse(null, { status: 204 }); // No Content
   } catch (error) {

@@ -143,7 +143,8 @@ export default function FactureForm() {
       try {
         const res = await fetch("/api/gestionnaires");
         const data = await res.json();
-        setGestionnaires(data);
+        // Un commercial désactivé n'est plus proposé sur une nouvelle proforma.
+        setGestionnaires(Array.isArray(data) ? data.filter((g: { actif?: boolean }) => g.actif !== false) : []);
       } catch {
         toast.error("Impossible de charger les gestionnaires.");
       }

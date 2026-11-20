@@ -1,3 +1,4 @@
+import { requireAnyPage } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { StatusFacture, OperationType } from '@prisma/client';
@@ -33,6 +34,8 @@ interface WeeklyBucket {
 // "Général" (par mois) de app/api/dashboard/route.ts, mais agrégée par semaine (lundi-dimanche),
 // sur une période personnalisable (?from=&to=, par défaut les 12 dernières semaines).
 export async function GET(request: Request) {
+  const refusAcces = await requireAnyPage(["dashboard"]);
+  if (refusAcces) return refusAcces;
   try {
     const { searchParams } = new URL(request.url);
     const now = new Date();

@@ -25,6 +25,7 @@ import {
 } from '@/lib/budgetTypes';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Download, Wallet, TrendingDown, TrendingUp, Percent } from 'lucide-react';
+import { useDroits } from '@/components/DroitsProvider';
 
 interface Ligne {
   mois: string;
@@ -143,6 +144,7 @@ function GroupeTable({ titre, groupes }: { titre: string; groupes: Groupe[] }) {
 }
 
 export default function SuiviBudgetairePage() {
+  const { peut } = useDroits();
   const [lignes, setLignes] = useState<Ligne[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [interdit, setInterdit] = useState(false);
@@ -272,10 +274,12 @@ export default function SuiviBudgetairePage() {
             Prévu vs réalisé des budgets validés, par mois, par service et par catégorie de dépense.
           </p>
         </div>
+        {peut("dashboard.exporter") && (
         <Button onClick={handleExport} className="w-full md:w-auto">
           <Download className="mr-2 h-4 w-4" />
           Exporter (Excel)
         </Button>
+        )}
       </div>
 
       <Card>

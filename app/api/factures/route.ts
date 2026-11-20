@@ -3,9 +3,20 @@ import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { auth } from "@clerk/nextjs/server";
 import { getEntrepriseConfig } from "@/lib/entreprise";
-import { safeCreatedById } from "@/lib/authz";
+import { safeCreatedById, getDroits, requirePermission } from "@/lib/authz";
+import { filtrePorteeProformas } from "@/lib/proformaPortee";
 
 export async function GET(request: Request) {
+  // Liste partagée : les écrans Proforma et Clients reçoivent les proformas complètes ; tout autre
+  // utilisateur connecté (formulaire de demande de budget, bons de commande) ne reçoit que de quoi
+  // choisir une proforma (numéro, objet, statut, nom du client) — ni montants, ni lignes.
+  // Portée : sans « Voir toutes les proformas », la liste complète ne contient que les siennes.
+  // La liste réduite (choix d'une proforma, sans montant) reste entière : un demandeur de budget
+  // sans la page Proforma doit pouvoir rattacher la proforma de sa campagne.
+  const droits = await getDroits();
+  if (droits instanceof NextResponse) return droits;
+  const listeComplete = droits.pages.includes("proforma") || droits.pages.includes("client");
+  const portee = listeComplete ? filtrePorteeProformas(droits) : null;
   try {
     const { searchParams } = new URL(request.url);
 
@@ -37,8 +48,17 @@ export async function GET(request: Request) {
     }
     // Si year est vide ET pas de dateMin/dateMax, on affiche TOUTES les factures
 
+    if (!listeComplete) {
+      const choix = await prisma.invoice.findMany({
+        where,
+        orderBy: { dateCreation: "desc" },
+        select: { id: true, numero: true, objet: true, statut: true, client: { select: { nom: true } } },
+      });
+      return NextResponse.json(choix);
+    }
+
     const factures = await prisma.invoice.findMany({
-      where,
+      where: portee ? { AND: [where, portee] } : where,
       orderBy: { dateCreation: "desc" },
       include: {
         client: true,
@@ -63,6 +83,8 @@ export async function GET(request: Request) {
 
 // POST /api/factures
 export async function POST(request: Request) {
+  const droitsAcces = await requirePermission("proforma.creer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const { userId } = await auth();
     const {

@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { PAGE_KEYS, requireCanManageUsers } from "@/lib/authz";
+import { permissionsCoherentes } from "@/lib/permissions";
+
+/** Rôles avec leurs droits d'action ; tolère l'absence de la table tant que la migration n'est pas appliquée. */
+async function lireRoles() {
+  try {
+    return await prisma.role.findMany({
+      include: { pages: true, permissions: true, _count: { select: { users: true } } },
+      orderBy: { nom: "asc" },
+    });
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021")) throw error;
+    const roles = await prisma.role.findMany({ include: { pages: true, _count: { select: { users: true } } }, orderBy: { nom: "asc" } });
+    return roles.map((r) => ({ ...r, permissions: [] as { permission: string }[] }));
+  }
+}
 
 // GET /api/roles - Liste des rôles avec leurs pages autorisées
 export async function GET() {
@@ -9,10 +25,7 @@ export async function GET() {
   if (authError) return authError;
 
   try {
-    const roles = await prisma.role.findMany({
-      include: { pages: true, _count: { select: { users: true } } },
-      orderBy: { nom: "asc" },
-    });
+    const roles = await lireRoles();
 
     return NextResponse.json(
       roles.map((r) => ({
@@ -25,6 +38,7 @@ export async function GET() {
         canSaisirCaisse: r.canSaisirCaisse,
         canSaisirPetiteDepense: r.canSaisirPetiteDepense,
         pages: r.pages.map((p) => p.page),
+        permissions: r.permissions.map((p) => p.permission),
         nombreUtilisateurs: r._count.users,
       }))
     );
@@ -37,6 +51,8 @@ export async function GET() {
 const roleSchema = z.object({
   nom: z.string().min(1, "Le nom du rôle est requis."),
   pages: z.array(z.enum(PAGE_KEYS)),
+  // Clés « module.action » (lib/permissions.ts) ; filtrées selon les pages (règle descendante).
+  permissions: z.array(z.string()).default([]),
   canManageUsers: z.boolean().default(false),
   canValidateBudgetMensuel: z.boolean().default(false),
   canValidateBudget: z.boolean().default(false),
@@ -57,7 +73,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error.format() }, { status: 400 });
     }
 
-    const { nom, pages, canManageUsers, canValidateBudgetMensuel, canValidateBudget, canPayBudget, canSaisirCaisse, canSaisirPetiteDepense } = validation.data;
+    const { nom, pages, permissions, canManageUsers, canValidateBudgetMensuel, canValidateBudget, canPayBudget, canSaisirCaisse, canSaisirPetiteDepense } = validation.data;
 
     const role = await prisma.role.create({
       data: {
@@ -69,8 +85,9 @@ export async function POST(request: NextRequest) {
         canSaisirCaisse,
         canSaisirPetiteDepense,
         pages: { create: pages.map((page) => ({ page })) },
+        permissions: { create: permissionsCoherentes(permissions, pages).map((permission) => ({ permission })) },
       },
-      include: { pages: true },
+      include: { pages: true, permissions: true },
     });
 
     return NextResponse.json(role, { status: 201 });

@@ -1,3 +1,5 @@
+import { refusHorsPortee } from "@/lib/proformaPortee";
+import { requirePermission } from "@/lib/authz";
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -45,7 +47,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const droitsAcces = await requirePermission("proforma.pieces");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const invoiceId = (await params).id;
+  const horsPortee = await refusHorsPortee(droitsAcces, invoiceId);
+  if (horsPortee) return horsPortee;
   const data = await request.formData();
   const file: File | null = data.get("file") as unknown as File;
   const type = data.get("type") as "bon" | "facture";
@@ -115,7 +121,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const droitsAcces = await requirePermission("proforma.pieces");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const invoiceId = (await params).id;
+  const horsPortee = await refusHorsPortee(droitsAcces, invoiceId);
+  if (horsPortee) return horsPortee;
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type") as "bon" | "facture";
 

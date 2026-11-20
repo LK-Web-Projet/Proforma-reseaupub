@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
-import { requireCanManageUsers } from "@/lib/authz";
+import { requirePermission } from "@/lib/authz";
 import {
   CANAL_PAR_DEFAUT,
   CANAUX_NOTIFICATION,
@@ -13,8 +13,8 @@ import { viderCacheCanaux } from "@/lib/notifications/notifier";
 
 // GET /api/notifications/preferences — canal de chaque événement (défaut : les deux).
 export async function GET() {
-  const authError = await requireCanManageUsers();
-  if (authError) return authError;
+  const droitsAcces = await requirePermission("parametres.notifications");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const prefs = await prisma.notificationPreference.findMany();
   const parEvenement = new Map(prefs.map((p) => [p.evenement, p]));
   return NextResponse.json(
@@ -35,8 +35,8 @@ const schema = z.object({
 
 // PUT /api/notifications/preferences — { preferences: [{ evenement, canal }] } (administrateurs).
 export async function PUT(request: NextRequest) {
-  const authError = await requireCanManageUsers();
-  if (authError) return authError;
+  const droitsAcces = await requirePermission("parametres.notifications");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
 
   const validation = schema.safeParse(await request.json().catch(() => null));
   if (!validation.success) {

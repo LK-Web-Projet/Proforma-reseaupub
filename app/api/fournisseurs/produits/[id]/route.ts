@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -11,6 +12,8 @@ const productUpdateSchema = z.object({
 
 // PUT /api/fournisseurs/produits/[id] - Modifier un produit existant
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const droitsAcces = await requirePermission("fournisseurs.produits");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
     const { id } = await params;
 
     try {

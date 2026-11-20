@@ -1,3 +1,5 @@
+import { getDroits } from "@/lib/authz";
+import { filtrePorteeProformas } from "@/lib/proformaPortee";
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { StatusFacture, OperationType } from '@prisma/client';
@@ -23,6 +25,14 @@ interface MonthlyStat {
 }
 
 export async function GET(request: Request) {
+  const droits = await getDroits();
+  if (droits instanceof NextResponse) return droits;
+  if (!droits.pages.includes("proforma")) {
+    return NextResponse.json({ error: "Accès refusé pour cette section." }, { status: 403 });
+  }
+  // Portée « les siennes » : statistiques calculées sur ses seules proformas, sans les totaux
+  // globaux du journal de caisse.
+  const portee = filtrePorteeProformas(droits);
   try {
     const { searchParams } = new URL(request.url);
     const clientId = searchParams.get('clientId');
@@ -112,14 +122,14 @@ export async function GET(request: Request) {
 
     const [invoices, cashEntries, invoicePaiements] = await Promise.all([
       prisma.invoice.findMany({
-        where: invoiceWhere,
+        where: portee ? { AND: [invoiceWhere, portee] } : invoiceWhere,
         include: {
           client: true,
           produits: true,
         },
       }),
       prisma.cashJournal.findMany({
-        where: {
+        where: portee ? { id: { in: [] } } : {
           date_operation: {
             gte: startDate,
             lte: endDate,
@@ -127,7 +137,7 @@ export async function GET(request: Request) {
         },
       }),
       prisma.paiement.findMany({
-        where: paiementWhere,
+        where: portee ? { AND: [paiementWhere, { invoice: portee }] } : paiementWhere,
         include: {
           invoice: {
             include: {

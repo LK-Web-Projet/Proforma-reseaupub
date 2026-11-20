@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getBudgetCapabilities } from "@/lib/budgetAuth";
-import { requirePage } from "@/lib/authz";
+import { getDroits, peut, refusDroit, requirePage, requirePermission } from "@/lib/authz";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import { StatutCommandeFournisseur } from "@prisma/client";
 import { refusCoherenceLigneProforma, refusLigneBudgetCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
@@ -158,6 +158,23 @@ export async function PATCH(
         const data: { statut?: StatutCommandeFournisseur; ligneBudgetId?: string | null } = {};
         let emisSurBudget = false;
 
+        // Droits d'action : rattacher à une ligne = modifier le bon ; livrer / annuler ont chacun
+        // leur droit. Valider reste réservé à la direction (contrôle plus bas).
+        const droits = await getDroits();
+        if (droits instanceof NextResponse) return droits;
+        const droitNecessaire =
+            nouveauStatut && nouveauStatut !== actuelle.statut
+                ? nouveauStatut === StatutCommandeFournisseur.LIVREE
+                    ? "fournisseurs.commandeLivrer"
+                    : nouveauStatut === StatutCommandeFournisseur.ANNULEE
+                        ? "fournisseurs.commandeAnnuler"
+                        : null
+                : null;
+        if (droitNecessaire && !peut(droits, droitNecessaire)) return refusDroit(droitNecessaire);
+        if (ligneBudgetId !== undefined && ligneBudgetId !== actuelle.ligneBudgetId && !peut(droits, "fournisseurs.commandeModifier")) {
+            return refusDroit("fournisseurs.commandeModifier");
+        }
+
         if (ligneBudgetId !== undefined && ligneBudgetId !== actuelle.ligneBudgetId) {
             if (actuelle.imputations.length > 0) {
                 return NextResponse.json({ error: "Des paiements ont déjà été faits sur ce bon : sa ligne de budget ne peut plus changer." }, { status: 400 });
@@ -235,8 +252,8 @@ export async function PUT(
     { params }: { params: Promise<{ commandeId: string }> }
 ) {
     const { commandeId } = await params;
-    const refusPage = await requirePage("fournisseurs");
-    if (refusPage) return refusPage;
+    const droitsAcces = await requirePermission("fournisseurs.commandeModifier");
+    if (droitsAcces instanceof NextResponse) return droitsAcces;
 
     try {
         const commandeActuelle = await prisma.commandeFournisseur.findUnique({

@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { UploadAttachmentModal } from '@/components/UploadAttachmentModal';
 import { LotPaiementDetail } from '@/components/depenses/LotPaiementDetail';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useDroits } from '@/components/DroitsProvider';
 
 interface CashJournalEntry {
   id: number;
@@ -51,6 +52,7 @@ interface CashRegister {
 }
 
 export default function CashJournalPage() {
+  const { peut } = useDroits();
   const [allEntries, setAllEntries] = useState<CashJournalEntry[]>([]);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [loading, setLoading] = useState(true);
@@ -245,7 +247,7 @@ export default function CashJournalPage() {
           </div>
         </div>
         <div className="flex gap-2 ">
-          {peutSaisir && (
+          {peut('finance.caisses') && (
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="icon" title="Gérer la visibilité des caisses">
@@ -280,6 +282,7 @@ export default function CashJournalPage() {
           </Popover>
           )}
 
+          {peut('finance.recalculer') && (
           <Button
             onClick={handleRecalculate}
             disabled={isRecalculating}
@@ -294,6 +297,7 @@ export default function CashJournalPage() {
             />
             {isRecalculating ? "Recalcul en cours..." : "Recalculer les soldes"}
           </Button>
+          )}
           {peutSaisir ? (
             <AddEntryModal
               onEntryAdded={() => fetchData(year)}
@@ -340,7 +344,7 @@ export default function CashJournalPage() {
             onHide={peutSaisir ? () => toggleRegisterVisibility(register) : undefined}
           />
         ))}
-        {peutSaisir && (
+        {peut('finance.caisses') && (
         <Card
           className="cursor-pointer hover:shadow-lg transition-shadow flex items-center justify-center"
           onClick={() => setAddRegisterModalOpen(true)}
@@ -490,7 +494,11 @@ export default function CashJournalPage() {
                           ))}
                         </div>
                       ) : (
-                        <UploadAttachmentModal cashJournalId={entry.id} onUploadComplete={() => fetchData(year)} />
+                        peut('finance.justificatifs') ? (
+                          <UploadAttachmentModal cashJournalId={entry.id} onUploadComplete={() => fetchData(year)} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )
                       )}
                     </TableCell>
                   </TableRow>

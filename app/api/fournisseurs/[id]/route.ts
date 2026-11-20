@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
-import { safeCreatedById } from '@/lib/authz';
+import { safeCreatedById, requireAnyPage, requirePermission } from '@/lib/authz';
 import { etatEcheance } from '@/lib/retardPaiement';
 import { getDelaisPaiement } from '@/lib/retardPaiementServeur';
 
 // GET /api/fournisseurs/[id] - Récupérer un fournisseur par ID
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> },) {
+  const refusAcces = await requireAnyPage(["fournisseurs"]);
+  if (refusAcces) return refusAcces;
   const { id } = await params;
   console.log(`[API] Fetching fournisseur details for id: ${id}`);
 
@@ -52,6 +54,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 // PUT /api/fournisseurs/[id] - Mettre à jour un fournisseur
 export async function PUT(req: Request,{ params }: { params: Promise<{ id: string }> },) {
+  const droitsAcces = await requirePermission("fournisseurs.modifier");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const { id } = await params;
   console.log(`[API] Updating fournisseur for id: ${id}`);
 
@@ -92,6 +96,8 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
 // PATCH /api/fournisseurs/[id] - Bascule rapide actif/inactif (+ motif optionnel),
 // avec création d'une ligne d'historique si la valeur change réellement.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const droitsAcces = await requirePermission("fournisseurs.activer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const { id } = await params;
 
   try {
@@ -150,28 +156,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-// DELETE /api/fournisseurs/[id] - Supprimer un fournisseur
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> },) {
-  const { id } = await params;
-  console.log(`[API] Deleting fournisseur id: ${id}`);
-
-  try {
-    await prisma.fournisseur.delete({
-      where: { id },
-    });
-
-    console.log(`[API] Successfully deleted fournisseur: ${id}`);
-    return new NextResponse(null, { status: 204 }); // No Content
-  } catch (error: unknown) {
-    const err = error as { code?: string; message?: string };
-    console.error(`[API] Error deleting fournisseur ${id}:`, err);
-    if (err.code === 'P2025') { // Record to delete not found
-      return NextResponse.json({ message: 'Prestataire non trouvé' }, { status: 404 });
-    }
-    return NextResponse.json(
-      { message: "Erreur interne du serveur" },
-      { status: 500 },
-    );
-  }
+// DELETE /api/fournisseurs/[id] — un prestataire ne se supprime jamais (ses factures seraient
+// effacées en cascade) : on le désactive (PATCH), son historique reste consultable.
+export async function DELETE() {
+  return NextResponse.json(
+    { message: "Un prestataire ne se supprime pas : désactivez-le. Son historique reste consultable." },
+    { status: 405, headers: { Allow: "GET, PUT, PATCH" } },
+  );
 }
-

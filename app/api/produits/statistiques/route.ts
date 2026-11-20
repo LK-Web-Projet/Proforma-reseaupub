@@ -1,3 +1,4 @@
+import { requireAnyPage } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import { StatusFacture } from "@prisma/client";
 import prisma from "@/lib/prisma";
@@ -8,6 +9,8 @@ const REVENUE_STATUSES: StatusFacture[] = [StatusFacture.Valider, StatusFacture.
 
 // GET /api/produits/statistiques - Agrégat par produit : quantité vendue, CA réalisé (XOF), nombre de factures
 export async function GET() {
+  const refusAcces = await requireAnyPage(["produits"]);
+  if (refusAcces) return refusAcces;
   try {
     const [produits, lignes] = await Promise.all([
       prisma.produit.findMany({ orderBy: { nom: "asc" } }),
