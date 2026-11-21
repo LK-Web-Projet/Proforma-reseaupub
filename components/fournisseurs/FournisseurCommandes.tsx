@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { Plus, Eye } from "lucide-react";
 import { CommandeFournisseur, StatutCommandeFournisseur } from "@prisma/client";
 import { format } from "date-fns";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import NewCommandeForm from "./NewCommandeForm";
 import { CommandeStatutControl } from "./CommandeStatutControl";
 import { useDroits } from "@/components/DroitsProvider";

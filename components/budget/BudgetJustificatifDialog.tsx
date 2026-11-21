@@ -70,7 +70,7 @@ export function BudgetJustificatifDialog({
           />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Envoi...' : 'Ajouter'}</Button>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>{isSubmitting ? 'Envoi...' : 'Ajouter'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

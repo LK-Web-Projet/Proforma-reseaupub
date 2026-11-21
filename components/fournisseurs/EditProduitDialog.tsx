@@ -151,7 +151,7 @@ export function EditProduitDialog({ produit, onClose, onSaved }: EditProduitDial
                         <Button type="button" variant="outline" onClick={onClose}>
                             Annuler
                         </Button>
-                        <Button type="submit" disabled={submitting}>
+                        <Button type="submit" loading={submitting} disabled={submitting}>
                             {submitting ? "Enregistrement..." : "Enregistrer"}
                         </Button>
                     </DialogFooter>

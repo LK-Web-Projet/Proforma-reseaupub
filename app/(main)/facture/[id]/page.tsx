@@ -2,7 +2,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -678,17 +679,17 @@ export default function FactureDetailPage() {
             </Button>
             )}
             {peut("proforma.envoyer") && (
-            <Button onClick={handleSendEmail} disabled={isSending} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button onClick={handleSendEmail} loading={isSending} disabled={isSending} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
                 {isSending ? "Envoi..." : <><Send className="w-4 h-4 mr-2" /> Envoyer Email</>}
             </Button>
             )}
             {peut("proforma.supprimer") && facture.statut === "Brouillon" && !(facture.paiements?.length > 0) && !isEditing && (
-            <Button onClick={handleDeleteFacture} disabled={isDeleting} variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
+            <Button onClick={handleDeleteFacture} loading={isDeleting} disabled={isDeleting} variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
                 <Trash2 className="w-4 h-4 mr-2" /> {isDeleting ? "Suppression..." : "Supprimer"}
             </Button>
             )}
             {isEditing && (
-                <Button onClick={handleUpdateFacture} disabled={isSaving} size="sm" className="bg-green-600 hover:bg-green-700">
+                <Button onClick={handleUpdateFacture} loading={isSaving} disabled={isSaving} size="sm" className="bg-green-600 hover:bg-green-700">
                     <Save className="w-4 h-4 mr-2" /> {isSaving ? "Enregistrement..." : "Enregistrer"}
                 </Button>
             )}
@@ -974,7 +975,7 @@ export default function FactureDetailPage() {
                         ) : (
                             <div className="space-y-3">
                                 <Input type="file" onChange={(e) => setBonCommandeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("bon")} disabled={!bonCommandeFile || isUploadingBon} size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                                <Button onClick={() => handleFileUpload("bon")} loading={isUploadingBon} disabled={!bonCommandeFile || isUploadingBon} size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
                                     {isUploadingBon ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader le bon</>}
                                 </Button>
                             </div>
@@ -1001,7 +1002,7 @@ export default function FactureDetailPage() {
                         ) : (
                             <div className="space-y-3">
                                 <Input type="file" onChange={(e) => setFactureNormaliseeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("facture")} disabled={!factureNormaliseeFile || isUploadingFacture} size="sm" className="w-full bg-green-600 hover:bg-green-700">
+                                <Button onClick={() => handleFileUpload("facture")} loading={isUploadingFacture} disabled={!factureNormaliseeFile || isUploadingFacture} size="sm" className="w-full bg-green-600 hover:bg-green-700">
                                     {isUploadingFacture ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader la facture</>}
                                 </Button>
                             </div>
@@ -1155,7 +1156,7 @@ export default function FactureDetailPage() {
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setIsProofDialogOpen(false)}>Annuler</Button>
-                <Button onClick={handleUploadProof} disabled={isUploadingProof || !proofFiles}>
+                <Button onClick={handleUploadProof} loading={isUploadingProof} disabled={isUploadingProof || !proofFiles}>
                     {isUploadingProof ? "Upload..." : "Confirmer l'envoi"}
                 </Button>
             </DialogFooter>
@@ -1282,7 +1283,7 @@ export default function FactureDetailPage() {
           {paymentError && <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-600 text-xs font-medium flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {paymentError}</div>}
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleSaveOperation} disabled={isAddingPayment} className={operationType === "PAIEMENT" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}>
+            <Button onClick={handleSaveOperation} loading={isAddingPayment} disabled={isAddingPayment} className={operationType === "PAIEMENT" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}>
               {isAddingPayment ? "Enregistrement..." : "Confirmer l'opération"}
             </Button>
           </DialogFooter>

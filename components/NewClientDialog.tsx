@@ -98,7 +98,7 @@ export function NewClientDialog({ onClientCreated, setIsOpen }: NewClientDialogP
               Annuler
             </Button>
           </DialogClose>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
             {isSubmitting ? "Création en cours..." : "Créer le client"}
           </Button>
         </DialogFooter>

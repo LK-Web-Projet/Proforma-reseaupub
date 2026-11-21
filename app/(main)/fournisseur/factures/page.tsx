@@ -27,6 +27,8 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useDroits } from '@/components/DroitsProvider';
+import { useActionEnCours } from "@/lib/useActionEnCours";
+import { Indicateur } from "@/components/ui/indicateur";
 
 // Define the type for a supplier invoice, including the related supplier
 interface FactureFournisseur {
@@ -75,6 +77,7 @@ const defaultFilters = {
 };
 
 export default function FacturesListPage() {
+  const { enCours, lancer } = useActionEnCours();
   // Droits d'action (Paramètres → Rôles) : boutons masqués, vérifiés par le serveur.
   const { peut } = useDroits();
   const peutStatutFacture = ["fournisseurs.factureModifier", "fournisseurs.factureAnnuler", "canValidateBudgetMensuel"].some((k) => peut(k));
@@ -475,7 +478,8 @@ export default function FacturesListPage() {
                     {isLocked || !peutStatutFacture ? (
                       <FactureFournisseurStatusBadge status={facture.status} animate={false} />
                     ) : (
-                      <Select value={facture.status} onValueChange={(newStatus: FactureFournisseur['status']) => handleStatusChange(facture, newStatus)}>
+                      <span className="inline-flex items-center gap-1.5">
+                      <Select value={facture.status} onValueChange={(newStatus: FactureFournisseur['status']) => lancer(facture.id, () => handleStatusChange(facture, newStatus))} disabled={enCours(facture.id)}>
                         <SelectTrigger className="border-none bg-transparent! p-0 h-auto cursor-pointer">
                           <SelectValue>
                             <FactureFournisseurStatusBadge status={facture.status} />
@@ -495,6 +499,8 @@ export default function FacturesListPage() {
                           </SelectItem>
                         </SelectContent>
                       </Select>
+{enCours(facture.id) && <Indicateur label="Mise à jour du statut…" />}
+</span>
                     )}
                   </TableCell>
                   <TableCell>

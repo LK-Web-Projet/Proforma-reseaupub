@@ -25,6 +25,46 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-21 (suite) — Indicateurs de chargement partout : boutons, navigation, actions en ligne
+
+**Demande / Contexte**
+Beaucoup de boutons ne montraient rien quand on cliquait : pas d'indicateur, et un second clic restait possible. L'utilisateur a demandé une analyse complète, puis la correction.
+
+**Analyse** (inventaire automatique de `app/` et `components/`)
+- 68 boutons lancent un appel au serveur.
+  - 38 appellent directement une fonction asynchrone.
+  - Les 30 autres sont des boutons de formulaire (*submit*) ou des boutons de confirmation. La plupart n'étaient que grisés, sans indicateur ; 6 n'avaient aucun retour (formulaire client, réinitialisation du mot de passe, ajout de caisse, 2 envois de la liasse d'un bon, suppression d'une photo).
+- 16 écrans naviguent par `router.push` (boutons Voir, Retour, redirections) : la barre de progression rose (`next-nprogress-bar`) ne s'animait que pour les liens.
+- 9 actions partent d'un interrupteur, d'une liste ou d'un envoi de fichier, sans aucun retour : statut d'un BC (3 écrans), statut d'une facture prestataire (2), interrupteur Actif d'un produit, rôle et compte actif d'un utilisateur, photos de produit.
+- L'ouverture d'une notification attendait le marquage « lue » avant de changer de page.
+- La carte « Rentabilité » de la proforma et la liste de la cloche apparaissaient d'un coup, sans état de chargement.
+
+**Modifications apportées**
+- `components/ui/button.tsx` :
+  - **chargement automatique** : si `onClick` renvoie une promesse (gestionnaire `async`), le bouton se désactive et affiche un indicateur qui tourne jusqu'à la fin. Il n'y a plus de double clic. Les 38 boutons d'action sont couverts sans modifier les écrans ;
+  - **nouvelle propriété `loading`** : même indicateur, piloté par le parent ;
+  - pendant le chargement, l'icône est remplacée par l'indicateur, le texte reste, et le curseur devient « attente » ;
+  - `asChild` (liens) n'est pas concerné.
+- `loading={…}` ajouté à **57 boutons** déjà grisés pendant une action (enregistrer, valider, rejeter, clôturer, envoyer, payer, joindre, imprimer, générer le PDF, recalculer, etc.). Les « Annuler / Fermer » et les boutons qui n'ouvrent qu'une fenêtre en sont exclus.
+  - Le formulaire de modification d'un client reçoit son état d'enregistrement (il n'en avait pas).
+- **Navigation** : les 16 écrans utilisent `useRouter` de `next-nprogress-bar` (même API, mémorisé), qui anime la barre rose aussi pour `router.push / replace / back`. La page Recherche garde le routeur de Next, car elle met l'adresse à jour à chaque lettre.
+- **Actions en ligne** :
+  - `lib/useActionEnCours.ts` : suivi par ligne, anti double déclenchement ;
+  - `components/ui/indicateur.tsx` : petit indicateur avec libellé pour les lecteurs d'écran ;
+  - branchés sur l'interrupteur des produits, le rôle et le compte des utilisateurs, et le statut des factures prestataires (liste et fiche) ;
+  - `CommandeStatutControl` gère lui-même l'attente (ses 3 écrans sont couverts).
+- Photos de produit : indicateur sur la suppression et sur l'envoi.
+- Notifications (cloche et page) : navigation immédiate, marquage « lue » en parallèle. La cloche affiche « Chargement… » avant la première réponse.
+- Carte « Rentabilité » : emplacement réservé et animé pendant le premier chargement.
+
+**Erreurs rencontrées & solutions**
+- Le premier suivi « en cours » s'appuyait sur une mise à jour d'état React, qui ne s'exécute pas forcément tout de suite. Il utilise désormais une référence synchrone.
+- `next-nprogress-bar` : son `refresh({ showProgressBar: false })` appelle `router.back()` (défaut de la bibliothèque). Ce `refresh` n'est utilisé nulle part dans le projet.
+
+**À tester / points d'attention**
+- `tsc` et lint OK. Second inventaire : 0 bouton d'action sans retour.
+- À l'écran : enregistrer une proforma, payer une facture, changer un statut de BC ou de facture, désactiver un produit, ouvrir une notification. L'indicateur doit tourner, et la barre rose apparaître pour les changements de page.
+
 ## 2026-11-21 — Rôles : message clair si la migration des droits n'est pas appliquée
 
 **Demande / Contexte**

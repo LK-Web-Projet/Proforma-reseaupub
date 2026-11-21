@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { ClientCombobox } from "./ClientCombobox";
 import { ProduitCombobox } from "./ProduitCombobox";
 import { ProduitModal } from "./ProduitModal";
@@ -280,7 +280,7 @@ export default function FactureForm() {
         </div>
         <div className="flex gap-3">
           <Button type="button" variant="outline" onClick={() => router.back()}>Annuler</Button>
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" loading={loading} disabled={loading}>
             {loading ? "Traitement..." : "Enregistrer la facture"}
           </Button>
         </div>

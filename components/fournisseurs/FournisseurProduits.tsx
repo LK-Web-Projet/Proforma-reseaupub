@@ -265,7 +265,7 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                             </div>
 
                             <div className="flex justify-end pt-4">
-                                <Button type="submit" disabled={submitting}>
+                                <Button type="submit" loading={submitting} disabled={submitting}>
                                     {submitting ? "Ajout..." : "Ajouter"}
                                 </Button>
                             </div>

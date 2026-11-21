@@ -285,7 +285,7 @@ export default function CashJournalPage() {
           {peut('finance.recalculer') && (
           <Button
             onClick={handleRecalculate}
-            disabled={isRecalculating}
+            loading={isRecalculating} disabled={isRecalculating}
             variant="outline"
             className="hidden"
           >

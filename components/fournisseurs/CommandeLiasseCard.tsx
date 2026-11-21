@@ -508,7 +508,7 @@ function PieceDialog({ commandeId, kind, onClose, onSuccess }: { commandeId: str
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={envoi}>{envoi ? 'Envoi…' : 'Joindre'}</Button>
+            <Button type="submit" loading={envoi} disabled={envoi}>{envoi ? 'Envoi…' : 'Joindre'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -585,7 +585,7 @@ function FactureDialog({ commande, open, onClose, onSuccess }: { commande: Comma
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={envoi}>{envoi ? 'Envoi…' : 'Enregistrer'}</Button>
+            <Button type="submit" loading={envoi} disabled={envoi}>{envoi ? 'Envoi…' : 'Enregistrer'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

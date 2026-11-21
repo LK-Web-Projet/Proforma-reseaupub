@@ -95,7 +95,7 @@ export function BudgetLigneCommentaires({ demandeId, ligneId, commentaires, peut
             placeholder={filOuvert ? 'Répondre…' : 'Commentaire sur cette ligne…'}
             className="bg-background"
           />
-          <Button type="submit" size="icon" disabled={isSubmitting || !contenu.trim()} aria-label="Envoyer">
+          <Button type="submit" size="icon" loading={isSubmitting} disabled={isSubmitting || !contenu.trim()} aria-label="Envoyer">
             <Send className="h-4 w-4" />
           </Button>
         </form>

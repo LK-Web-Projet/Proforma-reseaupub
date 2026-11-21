@@ -94,7 +94,7 @@ export function BudgetDepassementDialog({
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-              <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Envoi...' : 'Envoyer la demande'}</Button>
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>{isSubmitting ? 'Envoi...' : 'Envoyer la demande'}</Button>
             </DialogFooter>
           </form>
         )}

@@ -33,14 +33,20 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', 
  */
 export function RentabiliteCampagneCard({ invoiceId, version }: { invoiceId: string; version?: number }) {
   const [r, setR] = useState<Rentabilite | null>(null);
+  const [charge, setCharge] = useState(false);
 
   useEffect(() => {
     fetch(`/api/factures/${invoiceId}/rentabilite`)
       .then((res) => (res.ok ? res.json() : null))
       .then(setR)
-      .catch(() => setR(null));
+      .catch(() => setR(null))
+      .finally(() => setCharge(true));
   }, [invoiceId, version]);
 
+  // Premier chargement : emplacement réservé (la carte n'apparaît plus d'un coup). En cas d'erreur, rien.
+  if (!r && !charge) {
+    return <div className="h-48 rounded-xl border bg-muted/40 animate-pulse" aria-busy="true" aria-label="Chargement de la rentabilité" />;
+  }
   if (!r) return null;
   const ligne = (libelle: string, valeur: string, cls = '') => (
     <div className={`flex justify-between gap-3 text-sm ${cls}`}>

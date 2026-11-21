@@ -134,7 +134,7 @@ export function PrestataireStatutToggle({ fournisseurId, entreprise, actif, onSu
             <Button
               variant={pendingActif ? 'default' : 'destructive'}
               onClick={handleConfirm}
-              disabled={isSubmitting}
+              loading={isSubmitting} disabled={isSubmitting}
             >
               {pendingActif ? 'Marquer comme actif' : 'Marquer comme inactif'}
             </Button>

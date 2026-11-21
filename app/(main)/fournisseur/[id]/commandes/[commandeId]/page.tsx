@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
@@ -313,7 +314,7 @@ export default function CommandeDetailPage() {
                     {peut("fournisseurs.commandeExporter") && (
                     <Button
                         onClick={handleDownloadPDF}
-                        disabled={generatingPdf}
+                        loading={generatingPdf} disabled={generatingPdf}
                         className="gap-2 bg-[#ef0b53] hover:bg-[#d10a48] text-white"
                     >
                         <Download className="h-4 w-4" />

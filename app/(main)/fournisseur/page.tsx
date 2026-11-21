@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { FournisseurTableSkeleton } from "@/components/FournisseurTableSkeleton";
 import { FournisseurModal, Fournisseur } from "@/components/FournisseurModal";
 import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2, Search, Copy, AlarmClock } from 'lucide-react';

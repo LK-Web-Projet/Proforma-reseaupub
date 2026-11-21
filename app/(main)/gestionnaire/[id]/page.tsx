@@ -171,7 +171,7 @@ export default function GestionnaireDetailPage() {
               </Button>
             )}
             {peut("commercial.desactiver") && (
-              <Button variant="outline" size="sm" onClick={basculerActif} disabled={enCours}>
+              <Button variant="outline" size="sm" onClick={basculerActif} loading={enCours} disabled={enCours}>
                 {gestionnaire.actif === false ? (
                   <><UserCheck className="mr-2 h-4 w-4" /> Réactiver</>
                 ) : (
@@ -312,7 +312,7 @@ export default function GestionnaireDetailPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEdition(null)}>Annuler</Button>
-            <Button onClick={enregistrer} disabled={enCours}>{enCours ? "Enregistrement..." : "Enregistrer"}</Button>
+            <Button onClick={enregistrer} loading={enCours} disabled={enCours}>{enCours ? "Enregistrement..." : "Enregistrer"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

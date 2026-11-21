@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -298,7 +299,7 @@ export default function RoleEditeurPage() {
           <Button variant="outline" asChild>
             <Link href="/parametres/roles">Annuler</Link>
           </Button>
-          <Button onClick={enregistrer} disabled={saving}>
+          <Button onClick={enregistrer} loading={saving} disabled={saving}>
             <Save className="mr-2 h-4 w-4" />
             {saving ? "Enregistrement…" : creation ? "Créer le rôle" : "Enregistrer"}
           </Button>

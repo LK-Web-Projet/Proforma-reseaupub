@@ -450,7 +450,7 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
               {isSubmitting ? 'Enregistrement...' : 'Enregistrer les modifications'}
             </Button>
           </DialogFooter>

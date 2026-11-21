@@ -264,7 +264,7 @@ export default function ParametresPage() {
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    disabled={uploading}
+                                    loading={uploading} disabled={uploading}
                                     onClick={() => fileInputRef.current?.click()}
                                 >
                                     <Upload className="mr-2 h-4 w-4" />
@@ -382,7 +382,7 @@ export default function ParametresPage() {
 
                 {peutEntreprise && (
                 <div className="flex justify-end">
-                    <Button type="submit" disabled={saving} size="lg" className="gap-2 min-w-[180px]">
+                    <Button type="submit" loading={saving} disabled={saving} size="lg" className="gap-2 min-w-[180px]">
                         <Save className="h-4 w-4" />
                         {saving ? "Enregistrement..." : "Enregistrer"}
                     </Button>

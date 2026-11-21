@@ -338,7 +338,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
                 {isSubmitting ? 'Enregistrement...' : 'Enregistrer la dépense'}
               </Button>
             </DialogFooter>

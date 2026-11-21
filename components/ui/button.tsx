@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -34,24 +35,76 @@ const buttonVariants = cva(
   }
 )
 
+/**
+ * Bouton avec retour de chargement :
+ * - `loading` : affiche l'indicateur et désactive le bouton (action suivie par un état du parent) ;
+ * - automatique : si `onClick` renvoie une promesse (gestionnaire `async`), le bouton se désactive
+ *   et affiche l'indicateur jusqu'à sa fin — plus de double clic ni de clic « sans réponse ».
+ * Pendant le chargement, l'icône du bouton est remplacée par l'indicateur ; le texte reste.
+ */
 function Button({
   className,
   variant,
   size,
   asChild = false,
+  loading = false,
+  onClick,
+  disabled,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    loading?: boolean
   }) {
-  const Comp = asChild ? Slot : "button"
+  const [enCours, setEnCours] = React.useState(false)
+  const monte = React.useRef(true)
+  React.useEffect(() => {
+    monte.current = true
+    return () => {
+      monte.current = false
+    }
+  }, [])
+
+  if (asChild) {
+    return (
+      <Slot
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size, className }))}
+        onClick={onClick}
+        aria-disabled={disabled || undefined}
+        {...props}
+      >
+        {children}
+      </Slot>
+    )
+  }
+
+  const occupe = loading || enCours
+  const gererClic: React.MouseEventHandler<HTMLButtonElement> | undefined = onClick
+    ? (e) => {
+        const resultat = onClick(e) as unknown
+        if (resultat && typeof (resultat as Promise<unknown>).then === "function") {
+          setEnCours(true)
+          ;(resultat as Promise<unknown>).finally(() => {
+            if (monte.current) setEnCours(false)
+          })
+        }
+      }
+    : undefined
 
   return (
-    <Comp
+    <button
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, className }), occupe && "cursor-wait [&_svg:not([data-indicateur])]:hidden")}
+      onClick={gererClic}
+      disabled={disabled || occupe}
+      aria-busy={occupe || undefined}
       {...props}
-    />
+    >
+      {occupe && <Loader2 data-indicateur className="animate-spin" aria-hidden="true" />}
+      {children}
+    </button>
   )
 }
 

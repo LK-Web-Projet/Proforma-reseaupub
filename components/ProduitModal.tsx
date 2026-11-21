@@ -102,7 +102,7 @@ export function ProduitModal({ isOpen, onClose, onSuccess, initialData }: Produi
             </div>
           )}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
               {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
             </Button>
           </DialogFooter>

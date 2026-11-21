@@ -119,6 +119,7 @@ export default function ClientDetailPage() {
   const [loadingClient, setLoadingClient] = useState(true);
   const [loadingFactures, setLoadingFactures] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [activeStatusFilter, setActiveStatusFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -156,6 +157,7 @@ export default function ClientDetailPage() {
     e.preventDefault();
     if (!client) return;
 
+    setIsSaving(true);
     try {
       const res = await fetch(`/api/clients/${id}`, {
         method: "PUT",
@@ -168,6 +170,8 @@ export default function ClientDetailPage() {
     } catch (error) {
       console.error(error);
       toast.error("Impossible de mettre à jour le client.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -288,7 +292,7 @@ export default function ClientDetailPage() {
                         </div>
                     </div>
                     <div className="flex justify-end pt-4">
-                        <Button type="submit"><Save className="w-4 h-4 mr-2" /> Enregistrer les modifications</Button>
+                        <Button type="submit" loading={isSaving}><Save className="w-4 h-4 mr-2" /> {isSaving ? "Enregistrement..." : "Enregistrer les modifications"}</Button>
                     </div>
                 </form>
             </CardContent>

@@ -191,7 +191,7 @@ export function DemandeBudgetAddDocumentsDialog({ isOpen, onClose, onSuccess, de
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
               {isSubmitting ? 'Envoi...' : 'Ajouter'}
             </Button>
           </DialogFooter>

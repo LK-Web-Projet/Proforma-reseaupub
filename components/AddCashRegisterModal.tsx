@@ -66,7 +66,7 @@ export function AddCashRegisterModal({ open, onOpenChange, onRegisterAdded }: Ad
               required
             />
           </div>
-          <Button type="submit" disabled={isAddingRegister}>
+          <Button type="submit" loading={isAddingRegister} disabled={isAddingRegister}>
             {isAddingRegister ? "Ajout en cours..." : "Ajouter la caisse"}
           </Button>
         </form>

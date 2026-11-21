@@ -119,7 +119,7 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
               {isSubmitting ? 'Création en cours...' : 'Créer le client'}
             </Button>
           </DialogFooter>

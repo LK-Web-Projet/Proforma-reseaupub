@@ -208,7 +208,7 @@ export default function FournisseurDocuments({ fournisseurId }: FournisseurDocum
                 </label>
               </div>
               <DialogFooter>
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" loading={submitting} disabled={submitting}>
                   {submitting ? "Ajout..." : "Ajouter"}
                 </Button>
               </DialogFooter>

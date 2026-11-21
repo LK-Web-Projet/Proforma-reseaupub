@@ -35,6 +35,8 @@ import { PrestataireStatutToggle } from "@/components/fournisseurs/PrestataireSt
 import { BoutonRetardPaiement, EcheanceFacture, classeLigneRetard } from "@/components/fournisseurs/RetardPaiement";
 import type { EtatEcheance } from "@/lib/retardPaiement";
 import { useDroits } from "@/components/DroitsProvider";
+import { useActionEnCours } from "@/lib/useActionEnCours";
+import { Indicateur } from "@/components/ui/indicateur";
 
 interface StatutHistoriqueEntry {
   id: string;
@@ -52,6 +54,7 @@ interface FournisseurDetails extends Fournisseur {
 }
 
 export default function FournisseurDetailsPage() {
+  const { enCours, lancer } = useActionEnCours();
   // Droits d'action (Paramètres → Rôles) : boutons masqués, vérifiés par le serveur.
   const { peut } = useDroits();
   const peutStatutFacture = ["fournisseurs.factureModifier", "fournisseurs.factureAnnuler", "canValidateBudgetMensuel"].some((k) => peut(k));
@@ -301,7 +304,8 @@ export default function FournisseurDetailsPage() {
                         {isLocked || !peutStatutFacture ? (
                           <FactureFournisseurStatusBadge status={facture.status} animate={false} />
                         ) : (
-                          <Select value={facture.status} onValueChange={(newStatus: StatutFactureFournisseur) => handleStatusChange(facture.id, newStatus)}>
+                          <span className="inline-flex items-center gap-1.5">
+                          <Select value={facture.status} onValueChange={(newStatus: StatutFactureFournisseur) => lancer(facture.id, () => handleStatusChange(facture.id, newStatus))} disabled={enCours(facture.id)}>
                             <SelectTrigger className="border-none !bg-transparent p-0 h-auto cursor-pointer">
                               <SelectValue>
                                 <FactureFournisseurStatusBadge status={facture.status} />
@@ -319,6 +323,8 @@ export default function FournisseurDetailsPage() {
                               </SelectItem>
                             </SelectContent>
                           </Select>
+{enCours(facture.id) && <Indicateur label="Mise à jour du statut…" />}
+</span>
                         )}
                       </TableCell>
                       <TableCell>

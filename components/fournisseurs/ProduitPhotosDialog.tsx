@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trash2, ImagePlus } from "lucide-react";
+import { Trash2, ImagePlus, Loader2 } from "lucide-react";
 import { useDroits } from "@/components/DroitsProvider";
 
 export interface ProduitPhoto {
@@ -106,10 +106,10 @@ export function ProduitPhotosDialog({
                                     type="button"
                                     onClick={() => handleDeletePhoto(photo.id)}
                                     disabled={deletingId === photo.id}
-                                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
+                                    className={`absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 transition-opacity hover:bg-red-600 ${deletingId === photo.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                                     title="Supprimer cette photo"
                                 >
-                                    <Trash2 className="h-3.5 w-3.5" />
+                                    {deletingId === photo.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                 </button>
                                 )}
                             </div>
@@ -120,7 +120,7 @@ export function ProduitPhotosDialog({
                 {peutGerer && (
                 <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-md p-4 cursor-pointer text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                     <ImagePlus className="h-4 w-4" />
-                    {uploading ? "Envoi en cours..." : "Ajouter des photos"}
+                    {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Envoi en cours...</> : "Ajouter des photos"}
                     <input
                         type="file"
                         accept="image/*"

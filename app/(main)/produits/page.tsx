@@ -18,12 +18,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { useActionEnCours } from "@/lib/useActionEnCours";
+import { Indicateur } from "@/components/ui/indicateur";
 import { useDroits } from "@/components/DroitsProvider";
 
 const formatMontant = (value: number) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "XOF" }).format(value);
 
 export default function ProduitsPage() {
+  const { enCours, lancer } = useActionEnCours();
   const { peut } = useDroits();
   const [produits, setProduits] = useState<Produit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,7 +193,8 @@ export default function ProduitsPage() {
                     <TableCell className="py-3 text-right">{formatMontant(produit.prixUnitaire)}</TableCell>
                     <TableCell className="py-3">
                       <div className="flex items-center gap-2">
-                        <Switch checked={produit.actif} onCheckedChange={() => handleToggleActif(produit)} disabled={!peut("produits.modifier")} />
+                        <Switch checked={produit.actif} onCheckedChange={() => lancer(produit.id, () => handleToggleActif(produit))} disabled={!peut("produits.modifier") || enCours(produit.id)} />
+                        {enCours(produit.id) && <Indicateur label="Mise à jour…" />}
                         {!produit.actif && (
                           <Badge variant="destructive" className="text-[10px]">
                             Inactif

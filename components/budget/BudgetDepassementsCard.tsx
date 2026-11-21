@@ -122,7 +122,7 @@ export function BudgetDepassementsCard({
                   <p className="text-xs text-muted-foreground italic">{estDemandeurBudget ? 'Vous êtes le demandeur de ce budget' : 'Vous avez demandé ce dépassement'} : un autre administrateur doit en décider.</p>
                 ) : (
                   <div className="flex gap-2">
-                    <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" disabled={isSubmitting} onClick={() => decider(d.id, 'APPROUVE')}>
+                    <Button size="sm" className="gap-1 bg-green-600 hover:bg-green-700" loading={isSubmitting} disabled={isSubmitting} onClick={() => decider(d.id, 'APPROUVE')}>
                       <CheckCircle2 className="h-3.5 w-3.5" /> Approuver
                     </Button>
                     <Button size="sm" variant="outline" className="gap-1 text-red-600 border-red-200 hover:bg-red-50" disabled={isSubmitting} onClick={() => setRefusId(d.id)}>
@@ -146,7 +146,7 @@ export function BudgetDepassementsCard({
             <Button variant="outline" onClick={() => setRefusId(null)}>Annuler</Button>
             <Button
               variant="destructive"
-              disabled={isSubmitting || !motifRejet.trim()}
+              loading={isSubmitting} disabled={isSubmitting || !motifRejet.trim()}
               onClick={() => refusId && decider(refusId, 'REJETE', motifRejet.trim())}
             >
               Confirmer le refus

@@ -349,7 +349,7 @@ export default function RolesPage() {
           </div>
           <div className="flex items-center gap-2 max-w-sm">
             <Input type="number" min={0} step="1000" value={plafond} onChange={(e) => setPlafond(e.target.value)} />
-            <Button onClick={handleSavePlafond} disabled={isSavingPlafond}>
+            <Button onClick={handleSavePlafond} loading={isSavingPlafond} disabled={isSavingPlafond}>
               {isSavingPlafond ? "..." : "Enregistrer"}
             </Button>
           </div>
@@ -401,7 +401,7 @@ export default function RolesPage() {
                   if (!Number.isFinite(v) || v < 0) return void toast.error("Montant invalide.");
                   enregistrerReglagesDepenses({ plafondPetiteDepense: v });
                 }}
-                disabled={isSavingDepenses}
+                loading={isSavingDepenses} disabled={isSavingDepenses}
               >
                 {isSavingDepenses ? "..." : "Enregistrer"}
               </Button>
@@ -453,7 +453,7 @@ export default function RolesPage() {
               </div>
             ))}
           </div>
-          <Button onClick={enregistrerDelais} disabled={isSavingDelais}>
+          <Button onClick={enregistrerDelais} loading={isSavingDelais} disabled={isSavingDelais}>
             {isSavingDelais ? "..." : "Enregistrer les délais"}
           </Button>
         </CardContent>

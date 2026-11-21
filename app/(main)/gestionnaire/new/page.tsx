@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { useDroits } from "@/components/DroitsProvider";
 
 // Schéma de validation avec Zod
@@ -104,7 +104,7 @@ export default function NewGestionnairePage() {
               <Input id="telephone" {...register("telephone")} />
             </div>
             <div className="flex justify-end">
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" loading={loading} disabled={loading}>
                 {loading ? "Ajout en cours..." : "Ajouter le commercial"}
               </Button>
             </div>
