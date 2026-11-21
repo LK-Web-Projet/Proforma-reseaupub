@@ -25,6 +25,21 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-21 — Rôles : message clair si la migration des droits n'est pas appliquée
+
+**Demande / Contexte**
+Les droits ont été mis en ligne sans la migration `20261122100000_droits_par_action`. Enregistrer un rôle renvoyait « Erreur interne du serveur » : `prisma.rolePermission.deleteMany()` échouait avec le code P2021, table absente. La commande lancée, `pnpm prisma deploy`, n'existe pas : la bonne est `pnpm prisma migrate deploy`.
+
+**Modifications apportées**
+- `lib/authz.ts` : `reponseMigrationManquante(error)` renvoie une 503 en français (« La base de données n'est pas à jour… lancez pnpm prisma migrate deploy… Rien n'a été enregistré ») pour les codes P2021 et P2022, sinon null.
+- `app/api/roles/route.ts` (POST) et `app/api/roles/[id]/route.ts` (PATCH) l'utilisent à la place de l'erreur 500. La transaction est annulée : les pages du rôle ne changent pas non plus.
+
+**Erreurs rencontrées & solutions**
+- Cause : migration non appliquée sur le serveur en ligne. Solution : `pnpm prisma migrate deploy`, puis redémarrer l'application.
+
+**À tester / points d'attention**
+- Après la migration, enregistrer un rôle : plus d'erreur, et les droits sont repris (Admin 43, Comptable 40, assistantDirection 26).
+
 ## 2026-11-20 (suite 8) — Droits par action : grille des rôles (page, puis créer, modifier, valider, annuler, supprimer, exporter)
 
 **Demande / Contexte**

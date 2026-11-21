@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { PAGE_KEYS, requireCanManageUsers } from "@/lib/authz";
+import { PAGE_KEYS, reponseMigrationManquante, requireCanManageUsers } from "@/lib/authz";
 import { permissionsCoherentes } from "@/lib/permissions";
 
 /** Rôles avec leurs droits d'action ; tolère l'absence de la table tant que la migration n'est pas appliquée. */
@@ -93,6 +93,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(role, { status: 201 });
   } catch (error) {
     console.error("Erreur lors de la création du rôle:", error);
+    const migration = reponseMigrationManquante(error);
+    if (migration) return migration;
     if (error instanceof Error && error.message.includes("Unique constraint")) {
       return NextResponse.json({ error: "Un rôle avec ce nom existe déjà." }, { status: 409 });
     }

@@ -140,6 +140,21 @@ function tableDroitsAbsente(error: unknown): boolean {
 }
 
 /**
+ * Réponse claire (503) quand une table ou colonne d'une migration non appliquée manque, au lieu
+ * d'une « erreur interne ». Renvoie null pour toute autre erreur.
+ */
+export function reponseMigrationManquante(error: unknown): NextResponse | null {
+  if (!tableDroitsAbsente(error)) return null;
+  return NextResponse.json(
+    {
+      error:
+        "La base de données n'est pas à jour : une migration n'a pas été appliquée. Lancez « pnpm prisma migrate deploy » sur le serveur, puis réessayez. Rien n'a été enregistré.",
+    },
+    { status: 503 }
+  );
+}
+
+/**
  * Droits de l'utilisateur connecté (pages, clés d'action, cases historiques du rôle), relus en
  * base à chaque appel : une case décochée prend effet immédiatement. Repli tant que la migration
  * n'est pas appliquée : chaque page donne toutes ses actions (comportement d'avant la grille).

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { PAGE_KEYS, requireCanManageUsers, syncAllUsersForRole } from "@/lib/authz";
+import { PAGE_KEYS, reponseMigrationManquante, requireCanManageUsers, syncAllUsersForRole } from "@/lib/authz";
 import { isPageKey, permissionsCoherentes } from "@/lib/permissions";
 
 const roleUpdateSchema = z.object({
@@ -80,6 +80,8 @@ export async function PATCH(
     return NextResponse.json(updated);
   } catch (error) {
     console.error(`Erreur lors de la mise à jour du rôle ${id}:`, error);
+    const migration = reponseMigrationManquante(error);
+    if (migration) return migration;
     if (error instanceof Error && error.message.includes("Unique constraint")) {
       return NextResponse.json({ error: "Un rôle avec ce nom existe déjà." }, { status: 409 });
     }
