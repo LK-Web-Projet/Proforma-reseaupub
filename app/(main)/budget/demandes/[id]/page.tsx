@@ -1171,6 +1171,7 @@ export default function DemandeBudgetDetailPage() {
         proformas={proformasOptions}
         defaultModePaiement={demande.modePaiement}
         plafondPetiteDepense={plafondPetiteDepense}
+        typeBudget={demande.type}
         onClose={() => setDepenseLigne(null)}
         onSuccess={fetchDemande}
       />

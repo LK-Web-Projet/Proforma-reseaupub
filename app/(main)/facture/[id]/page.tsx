@@ -249,7 +249,7 @@ export default function FactureDetailPage() {
   const [commandesSansBudget, setCommandesSansBudget] = useState<CommandeDeLigne[]>([]);
   const [facturesPrestataires, setFacturesPrestataires] = useState<FacturePrestataire[]>([]);
   const [choixLigneOuvert, setChoixLigneOuvert] = useState(false);
-  const [depenseBudget, setDepenseBudget] = useState<{ demandeId: string; modePaiement: string; ligne: BudgetDepenseDialogLigne } | null>(null);
+  const [depenseBudget, setDepenseBudget] = useState<{ demandeId: string; typeBudget?: string; modePaiement: string; ligne: BudgetDepenseDialogLigne } | null>(null);
   const [paiementBc, setPaiementBc] = useState('NORMALE');
   const [ligneBc, setLigneBc] = useState('');
   const [factureBc, setFactureBc] = useState('');
@@ -296,6 +296,7 @@ export default function FactureDetailPage() {
         if (budgetVise && ligneVisee) {
           setDepenseBudget({
             demandeId: budgetVise.id,
+            typeBudget: budgetVise.type,
             modePaiement: budgetVise.modePaiement,
             ligne: {
               id: ligneVisee.id,
@@ -1298,6 +1299,7 @@ export default function FactureDetailPage() {
           setChoixLigneOuvert(false);
           setDepenseBudget({
             demandeId: b.id,
+            typeBudget: b.type,
             modePaiement: b.modePaiement,
             ligne: {
               id: l.id,
@@ -1318,6 +1320,7 @@ export default function FactureDetailPage() {
         defaultModePaiement={depenseBudget?.modePaiement ?? 'VIREMENT'}
         depuisProforma
         plafondPetiteDepense={plafondPetiteDepense}
+        typeBudget={depenseBudget?.typeBudget}
         onClose={() => setDepenseBudget(null)}
         onSuccess={fetchFacture}
       />

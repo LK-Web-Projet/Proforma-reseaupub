@@ -25,6 +25,28 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-21 (suite 2) — Dépense : receveur facultatif pour les budgets mensuels et de campagne
+
+**Demande / Contexte**
+Pour enregistrer une dépense sur un budget mensuel ou de campagne, le nom du receveur était obligatoire, à l'écran comme au serveur. Dans les faits, ces dépenses s'enregistrent souvent sans receveur, puisqu'elles sont déjà rattachées au service ou à la campagne.
+
+**Modifications apportées**
+- `lib/budgetTypes.ts` : `TYPES_RECEVEUR_FACULTATIF` (MENSUEL, CAMPAGNE), `receveurObligatoire(type)` et `RECEVEUR_NON_PRECISE` (« Non précisé »). La règle est partagée par l'écran et le serveur.
+- `app/api/demandes-budget/[id]/depenses/route.ts` :
+  - le receveur n'est plus obligatoire dans le schéma ;
+  - le contrôle se fait selon le type du budget : refus « Le nom du receveur est requis » pour un budget ponctuel ou pour tiers ;
+  - sans receveur, la dépense est enregistrée avec « Non précisé », dans le journal de caisse comme sur la fiche.
+- `components/budget/BudgetDepenseDialog.tsx` : nouvelle propriété `typeBudget`. Pour un budget mensuel ou de campagne, le champ affiche « (facultatif) » et n'est plus requis.
+- Le type du budget est transmis :
+  - depuis la fiche budget (`demande.type`) ;
+  - depuis la proforma (`/api/factures/[id]/lignes-depense` renvoie `type`, transmis par `ChoixLigneBudgetDialog` et l'état `depenseBudget`).
+
+**Erreurs rencontrées & solutions**
+- Aucune. `tsc` et lint OK.
+
+**À tester / points d'attention**
+- Enregistrer une dépense sans receveur sur un budget mensuel, puis sur un budget de campagne (depuis la proforma) : elle doit être acceptée. Sur un budget ponctuel, elle doit être refusée.
+
 ## 2026-11-21 (suite) — Indicateurs de chargement partout : boutons, navigation, actions en ligne
 
 **Demande / Contexte**

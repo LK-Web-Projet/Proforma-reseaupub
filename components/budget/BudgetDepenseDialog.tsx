@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
+import { MODE_PAIEMENT_OPTIONS, receveurObligatoire } from '@/lib/budgetTypes';
 import { etatLiasse, partsLignesCommande, payeSurCommande } from '@/lib/commandeFournisseurLiasse';
 
 // 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts).
@@ -78,13 +78,16 @@ interface BudgetDepenseDialogProps {
    * paiement est fixé à Espèces ; le serveur applique les mêmes règles.
    */
   plafondPetiteDepense?: number | null;
+  /** Type du budget : le receveur est facultatif pour un budget mensuel ou de campagne. */
+  typeBudget?: string | null;
 }
 
 /**
  * Saisie d'une dépense réelle sur une ligne de budget par le comptable. La dépense crée une
  * écriture DEPENSE dans la caisse choisie (voir app/api/demandes-budget/[id]/depenses/route.ts).
  */
-export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePaiement, onClose, onSuccess, depuisProforma, plafondPetiteDepense }: BudgetDepenseDialogProps) {
+export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePaiement, onClose, onSuccess, depuisProforma, plafondPetiteDepense, typeBudget }: BudgetDepenseDialogProps) {
+  const receveurRequis = receveurObligatoire(typeBudget);
   const petite = plafondPetiteDepense != null;
   const [cashRegisters, setCashRegisters] = useState<CashRegisterOption[]>([]);
   const [montant, setMontant] = useState('');
@@ -168,7 +171,7 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
       }
     }
     if (!cashRegisterId) return void toast.error('Choisissez la caisse concernée.');
-    if (!nomReceveur.trim()) return void toast.error('Le nom du receveur est requis.');
+    if (receveurRequis && !nomReceveur.trim()) return void toast.error('Le nom du receveur est requis.');
     if (proformas.length > 1 && !invoiceId) return void toast.error('Choisissez la proforma à laquelle imputer la dépense.');
     if (preuves.length === 0 && !sansJustificatif) {
       return void toast.error('Joignez un justificatif, ou cochez « Dépense sans justificatif ».');
@@ -276,8 +279,16 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
                 </Select>
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="dep-receveur">Nom du receveur *</Label>
-                <Input id="dep-receveur" value={nomReceveur} onChange={(e) => setNomReceveur(e.target.value)} required />
+                <Label htmlFor="dep-receveur">
+                  Nom du receveur {receveurRequis ? '*' : <span className="font-normal text-muted-foreground">(facultatif)</span>}
+                </Label>
+                <Input
+                  id="dep-receveur"
+                  value={nomReceveur}
+                  onChange={(e) => setNomReceveur(e.target.value)}
+                  required={receveurRequis}
+                  placeholder={receveurRequis ? undefined : 'Facultatif pour un budget mensuel ou de campagne'}
+                />
               </div>
               {proformas.length > 0 && (
                 <div className="space-y-2 sm:col-span-2">

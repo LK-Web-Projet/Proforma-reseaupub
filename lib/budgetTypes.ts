@@ -37,6 +37,19 @@ export function typeValideParAdmin(type: string): boolean {
   return (TYPES_VALIDATION_ADMIN as readonly string[]).includes(type);
 }
 
+/**
+ * Nom du receveur d'une dépense : facultatif pour les budgets mensuels et de campagne (la dépense
+ * est déjà rattachée au service ou à la campagne), obligatoire pour les autres types.
+ */
+export const TYPES_RECEVEUR_FACULTATIF: readonly TypeBudgetValue[] = ['MENSUEL', 'CAMPAGNE'];
+
+export function receveurObligatoire(type: string | null | undefined): boolean {
+  return !(TYPES_RECEVEUR_FACULTATIF as readonly string[]).includes(type ?? '');
+}
+
+/** Libellé enregistré quand le receveur n'est pas indiqué (budget mensuel ou de campagne). */
+export const RECEVEUR_NON_PRECISE = 'Non précisé';
+
 export function typeBudgetLabel(type: string | null | undefined): string {
   return TYPE_BUDGET_META[type as TypeBudgetValue]?.label ?? 'Ponctuel';
 }

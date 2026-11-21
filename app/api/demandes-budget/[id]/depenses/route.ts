@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { RECEVEUR_NON_PRECISE, receveurObligatoire } from "@/lib/budgetTypes";
 import { ModePaiementDemande, NatureDepense, Prisma, SourceDepense } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { refusPetiteDepense, requireBudgetUser } from "@/lib/budgetAuth";
@@ -15,7 +16,8 @@ const depenseSchema = z
     ligneId: z.string().min(1, "La ligne de budget est requise."),
     montant: z.number().positive("Le montant doit être supérieur à 0."),
     dateDepense: z.string().min(1, "La date de la dépense est requise."),
-    nomReceveur: z.string().trim().min(1, "Le nom du receveur est requis."),
+    // Obligatoire sauf pour les budgets mensuels et de campagne (contrôlé plus bas selon le type).
+    nomReceveur: z.string().trim().default(""),
     modePaiement: z.nativeEnum(ModePaiementDemande),
     cashRegisterId: z.number().int().positive("Choisissez la caisse concernée."),
     invoiceId: z.string().optional(),
@@ -86,6 +88,13 @@ export async function POST(
     }
     const data = validation.data;
 
+    // Receveur : facultatif pour un budget mensuel ou de campagne, obligatoire sinon.
+    const demandeType = await prisma.demandeBudget.findUnique({ where: { id }, select: { type: true } });
+    if (!data.nomReceveur && receveurObligatoire(demandeType?.type)) {
+      return NextResponse.json({ error: "Le nom du receveur est requis." }, { status: 400 });
+    }
+    const nomReceveur = data.nomReceveur || RECEVEUR_NON_PRECISE;
+
     const refusPetite = refusPetiteDepense(caps, data);
     if (refusPetite) return NextResponse.json({ error: refusPetite }, { status: 403 });
 
@@ -117,7 +126,7 @@ export async function POST(
           montant: data.montant,
           dateDepense,
           cashRegisterId: data.cashRegisterId,
-          nomReceveur: data.nomReceveur,
+          nomReceveur,
           modePaiement: data.modePaiement,
           notes: data.notes,
           ligneBudgetId: data.ligneId,
