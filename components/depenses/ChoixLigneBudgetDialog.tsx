@@ -17,6 +17,8 @@ export interface LigneDepenseOption {
 export interface BudgetDepenseOption {
   id: string;
   numero: string;
+  /** Type du budget (MENSUEL, CAMPAGNE…). */
+  type?: string;
   statut: string;
   modePaiement: string;
   depensable: boolean;

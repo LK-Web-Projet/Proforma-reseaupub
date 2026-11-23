@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useDroits } from "@/components/DroitsProvider";
 import {
   Table,
   TableBody,
@@ -111,12 +112,14 @@ const statusConfig: Record<string, { label: string; color: string; icon: LucideI
 };
 
 export default function ClientDetailPage() {
+  const { peut } = useDroits();
   const { id } = useParams();
   const [client, setClient] = useState<Client | null>(null);
   const [factures, setFactures] = useState<Facture[]>([]);
   const [loadingClient, setLoadingClient] = useState(true);
   const [loadingFactures, setLoadingFactures] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [activeStatusFilter, setActiveStatusFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -154,6 +157,7 @@ export default function ClientDetailPage() {
     e.preventDefault();
     if (!client) return;
 
+    setIsSaving(true);
     try {
       const res = await fetch(`/api/clients/${id}`, {
         method: "PUT",
@@ -166,6 +170,8 @@ export default function ClientDetailPage() {
     } catch (error) {
       console.error(error);
       toast.error("Impossible de mettre à jour le client.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -246,12 +252,16 @@ export default function ClientDetailPage() {
             </div>
         </div>
         <div className="flex gap-2 relative">
+            {peut("client.modifier") && (
             <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "destructive" : "outline"} size="sm">
                 {isEditing ? <><X className="w-4 h-4 mr-2" /> Annuler</> : <><Edit3 className="w-4 h-4 mr-2" /> Modifier</>}
             </Button>
+            )}
+            {peut("proforma.creer") && (
             <Button asChild size="sm">
                 <Link href={`/facture/new?clientId=${client.id}`}><FileText className="w-4 h-4 mr-2" /> Créer une facture</Link>
             </Button>
+            )}
         </div>
       </div>
 
@@ -282,7 +292,7 @@ export default function ClientDetailPage() {
                         </div>
                     </div>
                     <div className="flex justify-end pt-4">
-                        <Button type="submit"><Save className="w-4 h-4 mr-2" /> Enregistrer les modifications</Button>
+                        <Button type="submit" loading={isSaving}><Save className="w-4 h-4 mr-2" /> {isSaving ? "Enregistrement..." : "Enregistrer les modifications"}</Button>
                     </div>
                 </form>
             </CardContent>

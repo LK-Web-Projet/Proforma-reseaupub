@@ -17,6 +17,7 @@ import { ClientTableSkeleton } from "@/components/ClientTableSkeleton";
 import { Search, UserPlus, FileText, CheckCircle2, Wallet, CheckSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ClientModal } from "@/components/ClientModal";
+import { useDroits } from "@/components/DroitsProvider";
 
 type ClientStats = {
   total: number;
@@ -35,6 +36,7 @@ type Client = {
 };
 
 export default function ClientsPage() {
+  const { peut } = useDroits();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -78,10 +80,12 @@ export default function ClientsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Portefeuille Clients</h1>
           <p className="text-muted-foreground">Gérez vos relations clients et suivez leur activité de facturation.</p>
         </div>
+        {peut("client.creer") && (
         <Button onClick={() => setIsAddModalOpen(true)} className="shrink-0">
           <UserPlus className="w-4 h-4 mr-2" />
           Nouveau Client
         </Button>
+        )}
       </div>
 
       <ClientModal

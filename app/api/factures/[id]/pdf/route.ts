@@ -1,3 +1,5 @@
+import { refusHorsPortee } from "@/lib/proformaPortee";
+import { requirePermission } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma"; // Assurez-vous que le chemin vers votre instance Prisma est correct
 import { generateInvoicePdf } from "@/lib/pdf"; // Importation de la fonction de génération de PDF
@@ -9,10 +11,14 @@ export async function GET(
   request: NextRequest, // Le premier argument est l'objet de requête Next.js
   context: { params: Promise<{ id: string }> } // Le deuxième argument contient les paramètres de route dynamiques (ici, 'id')
 ) {
+  const droitsAcces = await requirePermission("proforma.exporter");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     // Tente de trouver une facture unique dans la base de données en utilisant l'ID fourni.
     // 'include' permet de récupérer également les données du client et des produits associés à la facture.
     const { id } = await context.params; // <-- attendre la résolution
+    const horsPortee = await refusHorsPortee(droitsAcces, id);
+    if (horsPortee) return horsPortee;
     const facture = await prisma.invoice.findUnique({
       where: { id }, // Utilise l'ID extrait des paramètres de la route pour la recherche
       include: { client: true, produits: true },

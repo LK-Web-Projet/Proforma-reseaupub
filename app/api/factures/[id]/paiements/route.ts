@@ -14,6 +14,8 @@ import { lockCashRegister } from "@/lib/cashJournal";
 import { safeCreatedById } from "@/lib/authz";
 import { sendProformaPaiementNotification } from "@/lib/email/proformaPaiement";
 import { requireCaisseUser } from "@/lib/budgetAuth";
+import { requirePermission } from "@/lib/authz";
+import { proformaDansPortee } from "@/lib/proformaPortee";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
@@ -88,6 +90,16 @@ export async function POST(
     // Une dépense imputée à une proforma est une sortie de caisse hors budget : même droit que la
     // saisie directe au journal (les encaissements clients restent ouverts comme avant).
     let auteur = { email: "inconnu", name: null as string | null };
+    if (type === "PAIEMENT") {
+      // Encaissement d'une recette client : droit « Enregistrer un encaissement » (page Proforma),
+      // sur une proforma de sa portée.
+      const droits = await requirePermission("proforma.encaisser");
+      if (droits instanceof NextResponse) return droits;
+      if (!(await proformaDansPortee(prisma, droits, invoiceId))) {
+        return NextResponse.json({ error: "Cette proforma n'est pas dans votre portée (vous ne voyez que les vôtres)." }, { status: 403 });
+      }
+      auteur = { email: droits.email, name: null };
+    }
     if (type === "DEPENSE") {
       const caisseCaps = await requireCaisseUser();
       if (caisseCaps instanceof NextResponse) return caisseCaps;

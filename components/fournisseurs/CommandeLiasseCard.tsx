@@ -27,6 +27,7 @@ import {
   TYPES_DOCUMENT_COMMANDE,
   type TypeDocumentCommandeValue,
 } from '@/lib/commandeFournisseurLiasse';
+import { useDroits } from '@/components/DroitsProvider';
 
 /** Proforma fournisseur jointe au budget du bon (GET …/documents). */
 interface ProformaBudget {
@@ -109,6 +110,13 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
   const [reprise, setReprise] = useState<string | null>(null);
   const payable = (commande.statut === 'VALIDEE' || commande.statut === 'LIVREE') && !!commande.ligneBudget && reste > 0.004;
   const toutesPieces = liasse.aJoindre.length === 0;
+  // Droits d'action : pièces (droit dédié, ou comptable / direction qui classent la liasse),
+  // facture, ligne de budget (modifier le bon), paiements (comptable).
+  const { peut } = useDroits();
+  const peutPieces = peut('fournisseurs.commandePieces') || peut('canPayBudget') || peut('canValidateBudgetMensuel');
+  const peutFacture = peut('fournisseurs.factureEnregistrer');
+  const peutLigne = peut('fournisseurs.commandeModifier');
+  const peutPayer = peut('canPayBudget');
 
   // Proformas fournisseur jointes au budget du bon : reprises dans la liasse en un clic.
   const chargerProformasBudget = React.useCallback(() => {
@@ -178,7 +186,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
               <p className="text-amber-800">Aucune ligne de budget : l&apos;avance et le solde ne pourront pas être payés.</p>
             )}
           </div>
-          {!paiementsActifs && !annulee && (
+          {!paiementsActifs && !annulee && peutLigne && (
             <Button variant="outline" size="sm" className="gap-1" onClick={() => setLigneOuverte(true)}>
               <Link2 className="h-3.5 w-3.5" /> {commande.ligneBudget ? 'Changer de ligne' : 'Rattacher à une ligne de budget'}
             </Button>
@@ -195,9 +203,11 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                 avance ni aucun solde ne peut être payé avant.
               </p>
             </div>
+            {peutPieces && (
             <Button size="sm" className="gap-1 shrink-0" onClick={() => setPieceType('BC_SIGNE')}>
               <Paperclip className="h-3.5 w-3.5" /> Joindre le BC signé
             </Button>
+            )}
           </div>
         )}
 
@@ -205,7 +215,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground uppercase">Liasse</p>
-            {!annulee && (
+            {!annulee && peutPieces && (
               <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => setPieceType('AUTRE')}>
                 <Plus className="h-3 w-3" /> Autre document
               </Button>
@@ -232,11 +242,11 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                   </span>
                   {!annulee &&
                     (p.kind === 'FACTURE' && !p.ok ? (
-                      <Button size="sm" className="h-7 gap-1 text-xs shrink-0 bg-red-600 hover:bg-red-700 animate-pulse" onClick={() => setFactureOuverte(true)}>
+                      peutFacture && <Button size="sm" className="h-7 gap-1 text-xs shrink-0 bg-red-600 hover:bg-red-700 animate-pulse" onClick={() => setFactureOuverte(true)}>
                         <Receipt className="h-3 w-3" /> Enregistrer la facture
                       </Button>
                     ) : (
-                      <Button
+                      peutPieces && <Button
                         size="sm"
                         variant={manque ? 'default' : 'ghost'}
                         className={cn('h-7 gap-1 text-xs shrink-0', manque && 'bg-red-600 hover:bg-red-700 animate-pulse')}
@@ -272,7 +282,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                         <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <span className="min-w-0 flex-1 truncate" title={pf.fileName}>{pf.fileName} <span className="text-muted-foreground">({pf.budgetNumero})</span></span>
                         <AttachmentPreviewButton url={pf.url} title={pf.fileName} />
-                        <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" disabled={reprise === pf.id} onClick={() => reprendreProforma(pf.id)}>
+                        <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" disabled={reprise === pf.id || !peutPieces} onClick={() => reprendreProforma(pf.id)}>
                           {reprise === pf.id ? '…' : 'Utiliser pour ce bon'}
                         </Button>
                       </div>
@@ -301,7 +311,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground uppercase">Factures du prestataire</p>
-            {!annulee && (
+            {!annulee && peutFacture && (
               <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => setFactureOuverte(true)}>
                 <Plus className="h-3 w-3" /> Enregistrer la facture
               </Button>
@@ -318,7 +328,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                     {f.status === 'PAYEE' ? 'Payée' : f.status === 'ANNULEE' ? 'Annulée' : 'À payer'}
                   </Badge>
                   {f.pieceJointe ? <AttachmentPreviewButton url={f.pieceJointe} title={f.reference} /> : <span className="text-[11px] text-amber-700">sans pièce</span>}
-                  {f.status === 'EN_ATTENTE' && payable && (
+                  {f.status === 'EN_ATTENTE' && payable && peutPayer && (
                     <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => setPaiement({ type: 'facture', id: f.id })}>
                       <Wallet className="h-3 w-3" /> Payer
                     </Button>
@@ -333,7 +343,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground uppercase">Paiements (depuis le budget)</p>
-            {payable && (
+            {payable && peutPayer && (
               <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => setPaiement({ type: 'avance', id: commande.id })}>
                 <Wallet className="h-3 w-3" /> Verser une avance
               </Button>
@@ -498,7 +508,7 @@ function PieceDialog({ commandeId, kind, onClose, onSuccess }: { commandeId: str
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={envoi}>{envoi ? 'Envoi…' : 'Joindre'}</Button>
+            <Button type="submit" loading={envoi} disabled={envoi}>{envoi ? 'Envoi…' : 'Joindre'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -575,7 +585,7 @@ function FactureDialog({ commande, open, onClose, onSuccess }: { commande: Comma
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={envoi}>{envoi ? 'Envoi…' : 'Enregistrer'}</Button>
+            <Button type="submit" loading={envoi} disabled={envoi}>{envoi ? 'Envoi…' : 'Enregistrer'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

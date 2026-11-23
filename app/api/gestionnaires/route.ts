@@ -1,8 +1,11 @@
+import { requireAnyPage, requirePermission } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
 // GET /api/gestionnaires - Récupérer tous les gestionnaires
 export async function GET() {
+  const refusAcces = await requireAnyPage(["commercial", "proforma"]);
+  if (refusAcces) return refusAcces;
   try {
     const gestionnaires = await prisma.gestionnaire.findMany();
     return NextResponse.json(gestionnaires);
@@ -17,6 +20,8 @@ export async function GET() {
 
 // POST /api/gestionnaires - Créer un nouveau gestionnaire
 export async function POST(request: Request) {
+  const droitsAcces = await requirePermission("commercial.creer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const { nom, prenom, email, telephone } = await request.json();
 

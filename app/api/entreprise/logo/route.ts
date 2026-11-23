@@ -1,9 +1,12 @@
+import { requirePermission } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import { writeFile } from "fs/promises";
 import path from "path";
 import { ALLOWED_IMAGE_EXTENSIONS, fileExtension } from "@/lib/uploadSecurity";
 
 export async function POST(request: Request) {
+  const droitsAcces = await requirePermission("parametres.entreprise");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
     try {
         const formData = await request.formData();
         const file = formData.get("file") as File;

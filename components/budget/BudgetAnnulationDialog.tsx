@@ -75,7 +75,7 @@ export function BudgetAnnulationDialog({
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Retour</Button>
-          <Button variant="destructive" onClick={handleConfirm} disabled={isSubmitting || motif.trim().length < 3}>
+          <Button variant="destructive" onClick={handleConfirm} loading={isSubmitting} disabled={isSubmitting || motif.trim().length < 3}>
             {isSubmitting ? 'Annulation...' : "Confirmer l'annulation"}
           </Button>
         </DialogFooter>

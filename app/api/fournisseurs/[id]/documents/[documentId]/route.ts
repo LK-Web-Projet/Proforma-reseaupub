@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import { unlink } from "fs/promises";
 import path from "path";
@@ -8,6 +9,8 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string; documentId: string }> },
 ) {
+  const droitsAcces = await requirePermission("fournisseurs.documents");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const { id, documentId } = await params;
 
   try {

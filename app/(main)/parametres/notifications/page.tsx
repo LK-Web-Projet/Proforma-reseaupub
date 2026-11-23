@@ -166,7 +166,7 @@ export default function NotificationsSettingsPage() {
       )}
 
       <div className="flex justify-end sticky bottom-4">
-        <Button onClick={enregistrer} disabled={saving || modifiees.length === 0} className="shadow-lg">
+        <Button onClick={enregistrer} loading={saving} disabled={saving || modifiees.length === 0} className="shadow-lg">
           {saving ? 'Enregistrement…' : modifiees.length > 0 ? `Enregistrer (${modifiees.length})` : 'Aucune modification'}
         </Button>
       </div>

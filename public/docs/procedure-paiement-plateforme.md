@@ -89,6 +89,24 @@ Ponctuel ou tiers, sous le plafond | **L'assistant(e) de direction** (ou la DG) 
 
 > ⚠️ **Séparation des tâches** : la personne qui a validé un budget, ou accordé une ligne, ne peut pas en enregistrer les dépenses. Personne ne valide sa propre demande.
 
+### Rôles et droits : page, puis actions
+
+Dans **Paramètres → Rôles**, chaque rôle s'ouvre sur une grille, avec une carte par rubrique (Proforma, Clients, Commerciaux, Prestataires, Produits, Finance, Budget, Paramètres) :
+
+1. **Accès à la page** : sans lui, la rubrique n'apparaît pas dans le menu et toutes ses actions sont grisées.
+2. **Les actions** permises sur cette page, une case chacune : créer, modifier, changer le statut, valider, annuler, supprimer, exporter, joindre des pièces…
+
+Une action non cochée disparaît de l'écran, et le serveur la refuse avec un message du type « Votre rôle n'a pas le droit : … ».
+
+À retenir :
+
+- **Proformas visibles** : « Toutes », ou « Seulement les siennes ». Les siennes sont les proformas créées par la personne, ou dont elle est le commercial (même adresse e-mail que son compte). Un nouveau rôle ne voit que les siennes.
+- **Statut d'une proforma** : *Validée* demande le droit « Valider », et *Annulée* le droit « Annuler ». Les autres statuts demandent le droit « Changer le statut ». *Payée* et *Soldée* restent automatiques : ils suivent les encaissements.
+- **Annuler plutôt que supprimer** : ce qui a un historique s'annule (proforma) ou se désactive (prestataire, commercial). On ne supprime que ce qui vient d'être créé : une proforma en brouillon sans encaissement, budget ni bon de commande, ou un client sans proforma. **Un prestataire ne se supprime jamais.**
+- **Commerciaux** : un commercial désactivé n'est plus proposé sur les nouvelles proformas. Ses proformas existantes ne changent pas.
+- **Exports** : chaque export (Excel, PDF) a son droit. Le PDF d'un budget à faire signer reste toujours imprimable.
+- Les cases du circuit budget et de la caisse, décrites dans le tableau ci-dessus, figurent aussi dans cette grille.
+
 ---
 
 ## 2. Le budget de campagne

@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
-import { safeCreatedById } from "@/lib/authz";
+import { safeCreatedById, requireAnyPage, requirePermission } from "@/lib/authz";
 import { saveFournisseurDocuments, describeFsError } from "@/lib/uploadFournisseurDocument";
 
 // GET /api/fournisseurs/[id]/documents - Liste des documents d'un prestataire
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const refusAcces = await requireAnyPage(["fournisseurs"]);
+  if (refusAcces) return refusAcces;
   const { id } = await params;
 
   try {
@@ -23,6 +25,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 // POST /api/fournisseurs/[id]/documents - Ajouter un ou plusieurs documents (même type)
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const droitsAcces = await requirePermission("fournisseurs.documents");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const { id } = await params;
 
   try {

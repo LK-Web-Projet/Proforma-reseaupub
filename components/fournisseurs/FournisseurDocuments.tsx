@@ -19,6 +19,7 @@ import { Plus, FileText, Trash2, Upload } from "lucide-react";
 import { AttachmentPreviewButton } from "@/components/AttachmentPreviewButton";
 import { DOCUMENT_FOURNISSEUR_PRESETS, getDocumentFournisseurTypeColor } from "@/lib/documentFournisseurTypes";
 import { cn } from "@/lib/utils";
+import { useDroits } from "@/components/DroitsProvider";
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 Mo — même limite que côté serveur (lib/uploadFournisseurDocument.ts)
 
@@ -36,6 +37,8 @@ interface FournisseurDocument {
 }
 
 export default function FournisseurDocuments({ fournisseurId }: FournisseurDocumentsProps) {
+  const { peut } = useDroits();
+  const peutGerer = peut("fournisseurs.documents");
   const [documents, setDocuments] = useState<FournisseurDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -142,6 +145,7 @@ export default function FournisseurDocuments({ fournisseurId }: FournisseurDocum
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Documents</h3>
+        {peutGerer && (
         <Dialog
           open={isDialogOpen}
           onOpenChange={(open) => {
@@ -204,13 +208,14 @@ export default function FournisseurDocuments({ fournisseurId }: FournisseurDocum
                 </label>
               </div>
               <DialogFooter>
-                <Button type="submit" disabled={submitting}>
+                <Button type="submit" loading={submitting} disabled={submitting}>
                   {submitting ? "Ajout..." : "Ajouter"}
                 </Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       {loading ? (
@@ -236,6 +241,7 @@ export default function FournisseurDocuments({ fournisseurId }: FournisseurDocum
                 </p>
               </div>
               <AttachmentPreviewButton url={doc.url} title={doc.fileName} />
+              {peutGerer && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -245,6 +251,7 @@ export default function FournisseurDocuments({ fournisseurId }: FournisseurDocum
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
+              )}
             </div>
           ))}
         </div>

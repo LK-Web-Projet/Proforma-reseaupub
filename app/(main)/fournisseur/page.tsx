@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { FournisseurTableSkeleton } from "@/components/FournisseurTableSkeleton";
 import { FournisseurModal, Fournisseur } from "@/components/FournisseurModal";
 import { PlusCircle, Mail, Phone, Briefcase, Pencil, ChevronRight, Building2, Search, Copy, AlarmClock } from 'lucide-react';
@@ -30,6 +30,7 @@ import { PrestataireStatutToggle } from "@/components/fournisseurs/PrestataireSt
 import { PastilleRetardPrestataire } from "@/components/fournisseurs/RetardPaiement";
 import type { RetardPrestataire } from "@/lib/retardPaiement";
 import Link from "next/link";
+import { useDroits } from "@/components/DroitsProvider";
 
 /** Prestataire avec ses factures en retard de paiement (calculées par /api/fournisseurs). */
 type FournisseurAvecRetard = Fournisseur & { retard?: RetardPrestataire | null };
@@ -37,6 +38,7 @@ type FournisseurAvecRetard = Fournisseur & { retard?: RetardPrestataire | null }
 const TAB_ALL = "Tout";
 
 export default function FournisseursPage() {
+  const { peut } = useDroits();
   const [fournisseurs, setFournisseurs] = useState<FournisseurAvecRetard[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -129,10 +131,12 @@ export default function FournisseursPage() {
               {loading ? 'Chargement...' : `${filteredFournisseurs.length} / ${fournisseurs.length} prestataire(s)`}
             </p>
           </div>
+          {peut("fournisseurs.creer") && (
           <Button onClick={() => handleOpenModal()}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Nouveau Prestataire
           </Button>
+          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
@@ -287,6 +291,7 @@ export default function FournisseursPage() {
                       </TableCell>
                       <TableCell className="py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          {peut("fournisseurs.modifier") && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -298,6 +303,7 @@ export default function FournisseursPage() {
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
+                          )}
                           <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
                       </TableCell>

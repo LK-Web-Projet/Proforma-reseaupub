@@ -386,7 +386,7 @@ export function FactureFournisseurModal({
                 {isLocked && hasPieceJointe ? 'Fermer' : 'Annuler'}
               </Button>
               {!(isLocked && hasPieceJointe) && (
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
                   {isSubmitting ? 'Enregistrement...' : isEditing ? 'Enregistrer les modifications' : 'Enregistrer la facture'}
                 </Button>
               )}

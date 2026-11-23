@@ -77,7 +77,7 @@ export function UploadAttachmentModal({ cashJournalId, onUploadComplete }: Uploa
               required
             />
           </div>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
             {isSubmitting ? "Envoi en cours..." : "Uploader"}
           </Button>
         </form>

@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { auth } from "@clerk/nextjs/server";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
-import { safeCreatedById } from "@/lib/authz";
+import { safeCreatedById, requireAnyPage, requirePermission } from "@/lib/authz";
 import { exigeBonDeCommande } from "@/lib/typeFournisseur";
 import { refusLigneBudgetCommande, refusMontantFactureCommande } from "@/lib/commandeFournisseurSuivi";
 import { etatEcheance } from "@/lib/retardPaiement";
@@ -11,6 +11,8 @@ import { getDelaisPaiement } from "@/lib/retardPaiementServeur";
 
 // GET /api/factures-fournisseurs - Récupérer toutes les factures fournisseurs
 export async function GET(req: NextRequest) {
+  const refusAcces = await requireAnyPage(["fournisseurs"]);
+  if (refusAcces) return refusAcces;
   try {
     const { searchParams } = new URL(req.url);
 
@@ -111,6 +113,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/factures-fournisseurs - Créer une nouvelle facture fournisseur avec pièce jointe
 export async function POST(req: NextRequest) {
+  const droitsAcces = await requirePermission("fournisseurs.factureEnregistrer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const { userId } = await auth();
     const formData = await req.formData();

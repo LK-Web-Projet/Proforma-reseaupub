@@ -1,12 +1,13 @@
+import { requirePermission } from "@/lib/authz";
 import { NextResponse } from 'next/server';
 import { OperationType } from '@prisma/client';
 import prisma from '@/lib/prisma';
-import { requireCaisseUser } from '@/lib/budgetAuth';
+
 
 // Recalcule tous les soldes du journal : réservé au droit « Saisir au journal de caisse ».
 export async function POST() {
-  const caps = await requireCaisseUser();
-  if (caps instanceof NextResponse) return caps;
+  const droitsAcces = await requirePermission("finance.recalculer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     // Fetch all cash registers
     const cashRegisters = await prisma.cashRegister.findMany();

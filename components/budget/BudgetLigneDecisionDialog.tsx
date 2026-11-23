@@ -113,7 +113,7 @@ export function BudgetLigneDecisionDialog({
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-              <Button type="submit" disabled={isSubmitting} className={ligne.mode === 'CORRIGER' ? 'bg-amber-600 hover:bg-amber-700' : ''}>
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting} className={ligne.mode === 'CORRIGER' ? 'bg-amber-600 hover:bg-amber-700' : ''}>
                 {isSubmitting ? 'Envoi...' : ligne.mode === 'CORRIGER' ? 'Renvoyer pour correction' : 'Accorder ce montant'}
               </Button>
             </DialogFooter>

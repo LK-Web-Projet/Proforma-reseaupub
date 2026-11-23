@@ -7,7 +7,7 @@ import {
     sendCommandeScanAJoindreNotification,
 } from "@/lib/email/commandeFournisseur";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
-import { requirePage } from "@/lib/authz";
+import { requirePermission } from "@/lib/authz";
 import { Prisma } from "@prisma/client";
 import { prochainNumeroCommande, refusCoherenceLigneProforma, refusLigneBudgetCommande, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
 
@@ -72,8 +72,8 @@ export async function GET(request: Request) {
 
 // POST — créer un bon de commande : réservé aux rôles ayant la section « Prestataires ».
 export async function POST(request: Request) {
-    const refusPage = await requirePage("fournisseurs");
-    if (refusPage) return refusPage;
+    const droitsAcces = await requirePermission("fournisseurs.commandeCreer");
+    if (droitsAcces instanceof NextResponse) return droitsAcces;
     try {
         const body = await request.json();
         const validatedData = commandeSchema.parse(body);

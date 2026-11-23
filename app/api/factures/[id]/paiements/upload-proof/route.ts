@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { join } from "path";
@@ -9,6 +10,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const droitsAcces = await requirePermission("proforma.encaisser");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     await params; // Consomme params pour éviter d'autres warnings si nécessaire
     const formData = await request.formData();

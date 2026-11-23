@@ -1,3 +1,5 @@
+import { refusHorsPortee } from "@/lib/proformaPortee";
+import { requirePermission } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import nodemailer from "nodemailer";
@@ -18,8 +20,12 @@ export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> } // params est un Promise dans App Router
 ) {
+  const droitsAcces = await requirePermission("proforma.envoyer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const { id } = await context.params; // ✅ On attend params pour éviter le warning Next.js
-  
+  const horsPortee = await refusHorsPortee(droitsAcces, id);
+  if (horsPortee) return horsPortee;
+
   try {
     console.log(`📨 Envoi de l'email pour la facture ID: ${id}`);
 

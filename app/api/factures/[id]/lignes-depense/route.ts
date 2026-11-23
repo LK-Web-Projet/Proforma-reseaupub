@@ -60,7 +60,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           lignes.push({ id: l.id, designation: l.designation, modePaiement: l.modePaiement, reste: Math.max(d.reste, 0), commandes: l.commandes });
         }
       }
-      budgetsAvecReste.push({ id: b.id, numero: b.numero, statut: b.statut, modePaiement: b.modePaiement, depensable, motif, lignes });
+      budgetsAvecReste.push({ id: b.id, numero: b.numero, type: b.type, statut: b.statut, modePaiement: b.modePaiement, depensable, motif, lignes });
     }
 
     const commandesSansBudget = budgets.length

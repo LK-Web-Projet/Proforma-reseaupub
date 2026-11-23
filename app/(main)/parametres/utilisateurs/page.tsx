@@ -18,6 +18,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { useActionEnCours } from "@/lib/useActionEnCours";
+import { Indicateur } from "@/components/ui/indicateur";
 import { ChevronLeft, Users, Plus, KeyRound } from "lucide-react";
 
 interface Role {
@@ -37,6 +39,7 @@ interface AppUser {
 const emptyForm = { email: "", nom: "", password: "", roleId: "" };
 
 export default function UtilisateursPage() {
+  const { enCours, lancer } = useActionEnCours();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,16 +212,20 @@ export default function UtilisateursPage() {
                     <TableCell className="font-medium">{user.nom}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
                     <TableCell>
-                      <Select value={user.role.id} onValueChange={(v) => handleRoleChange(user.id, v)}>
+                      <div className="flex items-center gap-2">
+                      <Select value={user.role.id} onValueChange={(v) => lancer(`role:${user.id}`, () => handleRoleChange(user.id, v))} disabled={enCours(`role:${user.id}`)}>
                         <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {roles.map((r) => <SelectItem key={r.id} value={r.id}>{r.nom}</SelectItem>)}
                         </SelectContent>
                       </Select>
+                      {enCours(`role:${user.id}`) && <Indicateur label="Changement de rôle…" />}
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <Switch checked={user.active} onCheckedChange={() => handleToggleActive(user)} />
+                        <Switch checked={user.active} onCheckedChange={() => lancer(`actif:${user.id}`, () => handleToggleActive(user))} disabled={enCours(`actif:${user.id}`)} />
+                        {enCours(`actif:${user.id}`) && <Indicateur label="Mise à jour du compte…" />}
                         {!user.active && <Badge variant="destructive" className="text-[10px]">Désactivé</Badge>}
                       </div>
                     </TableCell>
@@ -265,7 +272,7 @@ export default function UtilisateursPage() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Annuler</Button>
-              <Button type="submit" disabled={isSaving || !form.roleId}>
+              <Button type="submit" loading={isSaving} disabled={isSaving || !form.roleId}>
                 {isSaving ? "Création..." : "Créer le compte"}
               </Button>
             </DialogFooter>
@@ -300,7 +307,7 @@ export default function UtilisateursPage() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setResetTarget(null)}>Annuler</Button>
-                <Button type="submit" disabled={isResetting || resetPassword.length < 8}>
+                <Button type="submit" loading={isResetting} disabled={isResetting || resetPassword.length < 8}>
                   {isResetting ? "Réinitialisation..." : "Réinitialiser"}
                 </Button>
               </DialogFooter>

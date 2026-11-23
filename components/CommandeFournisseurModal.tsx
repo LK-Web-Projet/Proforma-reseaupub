@@ -465,7 +465,7 @@ export function CommandeFournisseurModal({
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Annuler
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
                 {isSubmitting ? 'Création...' : 'Créer le bon de commande'}
               </Button>
             </DialogFooter>

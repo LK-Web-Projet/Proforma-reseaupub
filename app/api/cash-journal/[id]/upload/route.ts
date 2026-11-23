@@ -1,4 +1,4 @@
-
+import { requirePermission } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile } from "fs/promises";
 import { join } from "path";
@@ -10,6 +10,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const droitsAcces = await requirePermission("finance.justificatifs");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const cashJournalId = await parseInt((await params).id, 10);
   if (isNaN(cashJournalId)) {
     return NextResponse.json(

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next-nprogress-bar';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Bell, CheckCheck } from 'lucide-react';
@@ -46,9 +46,10 @@ export default function NotificationsPage() {
     await charger();
   };
 
-  const ouvrir = async (n: NotificationItem) => {
-    if (!n.luAt) await marquerLues([n.id]);
+  // Navigation immédiate (barre de progression) ; la notification est marquée lue en parallèle.
+  const ouvrir = (n: NotificationItem) => {
     if (n.lien) router.push(n.lien);
+    if (!n.luAt) void marquerLues([n.id]);
   };
 
   return (

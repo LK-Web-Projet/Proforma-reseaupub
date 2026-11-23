@@ -1,3 +1,6 @@
+import { getDroits, peut, refusDroit, requirePermission } from "@/lib/authz";
+import { proformaDansPortee } from "@/lib/proformaPortee";
+import { droitChangementStatutProforma } from "@/lib/permissions";
 import { NextResponse, NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
@@ -54,7 +57,15 @@ export async function GET(
   request: NextRequest,
   {params}: { params: Promise<{ id: string }> }
 ) {
+  const droits = await getDroits();
+  if (droits instanceof NextResponse) return droits;
+  if (!droits.pages.includes("proforma")) {
+    return NextResponse.json({ error: "Accès refusé pour cette section." }, { status: 403 });
+  }
   const { id } = await params;
+  if (!(await proformaDansPortee(prisma, droits, id))) {
+    return NextResponse.json({ error: "Cette proforma n'est pas dans votre portée (vous ne voyez que les vôtres)." }, { status: 403 });
+  }
 
   try {
     const facture = await prisma.invoice.findUnique({
@@ -312,6 +323,38 @@ async function updateFacture(id: string, body: unknown) {
   }
 }
 
+// ---------- Droits d'une modification ----------
+// Champs de contenu : les modifier exige « Modifier le contenu ». Le statut suit sa propre
+// règle : Validée → « Valider », Annulée (ou sortir d'Annulée) → « Annuler », les autres →
+// « Changer le statut ». Payée / Soldée posés automatiquement (encaissements, totaux) ne
+// demandent aucun droit : ils découlent de l'enregistrement.
+const CHAMPS_CONTENU = [
+  "produits", "tva", "devise", "paymentConditionPercentage", "objet", "gestionnaireId", "info",
+  "isTaxExempt", "isDiscountEnabled", "discountType", "discountValue",
+] as const;
+
+async function modifierAvecDroits(id: string, body: unknown) {
+  const droits = await getDroits();
+  if (droits instanceof NextResponse) return droits;
+  if (!droits.pages.includes("proforma")) return refusDroit("proforma.modifier");
+
+  const actuelle = await prisma.invoice.findUnique({ where: { id }, select: { statut: true } });
+  if (!actuelle) return NextResponse.json({ error: "Facture non trouvée" }, { status: 404 });
+  if (!(await proformaDansPortee(prisma, droits, id))) {
+    return NextResponse.json({ error: "Cette proforma n'est pas dans votre portée (vous ne voyez que les vôtres)." }, { status: 403 });
+  }
+
+  const donnees = (body ?? {}) as Record<string, unknown>;
+  if (CHAMPS_CONTENU.some((c) => donnees[c] !== undefined) && !peut(droits, "proforma.modifier")) {
+    return refusDroit("proforma.modifier");
+  }
+  const cible = typeof donnees.statut === "string" ? (donnees.statut as StatusFacture) : null;
+  const droitNecessaire = cible ? droitChangementStatutProforma(actuelle.statut, cible) : null;
+  if (droitNecessaire && !peut(droits, droitNecessaire)) return refusDroit(droitNecessaire);
+
+  return updateFacture(id, body);
+}
+
 // ---------- PATCH / PUT ----------
 export async function PATCH(
   request: NextRequest,
@@ -319,7 +362,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await request.json();
-  return updateFacture(id, body);
+  return modifierAvecDroits(id, body);
 }
 
 export async function PUT(
@@ -328,7 +371,7 @@ export async function PUT(
 ) {
   const { id } = await context.params;
   const body = await request.json();
-  return updateFacture(id, body);
+  return modifierAvecDroits(id, body);
 }
 
 // ---------- DELETE ----------
@@ -336,9 +379,34 @@ export async function DELETE(
   request: NextRequest,
   {params}: { params: Promise<{ id: string }> }
 ) {
+  const droitsAcces = await requirePermission("proforma.supprimer");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   const { id } = await params;
+  if (!(await proformaDansPortee(prisma, droitsAcces, id))) {
+    return NextResponse.json({ error: "Cette proforma n'est pas dans votre portée (vous ne voyez que les vôtres)." }, { status: 403 });
+  }
 
   try {
+    // Suppression réservée à une proforma sans historique : encore en brouillon, sans
+    // encaissement ni dépense, sans budget ni bon de commande liés. Sinon, l'annuler.
+    const proforma = await prisma.invoice.findUnique({
+      where: { id },
+      select: {
+        statut: true,
+        _count: { select: { paiements: true, demandesBudget: true, commandesFournisseur: true, budgetDepenses: true } },
+      },
+    });
+    if (!proforma) {
+      return NextResponse.json({ error: "Proforma introuvable." }, { status: 404 });
+    }
+    const c = proforma._count;
+    if (proforma.statut !== "Brouillon" || c.paiements + c.demandesBudget + c.commandesFournisseur + c.budgetDepenses > 0) {
+      return NextResponse.json(
+        { error: "Cette proforma a déjà un historique (envoyée, encaissement, dépense, budget ou bon de commande) : annulez-la au lieu de la supprimer." },
+        { status: 409 }
+      );
+    }
+
     await prisma.invoiceProduit.deleteMany({ where: { invoiceId: id } });
     await prisma.invoiceGestionnaire.deleteMany({ where: { invoiceId: id } });
     // Also delete bonCommande and factureNormaliser if they exist

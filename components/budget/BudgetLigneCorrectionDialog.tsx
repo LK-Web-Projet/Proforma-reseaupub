@@ -152,7 +152,7 @@ export function BudgetLigneCorrectionDialog({
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-              <Button type="submit" disabled={isSubmitting} variant={ligne.mode === 'RETIRER' ? 'destructive' : 'default'}>
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting} variant={ligne.mode === 'RETIRER' ? 'destructive' : 'default'}>
                 {isSubmitting ? 'Envoi...' : ligne.mode === 'MODIFIER' ? 'Renvoyer en validation' : 'Retirer la ligne'}
               </Button>
             </DialogFooter>

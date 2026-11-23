@@ -403,7 +403,7 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                 <Button variant="outline" onClick={onCancel} disabled={submitting} type="button">
                     Annuler
                 </Button>
-                <Button onClick={handleSubmit} disabled={submitting}>
+                <Button onClick={handleSubmit} loading={submitting} disabled={submitting}>
                     {submitting ? "Création..." : "Valider la Commande"}
                 </Button>
             </div>

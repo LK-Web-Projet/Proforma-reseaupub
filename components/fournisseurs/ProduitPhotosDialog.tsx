@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trash2, ImagePlus } from "lucide-react";
+import { Trash2, ImagePlus, Loader2 } from "lucide-react";
+import { useDroits } from "@/components/DroitsProvider";
 
 export interface ProduitPhoto {
     id: string;
@@ -29,6 +30,8 @@ export function ProduitPhotosDialog({
 }: ProduitPhotosDialogProps) {
     const [uploading, setUploading] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const { peut } = useDroits();
+    const peutGerer = peut("fournisseurs.produits");
 
     const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!produitId || !e.target.files || e.target.files.length === 0) return;
@@ -98,23 +101,26 @@ export function ProduitPhotosDialog({
                             >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={photo.url} alt={photo.fileName} className="w-full h-full object-cover" />
+                                {peutGerer && (
                                 <button
                                     type="button"
                                     onClick={() => handleDeletePhoto(photo.id)}
                                     disabled={deletingId === photo.id}
-                                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
+                                    className={`absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 transition-opacity hover:bg-red-600 ${deletingId === photo.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                                     title="Supprimer cette photo"
                                 >
-                                    <Trash2 className="h-3.5 w-3.5" />
+                                    {deletingId === photo.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                 </button>
+                                )}
                             </div>
                         ))}
                     </div>
                 )}
 
+                {peutGerer && (
                 <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-md p-4 cursor-pointer text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                     <ImagePlus className="h-4 w-4" />
-                    {uploading ? "Envoi en cours..." : "Ajouter des photos"}
+                    {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Envoi en cours...</> : "Ajouter des photos"}
                     <input
                         type="file"
                         accept="image/*"
@@ -124,6 +130,7 @@ export function ProduitPhotosDialog({
                         disabled={uploading}
                     />
                 </label>
+                )}
             </DialogContent>
         </Dialog>
     );

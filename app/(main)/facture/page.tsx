@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { useDroits } from '@/components/DroitsProvider';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -47,6 +48,7 @@ const CONVERSION_RATES: Record<string, number> = {
 };
 
 export default function Home() {
+  const { peut } = useDroits();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [allFactures, setAllFactures] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -248,10 +250,12 @@ export default function Home() {
         <h1 className="text-2xl font-bold mb-4">Liste des factures émises</h1>
 
         <div className="flex items-center gap-2 mb-4">
+          {peut('proforma.exporter') && (
           <Button variant="outline" onClick={handleExport} title="Exporter la liste filtrée en Excel">
             <Download className="mr-2 h-4 w-4" />
             Exporter (Excel)
           </Button>
+          )}
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="icon" title="Gérer la visibilité des cartes">

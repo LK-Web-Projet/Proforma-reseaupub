@@ -213,7 +213,7 @@ export function FournisseurForm({ onSubmit, initialData, isSubmitting }: Fournis
         />
       </div>
       <div className="flex justify-end pt-4">
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
           {isSubmitting ? "Enregistrement..." : "Enregistrer"}
         </Button>
       </div>

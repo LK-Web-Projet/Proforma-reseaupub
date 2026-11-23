@@ -1,9 +1,12 @@
+import { requirePermission } from "@/lib/authz";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { saveProduitFournisseurPhotos, describeFsError } from "@/lib/uploadProduitFournisseur";
 
 // POST /api/fournisseurs/produits/[id]/photos - Ajouter une ou plusieurs photos à un produit existant
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const droitsAcces = await requirePermission("fournisseurs.produits");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
     const { id } = await params;
 
     try {
@@ -42,6 +45,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
 // DELETE /api/fournisseurs/produits/[id]/photos?photoId=... - Supprimer une photo d'un produit
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const droitsAcces = await requirePermission("fournisseurs.produits");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const photoId = searchParams.get("photoId");

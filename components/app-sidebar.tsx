@@ -2,7 +2,7 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { SignedIn, UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/sidebar";
 import type { AppPublicMetadata, PageKey } from "@/lib/permissions";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { useDroits } from "@/components/DroitsProvider";
 
 // Menu facture.
 const dashboard = [
@@ -74,6 +75,7 @@ const facture = [
     title: "Nouvelle Facture",
     url: "/facture/new",
     icon: Plus,
+    droit: "proforma.creer",
   },
 ];
 
@@ -95,6 +97,7 @@ const Commercial = [
     title: "Nouveau Commercial",
     url: "/gestionnaire/new",
     icon: UserRoundPlus,
+    droit: "commercial.creer",
   },
 ];
 
@@ -139,6 +142,7 @@ const finance = [
     title: "Export journal de Caisse",
     url: "/journal-caisse/export",
     icon: FileDown,
+    droit: "finance.exporter",
   },
 ];
 
@@ -163,6 +167,8 @@ interface NavItem {
   title: string;
   url: string;
   icon: LucideIcon;
+  /** Droit d'action exigé pour afficher le lien (ex. créer). */
+  droit?: string;
 }
 
 // Affiche l'icône du lien, remplacée par un loader pendant la navigation vers ce lien.
@@ -177,6 +183,8 @@ function NavLinkIcon({ icon: Icon }: { icon: LucideIcon }) {
 
 function NavLink({ item }: { item: NavItem }) {
   const pathname = usePathname();
+  const { peut } = useDroits();
+  if (item.droit && !peut(item.droit)) return null;
   const isActive = pathname === item.url;
 
   return (

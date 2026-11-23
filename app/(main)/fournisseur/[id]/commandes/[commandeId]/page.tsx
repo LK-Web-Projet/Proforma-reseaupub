@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
@@ -29,6 +30,7 @@ import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
 import { CommandeLiasseCard, type CommandeSuivi } from "@/components/fournisseurs/CommandeLiasseCard";
 import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
 import { genererBonCommandePdf } from "@/lib/pdf/bonCommandePdf";
+import { useDroits } from "@/components/DroitsProvider";
 
 interface ProduitFournisseur {
     id: string;
@@ -123,6 +125,7 @@ const formatCurrency = (amount: number) => {
 
 
 export default function CommandeDetailPage() {
+    const { peut } = useDroits();
     const [commande, setCommande] = useState<CommandeDetail | null>(null);
     const [entreprise, setEntreprise] = useState<EntrepriseConfig | null>(null);
     const [loading, setLoading] = useState(true);
@@ -268,13 +271,13 @@ export default function CommandeDetailPage() {
                     Retour aux commandes
                 </Button>
                 <div className="flex items-center gap-2">
-                    {commande.statut === "BROUILLON" && (
+                    {commande.statut === "BROUILLON" && peut("fournisseurs.commandeModifier") && (
                         <Button variant="outline" onClick={() => setIsEditOpen(true)} className="gap-2">
                             <Pencil className="h-4 w-4" />
                             Modifier
                         </Button>
                     )}
-                    {commande.proformas.length > 0 && (
+                    {commande.proformas.length > 0 && peut("fournisseurs.commandeExporter") && (
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" size="icon" title="Options du PDF">
@@ -308,14 +311,16 @@ export default function CommandeDetailPage() {
                             </PopoverContent>
                         </Popover>
                     )}
+                    {peut("fournisseurs.commandeExporter") && (
                     <Button
                         onClick={handleDownloadPDF}
-                        disabled={generatingPdf}
+                        loading={generatingPdf} disabled={generatingPdf}
                         className="gap-2 bg-[#ef0b53] hover:bg-[#d10a48] text-white"
                     >
                         <Download className="h-4 w-4" />
                         {generatingPdf ? "Génération..." : "Télécharger PDF"}
                     </Button>
+                    )}
                 </div>
             </div>
 

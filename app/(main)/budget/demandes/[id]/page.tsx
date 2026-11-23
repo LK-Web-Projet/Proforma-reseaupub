@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import { useRouter } from 'next-nprogress-bar';
 import Link from 'next/link';
 import { LotPaiementDetail } from '@/components/depenses/LotPaiementDetail';
 import { format } from 'date-fns';
@@ -49,6 +50,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2, Printer, FileSignature, Clock } from 'lucide-react';
 import type { DocumentUploadType } from '@/lib/demandeBudgetAttachmentTypes';
+import { useDroits } from '@/components/DroitsProvider';
 
 interface BudgetDepense {
   id: string;
@@ -152,6 +154,7 @@ const formatMontant = (value: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(value);
 
 export default function DemandeBudgetDetailPage() {
+  const { peut } = useDroits();
   const [demande, setDemande] = useState<DemandeBudgetDetail | null>(null);
   const [role, setRole] = useState<BudgetRole>(EMPTY_ROLE);
   const [loading, setLoading] = useState(true);
@@ -485,9 +488,11 @@ export default function DemandeBudgetDetailPage() {
               {demande.type === 'MENSUEL' ? 'Reconduire au mois suivant' : 'Dupliquer'}
             </Button>
           )}
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} disabled={isPrinting} title="Imprimer le budget pour signature">
+          {peut('budget.exporter') && (
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} loading={isPrinting} disabled={isPrinting} title="Imprimer le budget pour signature">
             <Printer className="h-4 w-4" /> {isPrinting ? 'Génération...' : 'Imprimer'}
           </Button>
+          )}
           <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} />
         </div>
       </div>
@@ -573,7 +578,7 @@ export default function DemandeBudgetDetailPage() {
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} disabled={isPrinting}>
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} loading={isPrinting} disabled={isPrinting}>
                 <Printer className="h-4 w-4" /> Imprimer
               </Button>
               <Button size="sm" className="gap-2" onClick={() => ouvrirAjoutDocuments('BUDGET_SIGNE')}>
@@ -602,7 +607,7 @@ export default function DemandeBudgetDetailPage() {
               <div className="flex gap-3">
                 <Button
                   onClick={handleValider}
-                  disabled={isSubmitting || nbLignesEnAttente === 0 || nbLignesACorriger > 0}
+                  loading={isSubmitting} disabled={isSubmitting || nbLignesEnAttente === 0 || nbLignesACorriger > 0}
                   title={nbLignesACorriger > 0 ? 'Des lignes attendent une correction du demandeur' : undefined}
                   className="gap-2 bg-green-600 hover:bg-green-700"
                 >
@@ -825,7 +830,7 @@ export default function DemandeBudgetDetailPage() {
                             <Button
                               size="sm"
                               className="gap-1 bg-green-600 hover:bg-green-700"
-                              disabled={isSubmitting}
+                              loading={isSubmitting} disabled={isSubmitting}
                               onClick={() => handleAccorderLigne(l.id)}
                             >
                               <Check className="h-3.5 w-3.5" /> Accorder
@@ -1166,6 +1171,7 @@ export default function DemandeBudgetDetailPage() {
         proformas={proformasOptions}
         defaultModePaiement={demande.modePaiement}
         plafondPetiteDepense={plafondPetiteDepense}
+        typeBudget={demande.type}
         onClose={() => setDepenseLigne(null)}
         onSuccess={fetchDemande}
       />
@@ -1208,7 +1214,7 @@ export default function DemandeBudgetDetailPage() {
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsClotureOpen(false)}>Annuler</Button>
-            <Button onClick={handleCloturer} disabled={isSubmitting}>
+            <Button onClick={handleCloturer} loading={isSubmitting} disabled={isSubmitting}>
               {isSubmitting ? 'Clôture...' : 'Confirmer la clôture'}
             </Button>
           </DialogFooter>
@@ -1223,7 +1229,7 @@ export default function DemandeBudgetDetailPage() {
           <Textarea value={motifRejet} onChange={(e) => setMotifRejet(e.target.value)} placeholder="Motif du rejet" rows={4} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsRejectOpen(false)}>Annuler</Button>
-            <Button variant="destructive" onClick={handleRejeter} disabled={isSubmitting}>
+            <Button variant="destructive" onClick={handleRejeter} loading={isSubmitting} disabled={isSubmitting}>
               {isSubmitting ? 'Rejet...' : 'Confirmer le rejet'}
             </Button>
           </DialogFooter>

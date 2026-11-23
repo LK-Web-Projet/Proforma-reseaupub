@@ -26,6 +26,9 @@ import { DateRange } from 'react-day-picker';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useDroits } from '@/components/DroitsProvider';
+import { useActionEnCours } from "@/lib/useActionEnCours";
+import { Indicateur } from "@/components/ui/indicateur";
 
 // Define the type for a supplier invoice, including the related supplier
 interface FactureFournisseur {
@@ -74,6 +77,11 @@ const defaultFilters = {
 };
 
 export default function FacturesListPage() {
+  const { enCours, lancer } = useActionEnCours();
+  // Droits d'action (Paramètres → Rôles) : boutons masqués, vérifiés par le serveur.
+  const { peut } = useDroits();
+  const peutStatutFacture = ["fournisseurs.factureModifier", "fournisseurs.factureAnnuler", "canValidateBudgetMensuel"].some((k) => peut(k));
+
   const [factures, setFactures] = useState<FactureFournisseur[]>([]);
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
   const [filters, setFilters] = useState(defaultFilters);
@@ -243,10 +251,12 @@ export default function FacturesListPage() {
           <h1 className="text-2xl font-bold">Liste des Factures Prestataires</h1>
           <p className="text-sm text-muted-foreground mt-1">{summary.count} facture(s) sur la période sélectionnée</p>
         </div>
+        {peut("fournisseurs.factureEnregistrer") && (
         <Button onClick={() => setIsAddModalOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Ajouter une facture
         </Button>
+        )}
       </div>
 
       <FactureFournisseurModal
@@ -378,7 +388,7 @@ export default function FacturesListPage() {
                   <SelectItem value="ALL">Tous les statuts</SelectItem>
                   <SelectItem value="EN_ATTENTE">En attente</SelectItem>
                   <SelectItem value="PAYEE">Payée</SelectItem>
-                  <SelectItem value="ANNULEE">Annulée</SelectItem>
+                  <SelectItem value="ANNULEE" disabled={!peut("fournisseurs.factureAnnuler")}>Annulée</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filters.period} onValueChange={(value: Period) => setFilters(prev => ({ ...prev, period: value }))}>
@@ -465,10 +475,11 @@ export default function FacturesListPage() {
                   </TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(facture.montant)}</TableCell>
                   <TableCell>
-                    {isLocked ? (
+                    {isLocked || !peutStatutFacture ? (
                       <FactureFournisseurStatusBadge status={facture.status} animate={false} />
                     ) : (
-                      <Select value={facture.status} onValueChange={(newStatus: FactureFournisseur['status']) => handleStatusChange(facture, newStatus)}>
+                      <span className="inline-flex items-center gap-1.5">
+                      <Select value={facture.status} onValueChange={(newStatus: FactureFournisseur['status']) => lancer(facture.id, () => handleStatusChange(facture, newStatus))} disabled={enCours(facture.id)}>
                         <SelectTrigger className="border-none bg-transparent! p-0 h-auto cursor-pointer">
                           <SelectValue>
                             <FactureFournisseurStatusBadge status={facture.status} />
@@ -480,7 +491,7 @@ export default function FacturesListPage() {
                           </SelectItem>
                           {/* « Payée » à la main comme avant, sauf pour une facture rattachée à un bon de commande
                               ou à une ligne de budget : celle-là passe « payée » par son paiement sur le budget. */}
-                          <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId}>
+                          <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId || !peut("canValidateBudgetMensuel")}>
                             <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{facture.commandeId || facture.ligneBudgetId ? 'Payée (par le budget)' : 'Payée'}</span>
                           </SelectItem>
                           <SelectItem value="ANNULEE">
@@ -488,6 +499,8 @@ export default function FacturesListPage() {
                           </SelectItem>
                         </SelectContent>
                       </Select>
+{enCours(facture.id) && <Indicateur label="Mise à jour du statut…" />}
+</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -495,14 +508,15 @@ export default function FacturesListPage() {
                   </TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-2">
-                    {facture.echeance?.enRetard ? (
+                    {!peut("canPayBudget") ? null : facture.echeance?.enRetard ? (
                       <BoutonRetardPaiement echeance={facture.echeance} onClick={() => setFactureAPayer(facture.id)} />
                     ) : facture.status === 'EN_ATTENTE' && (
                       <Button size="sm" className="h-8 gap-1" onClick={() => setFactureAPayer(facture.id)}>
                         <Wallet className="h-3.5 w-3.5" /> Appliquer le paiement
                       </Button>
                     )}
-                    <TooltipProvider>
+                    {(isLocked || peut("fournisseurs.factureModifier")) && (
+<TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button variant="outline" size="icon" onClick={() => setEditingFacture(facture)}>
@@ -512,6 +526,7 @@ export default function FacturesListPage() {
                         <TooltipContent>{isLocked ? 'Voir la facture' : 'Modifier la facture'}</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
+)}
                     </div>
                   </TableCell>
                 </TableRow>

@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next-nprogress-bar';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -32,6 +32,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [nonLues, setNonLues] = useState(0);
+  const [charge, setCharge] = useState(false);
 
   const charger = useCallback(async () => {
     try {
@@ -42,6 +43,8 @@ export function NotificationBell() {
       setNonLues(data.nonLues ?? 0);
     } catch {
       // Hors ligne ou session expirée : la cloche reste en l'état.
+    } finally {
+      setCharge(true);
     }
   }, []);
 
@@ -69,10 +72,11 @@ export function NotificationBell() {
     await charger();
   };
 
-  const ouvrir = async (n: NotificationItem) => {
+  // Navigation immédiate (barre de progression) ; la notification est marquée lue en parallèle.
+  const ouvrir = (n: NotificationItem) => {
     setOpen(false);
-    if (!n.luAt) await marquerLues([n.id]);
     if (n.lien) router.push(n.lien);
+    if (!n.luAt) void marquerLues([n.id]);
   };
 
   return (
@@ -109,7 +113,9 @@ export function NotificationBell() {
           )}
         </div>
         <div className="max-h-[380px] overflow-y-auto">
-          {items.length === 0 ? (
+          {!charge ? (
+            <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-8"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</p>
+          ) : items.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Aucune notification.</p>
           ) : (
             items.map((n) => (

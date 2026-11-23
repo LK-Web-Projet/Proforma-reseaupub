@@ -14,6 +14,7 @@ import {
     User, Save, Upload, Image as ImageIcon, Users, ShieldCheck, ChevronRight, BellRing,
 } from "lucide-react";
 import type { AppPublicMetadata } from "@/lib/permissions";
+import { useDroits } from "@/components/DroitsProvider";
 
 interface EntrepriseConfig {
     id: string;
@@ -50,6 +51,11 @@ const defaultForm: FormData = {
 export default function ParametresPage() {
     const { user } = useUser();
     const canManageUsers = Boolean((user?.publicMetadata as AppPublicMetadata | undefined)?.canManageUsers);
+    // Sous-droits des Paramètres (Paramètres → Rôles) : chaque carte selon son droit.
+    const { peut } = useDroits();
+    const peutEntreprise = peut("parametres.entreprise");
+    const peutReglages = peut("parametres.reglages");
+    const peutNotifications = peut("parametres.notifications");
     const [form, setForm] = useState<FormData>(defaultForm);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -167,8 +173,9 @@ export default function ParametresPage() {
                 </p>
             </div>
 
-            {canManageUsers && (
+            {(canManageUsers || peutReglages || peutNotifications) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                    {canManageUsers && (
                     <Link href="/parametres/utilisateurs">
                         <Card className="hover:shadow-md hover:border-primary/40 transition-all cursor-pointer">
                             <CardContent className="flex items-center gap-4 py-5">
@@ -181,18 +188,24 @@ export default function ParametresPage() {
                             </CardContent>
                         </Card>
                     </Link>
+                    )}
+                    {(canManageUsers || peutReglages) && (
                     <Link href="/parametres/roles">
                         <Card className="hover:shadow-md hover:border-primary/40 transition-all cursor-pointer">
                             <CardContent className="flex items-center gap-4 py-5">
                                 <div className="p-3 rounded-xl bg-purple-100 text-purple-700"><ShieldCheck className="w-5 h-5" /></div>
                                 <div className="flex-1">
                                     <p className="font-semibold text-sm">Rôles &amp; Permissions</p>
-                                    <p className="text-xs text-muted-foreground">Définir les pages accessibles par rôle</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {canManageUsers ? "Pages et actions permises par rôle, délais et plafonds" : "Délais et plafonds"}
+                                    </p>
                                 </div>
                                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
                             </CardContent>
                         </Card>
                     </Link>
+                    )}
+                    {peutNotifications && (
                     <Link href="/parametres/notifications">
                         <Card className="hover:shadow-md hover:border-primary/40 transition-all cursor-pointer">
                             <CardContent className="flex items-center gap-4 py-5">
@@ -205,10 +218,17 @@ export default function ParametresPage() {
                             </CardContent>
                         </Card>
                     </Link>
+                    )}
                 </div>
             )}
 
+            {!peutEntreprise && (
+                <p className="mb-4 rounded-md border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                    Consultation seule : votre rôle n&apos;a pas le droit de modifier les informations de l&apos;entreprise.
+                </p>
+            )}
             <form onSubmit={handleSubmit} className="space-y-6">
+              <fieldset disabled={!peutEntreprise} className="space-y-6 disabled:opacity-90">
                 {/* Logo */}
                 <Card>
                     <CardHeader className="pb-3">
@@ -244,7 +264,7 @@ export default function ParametresPage() {
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    disabled={uploading}
+                                    loading={uploading} disabled={uploading}
                                     onClick={() => fileInputRef.current?.click()}
                                 >
                                     <Upload className="mr-2 h-4 w-4" />
@@ -360,12 +380,15 @@ export default function ParametresPage() {
 
                 <Separator />
 
+                {peutEntreprise && (
                 <div className="flex justify-end">
-                    <Button type="submit" disabled={saving} size="lg" className="gap-2 min-w-[180px]">
+                    <Button type="submit" loading={saving} disabled={saving} size="lg" className="gap-2 min-w-[180px]">
                         <Save className="h-4 w-4" />
                         {saving ? "Enregistrement..." : "Enregistrer"}
                     </Button>
                 </div>
+                )}
+              </fieldset>
             </form>
         </div>
     );

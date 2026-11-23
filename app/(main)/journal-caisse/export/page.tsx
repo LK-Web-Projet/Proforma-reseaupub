@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { useDroits } from '@/components/DroitsProvider';
 
 interface CashJournalEntry {
   id: number;
@@ -37,6 +38,7 @@ interface CashRegister {
 }
 
 export default function ExportCashJournalPage() {
+  const { peut, charge } = useDroits();
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [allEntries, setAllEntries] = useState<CashJournalEntry[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('all');
@@ -154,6 +156,14 @@ export default function ExportCashJournalPage() {
     }
     return Array.from(map.values());
   }, [filteredEntries]);
+
+  if (charge && !peut('finance.exporter')) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-20 text-muted-foreground">
+        Votre rôle n&apos;a pas le droit d&apos;exporter le journal de caisse.
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 space-y-4">

@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/select";
 import type { StatutCommandeFournisseur } from "@prisma/client";
 import { TRANSITIONS_COMMANDE } from "@/lib/commandeFournisseurLiasse";
+import { useDroits } from "@/components/DroitsProvider";
+import { Indicateur } from "@/components/ui/indicateur";
 
 export const STATUT_LABELS: Record<StatutCommandeFournisseur, string> = {
     BROUILLON: "Brouillon",
@@ -34,7 +36,8 @@ interface CommandeStatutControlProps {
     isAdmin: boolean;
     /** Scan du bon signé joint (connu sur la fiche) ; non renseigné : le serveur tranche. */
     bcSigne?: boolean;
-    onChange: (statut: StatutCommandeFournisseur) => void;
+    /** Peut renvoyer une promesse : la liste est alors désactivée, avec un indicateur, jusqu'à sa fin. */
+    onChange: (statut: StatutCommandeFournisseur) => void | Promise<unknown>;
     triggerClassName?: string;
     badgeClassName?: string;
     buttonClassName?: string;
@@ -54,13 +57,27 @@ export function CommandeStatutControl({
     triggerClassName,
     badgeClassName,
 }: CommandeStatutControlProps) {
-    const suivants = TRANSITIONS_COMMANDE[statut] ?? [];
+    const { peut } = useDroits();
+    const [enCours, setEnCours] = React.useState(false);
+    const changer = async (value: StatutCommandeFournisseur) => {
+        setEnCours(true);
+        try {
+            await onChange(value);
+        } finally {
+            setEnCours(false);
+        }
+    };
+    // Livrer et annuler ont chacun leur droit ; valider reste réservé à la direction (isAdmin).
+    const suivants = (TRANSITIONS_COMMANDE[statut] ?? []).filter((s) =>
+        s === "LIVREE" ? peut("fournisseurs.commandeLivrer") : s === "ANNULEE" ? peut("fournisseurs.commandeAnnuler") : true
+    );
     const isLocked = suivants.length === 0;
     const valideeImpossible = !isAdmin || bcSigne === false;
 
     if (!isLocked) {
         return (
-            <Select value={statut} onValueChange={(value: StatutCommandeFournisseur) => onChange(value)}>
+            <span className="inline-flex items-center gap-1.5">
+            <Select value={statut} onValueChange={(value: StatutCommandeFournisseur) => void changer(value)} disabled={enCours}>
                 <SelectTrigger className={triggerClassName}>
                     <SelectValue>
                         <Badge variant={STATUT_BADGE_VARIANT[statut]} className={badgeClassName}>
@@ -78,6 +95,8 @@ export function CommandeStatutControl({
                     ))}
                 </SelectContent>
             </Select>
+            {enCours && <Indicateur label="Mise à jour du statut…" />}
+            </span>
         );
     }
 

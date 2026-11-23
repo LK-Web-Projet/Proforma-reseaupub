@@ -13,6 +13,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Pencil, UserX, UserCheck } from "lucide-react";
+import { useDroits } from "@/components/DroitsProvider";
 
 // Définition des types
 interface Client {
@@ -36,6 +43,7 @@ interface GestionnaireDetails {
   prenom: string;
   email: string;
   telephone: string | null;
+  actif?: boolean;
   factures: { invoice: Invoice }[];
   stats: {
     validated: { count: number; total: number };
@@ -54,6 +62,52 @@ export default function GestionnaireDetailPage() {
     null
   );
   const [loading, setLoading] = useState(true);
+  const { peut } = useDroits();
+  const [edition, setEdition] = useState<{ nom: string; prenom: string; email: string; telephone: string } | null>(null);
+  const [enCours, setEnCours] = useState(false);
+
+  const enregistrer = async () => {
+    if (!edition) return;
+    setEnCours(true);
+    try {
+      const res = await fetch(`/api/gestionnaires/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(edition),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Erreur lors de l'enregistrement.");
+      setGestionnaire((prev) => (prev ? { ...prev, ...data } : prev));
+      setEdition(null);
+      toast.success("Commercial mis à jour.");
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  const basculerActif = async () => {
+    if (!gestionnaire) return;
+    const actif = gestionnaire.actif === false;
+    if (!actif && !window.confirm("Désactiver ce commercial ? Il ne sera plus proposé sur les nouvelles proformas ; ses proformas existantes ne changent pas.")) return;
+    setEnCours(true);
+    try {
+      const res = await fetch(`/api/gestionnaires/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actif }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Erreur.");
+      setGestionnaire((prev) => (prev ? { ...prev, actif: data.actif } : prev));
+      toast.success(actif ? "Commercial réactivé." : "Commercial désactivé.");
+    } catch (error) {
+      toast.error((error as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -94,8 +148,38 @@ export default function GestionnaireDetailPage() {
     <div className="container mx-auto p-4">
       {/* Informations sur le gestionnaire */}
       <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Détails du Gestionnaire</CardTitle>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <CardTitle className="flex items-center gap-2">
+            Détails du Gestionnaire
+            {gestionnaire.actif === false && <Badge variant="outline" className="font-normal">Inactif</Badge>}
+          </CardTitle>
+          <div className="flex gap-2">
+            {peut("commercial.modifier") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setEdition({
+                    nom: gestionnaire.nom,
+                    prenom: gestionnaire.prenom,
+                    email: gestionnaire.email,
+                    telephone: gestionnaire.telephone ?? "",
+                  })
+                }
+              >
+                <Pencil className="mr-2 h-4 w-4" /> Modifier
+              </Button>
+            )}
+            {peut("commercial.desactiver") && (
+              <Button variant="outline" size="sm" onClick={basculerActif} loading={enCours} disabled={enCours}>
+                {gestionnaire.actif === false ? (
+                  <><UserCheck className="mr-2 h-4 w-4" /> Réactiver</>
+                ) : (
+                  <><UserX className="mr-2 h-4 w-4" /> Désactiver</>
+                )}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
           <p>
@@ -199,6 +283,39 @@ export default function GestionnaireDetailPage() {
           </Table>
         </CardContent>
       </Card>
+      <Dialog open={!!edition} onOpenChange={(o) => !o && setEdition(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Modifier le commercial</DialogTitle>
+          </DialogHeader>
+          {edition && (
+            <div className="grid gap-3">
+              {(
+                [
+                  { cle: "prenom", label: "Prénom" },
+                  { cle: "nom", label: "Nom" },
+                  { cle: "email", label: "Email" },
+                  { cle: "telephone", label: "Téléphone" },
+                ] as const
+              ).map((c) => (
+                <div key={c.cle} className="space-y-1">
+                  <Label htmlFor={`g-${c.cle}`}>{c.label}</Label>
+                  <Input
+                    id={`g-${c.cle}`}
+                    type={c.cle === "email" ? "email" : "text"}
+                    value={edition[c.cle]}
+                    onChange={(e) => setEdition((p) => (p ? { ...p, [c.cle]: e.target.value } : p))}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEdition(null)}>Annuler</Button>
+            <Button onClick={enregistrer} loading={enCours} disabled={enCours}>{enCours ? "Enregistrement..." : "Enregistrer"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

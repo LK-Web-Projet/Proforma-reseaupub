@@ -25,6 +25,7 @@ import { Plus, ImagePlus, Image as ImageIcon, X, Pencil } from "lucide-react";
 import type { TypeUnite } from "@prisma/client";
 import { ProduitPhotosDialog, ProduitPhoto } from "./ProduitPhotosDialog";
 import { EditProduitDialog } from "./EditProduitDialog";
+import { useDroits } from "@/components/DroitsProvider";
 
 interface FournisseurProduitsProps {
     fournisseurId: string;
@@ -44,6 +45,8 @@ const formatMontant = (value: number) =>
     new Intl.NumberFormat("fr-FR", { style: "currency", currency: "XOF" }).format(value);
 
 export default function FournisseurProduits({ fournisseurId }: FournisseurProduitsProps) {
+    const { peut } = useDroits();
+    const peutGerer = peut("fournisseurs.produits");
     const [produits, setProduits] = useState<Produit[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -152,6 +155,7 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Catalogue Produits</h3>
+                {peutGerer && (
                 <Dialog
                     open={isDialogOpen}
                     onOpenChange={(open) => {
@@ -261,13 +265,14 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                             </div>
 
                             <div className="flex justify-end pt-4">
-                                <Button type="submit" disabled={submitting}>
+                                <Button type="submit" loading={submitting} disabled={submitting}>
                                     {submitting ? "Ajout..." : "Ajouter"}
                                 </Button>
                             </div>
                         </form>
                     </DialogContent>
                 </Dialog>
+                )}
             </div>
 
             {loading ? (
@@ -297,6 +302,7 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                                         <ImageIcon className="h-10 w-10" />
                                     </div>
                                 )}
+                                {peutGerer && (
                                 <button
                                     type="button"
                                     onClick={(e) => {
@@ -308,6 +314,7 @@ export default function FournisseurProduits({ fournisseurId }: FournisseurProdui
                                 >
                                     <Pencil className="h-3.5 w-3.5" />
                                 </button>
+                                )}
                                 {prod.photos.length > 1 && (
                                     <Badge className="absolute bottom-2 right-2 bg-black/60 text-white border-0 hover:bg-black/60">
                                         +{prod.photos.length - 1} photo{prod.photos.length - 1 > 1 ? "s" : ""}

@@ -699,7 +699,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             Annuler
           </Button>
         )}
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>
           {isSubmitting ? 'Soumission...' : mode === 'edit' ? 'Soumettre à nouveau' : 'Soumettre la demande'}
         </Button>
       </div>

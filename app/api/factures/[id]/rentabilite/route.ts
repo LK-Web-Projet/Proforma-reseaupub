@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requirePage } from "@/lib/authz";
+import { getDroits } from "@/lib/authz";
+import { refusHorsPortee } from "@/lib/proformaPortee";
 import { getBudgetTotaux } from "@/lib/budgetSuivi";
 
 /**
@@ -14,9 +15,14 @@ import { getBudgetTotaux } from "@/lib/budgetSuivi";
  * dépenses de budget imputées à la proforma (BudgetDepense) — une seule écriture de caisse chacune.
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const refus = await requirePage("proforma");
-  if (refus) return refus;
+  const droits = await getDroits();
+  if (droits instanceof NextResponse) return droits;
+  if (!droits.pages.includes("proforma")) {
+    return NextResponse.json({ error: "Accès refusé pour cette section." }, { status: 403 });
+  }
   const { id } = await params;
+  const horsPortee = await refusHorsPortee(droits, id);
+  if (horsPortee) return horsPortee;
 
   try {
     const invoice = await prisma.invoice.findUnique({

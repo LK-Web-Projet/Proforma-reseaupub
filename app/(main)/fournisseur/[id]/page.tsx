@@ -34,6 +34,9 @@ import { PrestataireStatutBadge, PrestataireStatutDot } from "@/components/fourn
 import { PrestataireStatutToggle } from "@/components/fournisseurs/PrestataireStatutToggle";
 import { BoutonRetardPaiement, EcheanceFacture, classeLigneRetard } from "@/components/fournisseurs/RetardPaiement";
 import type { EtatEcheance } from "@/lib/retardPaiement";
+import { useDroits } from "@/components/DroitsProvider";
+import { useActionEnCours } from "@/lib/useActionEnCours";
+import { Indicateur } from "@/components/ui/indicateur";
 
 interface StatutHistoriqueEntry {
   id: string;
@@ -51,6 +54,11 @@ interface FournisseurDetails extends Fournisseur {
 }
 
 export default function FournisseurDetailsPage() {
+  const { enCours, lancer } = useActionEnCours();
+  // Droits d'action (Paramètres → Rôles) : boutons masqués, vérifiés par le serveur.
+  const { peut } = useDroits();
+  const peutStatutFacture = ["fournisseurs.factureModifier", "fournisseurs.factureAnnuler", "canValidateBudgetMensuel"].some((k) => peut(k));
+
   const [fournisseur, setFournisseur] = useState<FournisseurDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatutFactureFournisseur | null>(null);
@@ -293,10 +301,11 @@ export default function FournisseurDetailsPage() {
                       </TableCell>
                       <TableCell className="text-right font-medium whitespace-nowrap">{new Intl.NumberFormat('fr-FR').format(Number(facture.montant))} XOF</TableCell>
                       <TableCell>
-                        {isLocked ? (
+                        {isLocked || !peutStatutFacture ? (
                           <FactureFournisseurStatusBadge status={facture.status} animate={false} />
                         ) : (
-                          <Select value={facture.status} onValueChange={(newStatus: StatutFactureFournisseur) => handleStatusChange(facture.id, newStatus)}>
+                          <span className="inline-flex items-center gap-1.5">
+                          <Select value={facture.status} onValueChange={(newStatus: StatutFactureFournisseur) => lancer(facture.id, () => handleStatusChange(facture.id, newStatus))} disabled={enCours(facture.id)}>
                             <SelectTrigger className="border-none !bg-transparent p-0 h-auto cursor-pointer">
                               <SelectValue>
                                 <FactureFournisseurStatusBadge status={facture.status} />
@@ -306,14 +315,16 @@ export default function FournisseurDetailsPage() {
                               <SelectItem value="EN_ATTENTE">
                                 <span className="flex items-center gap-2"><StatusDot status="EN_ATTENTE" animate={false} />En attente</span>
                               </SelectItem>
-                              <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId}>
+                              <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId || !peut("canValidateBudgetMensuel")}>
                                 <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{facture.commandeId || facture.ligneBudgetId ? 'Payée (par le budget)' : 'Payée'}</span>
                               </SelectItem>
-                              <SelectItem value="ANNULEE">
+                              <SelectItem value="ANNULEE" disabled={!peut("fournisseurs.factureAnnuler")}>
                                 <span className="flex items-center gap-2"><StatusDot status="ANNULEE" animate={false} />Annulée</span>
                               </SelectItem>
                             </SelectContent>
                           </Select>
+{enCours(facture.id) && <Indicateur label="Mise à jour du statut…" />}
+</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -321,14 +332,15 @@ export default function FournisseurDetailsPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-2">
-                        {facture.echeance?.enRetard ? (
+                        {!peut("canPayBudget") ? null : facture.echeance?.enRetard ? (
                           <BoutonRetardPaiement echeance={facture.echeance} onClick={() => setFactureAPayer(facture.id)} />
                         ) : facture.status === "EN_ATTENTE" && (
                           <Button size="sm" className="h-8 gap-1" onClick={() => setFactureAPayer(facture.id)}>
                             <Wallet className="h-3.5 w-3.5" /> Appliquer le paiement
                           </Button>
                         )}
-                        <TooltipProvider>
+                        {(isLocked || peut("fournisseurs.factureModifier")) && (
+<TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -352,6 +364,7 @@ export default function FournisseurDetailsPage() {
                             <TooltipContent>{isLocked ? 'Voir la facture' : 'Modifier la facture'}</TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+)}
                         </div>
                       </TableCell>
                     </TableRow>

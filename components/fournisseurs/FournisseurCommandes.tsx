@@ -14,15 +14,17 @@ import { toast } from "sonner";
 import { Plus, Eye } from "lucide-react";
 import { CommandeFournisseur, StatutCommandeFournisseur } from "@prisma/client";
 import { format } from "date-fns";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import NewCommandeForm from "./NewCommandeForm";
 import { CommandeStatutControl } from "./CommandeStatutControl";
+import { useDroits } from "@/components/DroitsProvider";
 
 interface FournisseurCommandesProps {
     fournisseurId: string;
 }
 
 export default function FournisseurCommandes({ fournisseurId }: FournisseurCommandesProps) {
+    const { peut } = useDroits();
     // documents : scans du BC signé seulement (pastille « scan signé manquant »).
     const [commandes, setCommandes] = useState<(CommandeFournisseur & { documents?: { id: string }[] })[]>([]);
     const [loading, setLoading] = useState(true);
@@ -94,10 +96,10 @@ export default function FournisseurCommandes({ fournisseurId }: FournisseurComma
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Bons de Commande</h3>
-                <Button onClick={() => setIsCreating(true)}>
+                {peut("fournisseurs.commandeCreer") && <Button onClick={() => setIsCreating(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Nouveau BCF
-                </Button>
+                </Button>}
             </div>
 
             <div className="rounded-md border bg-white">

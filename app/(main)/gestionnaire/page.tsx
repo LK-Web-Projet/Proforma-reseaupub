@@ -1,24 +1,32 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { GestionnaireCardSkeleton } from "@/components/GestionnaireCardSkeleton";
+import { Badge } from "@/components/ui/badge";
+import { useDroits } from "@/components/DroitsProvider";
+import { cn } from "@/lib/utils";
 
 interface Gestionnaire {
   id: string;
   nom: string;
   prenom: string;
   email: string;
+  actif?: boolean;
 }
 
 export default function GestionnairesPage() {
   const [gestionnaires, setGestionnaires] = useState<Gestionnaire[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { peut } = useDroits();
+  const boutonAjout = peut("commercial.creer") && (
+    <Button onClick={() => router.push("/gestionnaire/new")}>Ajouter un commercial</Button>
+  );
 
   useEffect(() => {
     const fetchGestionnaires = async () => {
@@ -44,10 +52,7 @@ export default function GestionnairesPage() {
       <div className="container mx-auto p-4">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Liste des Commerciaux</h1>
-          {/* Vous pouvez ajouter un bouton pour créer un nouveau commercial ici si nécessaire */}
-          <Button onClick={() => router.push("/gestionnaire/new")}>
-            Ajouter un commercial
-          </Button>
+          {boutonAjout}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <GestionnaireCardSkeleton />
@@ -60,18 +65,16 @@ export default function GestionnairesPage() {
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Liste des Commerciaux</h1>
-        {/* Vous pouvez ajouter un bouton pour créer un nouveau commercial ici si nécessaire */}
-        <Button onClick={() => router.push("/gestionnaire/new")}>
-          Ajouter un commercial
-        </Button>
+        {boutonAjout}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {gestionnaires.map((g) => (
+        {[...gestionnaires].sort((a, b) => Number(b.actif !== false) - Number(a.actif !== false)).map((g) => (
           <Link key={g.id} href={`/gestionnaire/${g.id}`} passHref>
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+            <Card className={cn("cursor-pointer hover:shadow-lg transition-shadow", g.actif === false && "opacity-60")}>
               <CardHeader>
-                <CardTitle>
-                  {g.prenom} {g.nom}
+                <CardTitle className="flex items-center justify-between gap-2">
+                  <span className="truncate">{g.prenom} {g.nom}</span>
+                  {g.actif === false && <Badge variant="outline" className="font-normal shrink-0">Inactif</Badge>}
                 </CardTitle>
               </CardHeader>
               <CardContent>

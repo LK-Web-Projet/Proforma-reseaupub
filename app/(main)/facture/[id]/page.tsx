@@ -2,7 +2,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useRouter } from "next-nprogress-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -39,6 +40,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ProduitCombobox } from "@/components/ProduitCombobox";
 import { ProduitModal } from "@/components/ProduitModal";
+import { useDroits } from "@/components/DroitsProvider";
+import { droitChangementStatutProforma } from "@/lib/permissions";
 import { DEVISE_OPTIONS, STATUT_FACTURE_OPTIONS, UNITE_DUREE_OPTIONS, DISCOUNT_TYPE_OPTIONS, StatutFacture, UniteDuree, Devise } from "@/lib/constants";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
@@ -193,10 +196,17 @@ export default function FactureDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  // Droits d'action (Paramètres → Rôles) : boutons masqués à l'écran, vérifiés par le serveur.
+  const { peut } = useDroits();
+  const peutModifierContenu = peut("proforma.modifier");
+  const peutChangerUnStatut = ["proforma.changerStatut", "proforma.valider", "proforma.annuler"].some((k) => peut(k));
+  // Avec seulement un droit de statut, le mode « Modifier » ne propose que le statut.
+  const editionContenu = isEditing && peutModifierContenu;
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<Partial<Facture> & { gestionnaireId?: string | null }>({});
 
-  const [allGestionnaires, setAllGestionnaires] = useState<{id: string, nom: string, prenom: string}[]>([]);
+  const [allGestionnaires, setAllGestionnaires] = useState<{id: string, nom: string, prenom: string, actif?: boolean}[]>([]);
   const [allProduits, setAllProduits] = useState<{id: string, nom: string, prixUnitaire: number, actif: boolean}[]>([]);
   const [isProduitModalOpen, setIsProduitModalOpen] = useState(false);
   const [activeProductRowIndex, setActiveProductRowIndex] = useState<number | null>(null);
@@ -239,7 +249,7 @@ export default function FactureDetailPage() {
   const [commandesSansBudget, setCommandesSansBudget] = useState<CommandeDeLigne[]>([]);
   const [facturesPrestataires, setFacturesPrestataires] = useState<FacturePrestataire[]>([]);
   const [choixLigneOuvert, setChoixLigneOuvert] = useState(false);
-  const [depenseBudget, setDepenseBudget] = useState<{ demandeId: string; modePaiement: string; ligne: BudgetDepenseDialogLigne } | null>(null);
+  const [depenseBudget, setDepenseBudget] = useState<{ demandeId: string; typeBudget?: string; modePaiement: string; ligne: BudgetDepenseDialogLigne } | null>(null);
   const [paiementBc, setPaiementBc] = useState('NORMALE');
   const [ligneBc, setLigneBc] = useState('');
   const [factureBc, setFactureBc] = useState('');
@@ -286,6 +296,7 @@ export default function FactureDetailPage() {
         if (budgetVise && ligneVisee) {
           setDepenseBudget({
             demandeId: budgetVise.id,
+            typeBudget: budgetVise.type,
             modePaiement: budgetVise.modePaiement,
             ligne: {
               id: ligneVisee.id,
@@ -385,7 +396,9 @@ export default function FactureDetailPage() {
     const totalHT = formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0;
     const tva = formData.isTaxExempt ? 0 : totalHT * 0.18;
     const totalTTC = totalHT + tva;
-    const updatedData = { ...formData, totalHT, tva, totalTTC, produits: formData.produits?.map(p => ({...p, montantTotal: computeLineTotal(p)})) }
+    const updatedData = peutModifierContenu
+      ? { ...formData, totalHT, tva, totalTTC, produits: formData.produits?.map(p => ({...p, montantTotal: computeLineTotal(p)})) }
+      : { statut: formData.statut };
 
     try {
       const res = await fetch(`/api/factures/${id}`, {
@@ -406,6 +419,25 @@ export default function FactureDetailPage() {
       toast.error("Erreur réseau.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteFacture = async () => {
+    if (!window.confirm("Supprimer définitivement cette proforma ? Seul un brouillon sans aucun historique peut l'être.")) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/factures/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Proforma supprimée.");
+        router.push("/facture");
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      toast.error(data?.error || "Suppression impossible.");
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -574,14 +606,14 @@ export default function FactureDetailPage() {
   );
   if (!facture) return <div className="text-center p-20 font-bold text-red-500">Facture introuvable.</div>;
 
-  const displayDevise = isEditing ? formData.devise : facture.devise;
+  const displayDevise = editionContenu ? formData.devise : facture.devise;
   const formatMoney = (val: number) => Number(val).toLocaleString("fr-FR", { style: "currency", currency: displayDevise || "XOF", maximumFractionDigits: 0 });
   const status = statusConfig[facture.statut] || { label: facture.statut, color: "bg-gray-100", icon: FileText };
 
-  const currentTotalHT = isEditing ? (formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0) : Number(facture.totalHT);
-  const currentIsDiscountEnabled = isEditing ? !!formData.isDiscountEnabled : !!facture.isDiscountEnabled;
-  const currentDiscountType = isEditing ? formData.discountType : facture.discountType;
-  const currentDiscountValue = isEditing ? Number(formData.discountValue) || 0 : Number(facture.discountValue) || 0;
+  const currentTotalHT = editionContenu ? (formData.produits?.reduce((acc, p) => acc + computeLineTotal(p), 0) || 0) : Number(facture.totalHT);
+  const currentIsDiscountEnabled = editionContenu ? !!formData.isDiscountEnabled : !!facture.isDiscountEnabled;
+  const currentDiscountType = editionContenu ? formData.discountType : facture.discountType;
+  const currentDiscountValue = editionContenu ? Number(formData.discountValue) || 0 : Number(facture.discountValue) || 0;
   const currentDiscountAmount = currentIsDiscountEnabled
     ? Math.min(
         currentDiscountType === "MONTANT" ? currentDiscountValue : currentTotalHT * (currentDiscountValue / 100),
@@ -589,7 +621,7 @@ export default function FactureDetailPage() {
       )
     : 0;
   const currentTotalHTApresRemise = currentTotalHT - currentDiscountAmount;
-  const currentTVA = isEditing ? (formData.isTaxExempt ? 0 : currentTotalHTApresRemise * 0.18) : Number(facture.tva);
+  const currentTVA = editionContenu ? (formData.isTaxExempt ? 0 : currentTotalHTApresRemise * 0.18) : Number(facture.tva);
   const currentTotalTTC = currentTotalHTApresRemise + currentTVA;
 
   return (
@@ -613,15 +645,17 @@ export default function FactureDetailPage() {
                              <Select value={formData.statut} onValueChange={(v: StatutFacture) => setFormData(p => ({...p, statut: v}))}>
                                 <SelectTrigger className="h-8 w-32 font-bold"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    {STATUT_FACTURE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                                    {STATUT_FACTURE_OPTIONS.filter(o => { const d = droitChangementStatutProforma(facture.statut, o.value); return !d || peut(d); }).map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                                 </SelectContent>
                             </Select>
+                            {peutModifierContenu && (
                             <Select value={formData.devise} onValueChange={(v: Devise) => setFormData(p => ({...p, devise: v}))}>
                                 <SelectTrigger className="h-8 w-24"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     {DEVISE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                                 </SelectContent>
                             </Select>
+                            )}
                         </div>
                     ) : (
                         <Badge className={`${status.color} border-transparent font-bold px-3 py-1`}>
@@ -635,19 +669,28 @@ export default function FactureDetailPage() {
             </div>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            {!facture.bonCommande && !facture.factureNormaliser && (
+            {!facture.bonCommande && !facture.factureNormaliser && (peutModifierContenu || peutChangerUnStatut) && (
                 <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "destructive" : "outline"} size="sm" disabled={["Payer", "Solde"].includes(facture.statut)}>
                     {isEditing ? <><X className="w-4 h-4 mr-2" /> Annuler</> : <><Edit3 className="w-4 h-4 mr-2" /> Modifier</>}
                 </Button>
             )}
+            {peut("proforma.exporter") && (
             <Button asChild variant="outline" size="sm">
                 <a href={`/api/factures/${id}/pdf`} target="_blank"><Download className="w-4 h-4 mr-2" /> PDF</a>
             </Button>
-            <Button onClick={handleSendEmail} disabled={isSending} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+            )}
+            {peut("proforma.envoyer") && (
+            <Button onClick={handleSendEmail} loading={isSending} disabled={isSending} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
                 {isSending ? "Envoi..." : <><Send className="w-4 h-4 mr-2" /> Envoyer Email</>}
             </Button>
+            )}
+            {peut("proforma.supprimer") && facture.statut === "Brouillon" && !(facture.paiements?.length > 0) && !isEditing && (
+            <Button onClick={handleDeleteFacture} loading={isDeleting} disabled={isDeleting} variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
+                <Trash2 className="w-4 h-4 mr-2" /> {isDeleting ? "Suppression..." : "Supprimer"}
+            </Button>
+            )}
             {isEditing && (
-                <Button onClick={handleUpdateFacture} disabled={isSaving} size="sm" className="bg-green-600 hover:bg-green-700">
+                <Button onClick={handleUpdateFacture} loading={isSaving} disabled={isSaving} size="sm" className="bg-green-600 hover:bg-green-700">
                     <Save className="w-4 h-4 mr-2" /> {isSaving ? "Enregistrement..." : "Enregistrer"}
                 </Button>
             )}
@@ -663,7 +706,7 @@ export default function FactureDetailPage() {
                         <CardTitle className="flex items-center gap-2 text-lg text-primary">
                             <Briefcase className="w-5 h-5" /> Objet de la Mission
                         </CardTitle>
-                        {isEditing && (
+                        {editionContenu && (
                              <div className="flex flex-col items-end gap-2">
                                 <div className="flex items-center gap-6">
                                     <div className="flex items-center gap-2">
@@ -718,7 +761,7 @@ export default function FactureDetailPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-4">
-                    {isEditing ? (
+                    {editionContenu ? (
                         <div className="space-y-4">
                             <Input value={formData.objet} name="objet" onChange={handleInputChange} className="text-lg font-bold" placeholder="Objet de la facture" />
                             <Textarea value={formData.info || ""} onChange={(e) => setFormData(p => ({...p, info: e.target.value}))} placeholder="Notes additionnelles..." className="min-h-[100px]" />
@@ -745,7 +788,7 @@ export default function FactureDetailPage() {
                     <CardTitle className="flex items-center gap-2 text-lg text-primary">
                         <Package className="w-5 h-5" /> Prestations & Tarification
                     </CardTitle>
-                    {isEditing && (
+                    {editionContenu && (
                         <Button onClick={handleAddProduct} variant="outline" size="sm" className="bg-white">
                             <PlusCircle className="w-4 h-4 mr-2" /> Ajouter
                         </Button>
@@ -760,14 +803,14 @@ export default function FactureDetailPage() {
                                 <TableHead className="text-right w-36">Prix Unit.</TableHead>
                                 <TableHead className="text-center w-32">Durée</TableHead>
                                 <TableHead className="text-right pr-6 w-40">Total</TableHead>
-                                {isEditing && <TableHead className="w-10"></TableHead>}
+                                {editionContenu && <TableHead className="w-10"></TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {(isEditing ? formData.produits : facture.produits)?.map((p, idx) => (
+                            {(editionContenu ? formData.produits : facture.produits)?.map((p, idx) => (
                                 <TableRow key={p.id} className="group hover:bg-slate-50/50 transition-colors">
                                     <TableCell className="pl-6 align-top">
-                                        {isEditing ? (
+                                        {editionContenu ? (
                                             <div className="space-y-1">
                                                 <ProduitCombobox
                                                     produits={allProduits.filter(ap => ap.actif || ap.id === p.produitId)}
@@ -783,13 +826,13 @@ export default function FactureDetailPage() {
                                         ) : <span className="font-semibold text-slate-700">{p.designation}</span>}
                                     </TableCell>
                                     <TableCell className="text-center align-top">
-                                        {isEditing ? <Input type="number" name="quantite" value={p.quantite} onChange={(e) => handleProductChange(idx, e)} className="text-center px-2" /> : p.quantite}
+                                        {editionContenu ? <Input type="number" name="quantite" value={p.quantite} onChange={(e) => handleProductChange(idx, e)} className="text-center px-2" /> : p.quantite}
                                     </TableCell>
                                     <TableCell className="text-right align-top">
-                                        {isEditing ? <Input type="number" name="prixUnitaire" value={p.prixUnitaire} onChange={(e) => handleProductChange(idx, e)} className="text-right px-2" /> : <span className="font-medium whitespace-nowrap tabular-nums">{formatMoney(p.prixUnitaire)}</span>}
+                                        {editionContenu ? <Input type="number" name="prixUnitaire" value={p.prixUnitaire} onChange={(e) => handleProductChange(idx, e)} className="text-right px-2" /> : <span className="font-medium whitespace-nowrap tabular-nums">{formatMoney(p.prixUnitaire)}</span>}
                                     </TableCell>
                                     <TableCell className="text-center align-top">
-                                        {isEditing ? (
+                                        {editionContenu ? (
                                             <div className="space-y-2">
                                                 <div className="flex gap-1">
                                                     <Input type="number" name="duree" value={p.duree || 1} onChange={(e) => handleProductChange(idx, e)} disabled={!p.includeduree} className="text-center h-8 px-1" />
@@ -810,9 +853,9 @@ export default function FactureDetailPage() {
                                         ) : (p.includeduree ? `${p.duree} ${p.uniteDuree}` : "-")}
                                     </TableCell>
                                     <TableCell className="text-right pr-6 align-top font-bold text-slate-900 whitespace-nowrap tabular-nums">
-                                        {isEditing ? formatMoney(computeLineTotal(p)) : formatMoney(p.montantTotal)}
+                                        {editionContenu ? formatMoney(computeLineTotal(p)) : formatMoney(p.montantTotal)}
                                     </TableCell>
-                                    {isEditing && (
+                                    {editionContenu && (
                                         <TableCell className="pr-4 align-top">
                                             <Button variant="ghost" size="icon" onClick={() => handleRemoveProduct(idx)} className="text-red-400 hover:text-red-600 hover:bg-red-50">
                                                 <Trash2 className="w-4 h-4" />
@@ -833,7 +876,7 @@ export default function FactureDetailPage() {
                         <History className="w-5 h-5" /> Historique des Flux
                     </CardTitle>
                     <div className="flex gap-2">
-                        {facture.resteAPayer > 0 && (
+                        {facture.resteAPayer > 0 && peut("proforma.encaisser") && (
                             <Button size="sm" onClick={() => { setOperationType("PAIEMENT"); setIsPaymentDialogOpen(true); }}>
                                 <PlusCircle className="w-4 h-4 mr-2" /> Paiement
                             </Button>
@@ -887,7 +930,7 @@ export default function FactureDetailPage() {
                                                         <a href={att.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-4 h-4" /></a>
                                                     </Button>
                                                 ))}
-                                                {(!p.cashJournalEntry?.attachments || p.cashJournalEntry.attachments.length === 0) && (
+                                                {(!p.cashJournalEntry?.attachments || p.cashJournalEntry.attachments.length === 0) && (p.type !== 'PAIEMENT' || peut("proforma.encaisser")) && (
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -926,12 +969,14 @@ export default function FactureDetailPage() {
                                 <a href={`/Upload/Bon/${facture.numero}/${facture.bonCommande.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-blue-400">
                                     <ExternalLink className="w-3 h-3" /> Visualiser le document
                                 </a>
-                                <Button variant="ghost" size="icon" onClick={() => handleFileDelete("bon")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>
+                                {peut("proforma.pieces") && <Button variant="ghost" size="icon" onClick={() => handleFileDelete("bon")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>}
                             </div>
+                        ) : !peut("proforma.pieces") ? (
+                            <p className="text-xs text-muted-foreground italic">Aucun bon de commande joint.</p>
                         ) : (
                             <div className="space-y-3">
                                 <Input type="file" onChange={(e) => setBonCommandeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("bon")} disabled={!bonCommandeFile || isUploadingBon} size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                                <Button onClick={() => handleFileUpload("bon")} loading={isUploadingBon} disabled={!bonCommandeFile || isUploadingBon} size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
                                     {isUploadingBon ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader le bon</>}
                                 </Button>
                             </div>
@@ -951,12 +996,14 @@ export default function FactureDetailPage() {
                                 <a href={`/Upload/Facture/${facture.numero}/${facture.factureNormaliser.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-green-400">
                                     <ExternalLink className="w-3 h-3" /> Visualiser la facture
                                 </a>
-                                <Button variant="ghost" size="icon" onClick={() => handleFileDelete("facture")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>
+                                {peut("proforma.pieces") && <Button variant="ghost" size="icon" onClick={() => handleFileDelete("facture")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>}
                             </div>
+                        ) : !peut("proforma.pieces") ? (
+                            <p className="text-xs text-muted-foreground italic">Aucune facture normalisée jointe.</p>
                         ) : (
                             <div className="space-y-3">
                                 <Input type="file" onChange={(e) => setFactureNormaliseeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("facture")} disabled={!factureNormaliseeFile || isUploadingFacture} size="sm" className="w-full bg-green-600 hover:bg-green-700">
+                                <Button onClick={() => handleFileUpload("facture")} loading={isUploadingFacture} disabled={!factureNormaliseeFile || isUploadingFacture} size="sm" className="w-full bg-green-600 hover:bg-green-700">
                                     {isUploadingFacture ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader la facture</>}
                                 </Button>
                             </div>
@@ -997,10 +1044,10 @@ export default function FactureDetailPage() {
                         <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Suivi par</p>
                         <div className="flex items-center gap-2">
                             <div className="p-2 rounded-full bg-primary/20 text-primary"><ShieldCheck className="w-4 h-4" /></div>
-                            {isEditing ? (
+                            {editionContenu ? (
                                 <Select value={formData.gestionnaireId || ""} onValueChange={(v) => setFormData(p => ({...p, gestionnaireId: v === "null" ? null : v}))}>
                                     <SelectTrigger className="bg-slate-800 border-slate-700 h-8"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{allGestionnaires.map(g => <SelectItem key={g.id} value={g.id}>{g.prenom} {g.nom}</SelectItem>)}</SelectContent>
+                                    <SelectContent>{allGestionnaires.filter(g => g.actif !== false || g.id === formData.gestionnaireId).map(g => <SelectItem key={g.id} value={g.id}>{g.prenom} {g.nom}{g.actif === false ? " (inactif)" : ""}</SelectItem>)}</SelectContent>
                                 </Select>
                             ) : <span className="font-bold text-sm">{facture.gestionnaires?.[0]?.gestionnaire.prenom} {facture.gestionnaires?.[0]?.gestionnaire.nom || "Non assigné"}</span>}
                         </div>
@@ -1066,10 +1113,10 @@ export default function FactureDetailPage() {
                         <span>TVA (18%)</span>
                         <span className="font-mono">{formatMoney(currentTVA)}</span>
                     </div>
-                    {(isEditing ? formData.paymentConditionPercentage : facture.paymentConditionPercentage) ? (
+                    {(editionContenu ? formData.paymentConditionPercentage : facture.paymentConditionPercentage) ? (
                         <div className="flex justify-between text-xs font-bold text-yellow-200 bg-yellow-900/30 p-2 rounded-lg border border-yellow-700/50">
-                            <span className="flex items-center gap-1"><Percent className="w-3 h-3" /> Acompte requis ({(isEditing ? formData.paymentConditionPercentage : facture.paymentConditionPercentage)}%)</span>
-                            <span className="font-mono">{formatMoney(currentTotalTTC * ((isEditing ? formData.paymentConditionPercentage : facture.paymentConditionPercentage) || 0) / 100)}</span>
+                            <span className="flex items-center gap-1"><Percent className="w-3 h-3" /> Acompte requis ({(editionContenu ? formData.paymentConditionPercentage : facture.paymentConditionPercentage)}%)</span>
+                            <span className="font-mono">{formatMoney(currentTotalTTC * ((editionContenu ? formData.paymentConditionPercentage : facture.paymentConditionPercentage) || 0) / 100)}</span>
                         </div>
                     ) : null}
                     <div className="py-4 border-y border-white/10">
@@ -1110,7 +1157,7 @@ export default function FactureDetailPage() {
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setIsProofDialogOpen(false)}>Annuler</Button>
-                <Button onClick={handleUploadProof} disabled={isUploadingProof || !proofFiles}>
+                <Button onClick={handleUploadProof} loading={isUploadingProof} disabled={isUploadingProof || !proofFiles}>
                     {isUploadingProof ? "Upload..." : "Confirmer l'envoi"}
                 </Button>
             </DialogFooter>
@@ -1237,7 +1284,7 @@ export default function FactureDetailPage() {
           {paymentError && <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-600 text-xs font-medium flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {paymentError}</div>}
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleSaveOperation} disabled={isAddingPayment} className={operationType === "PAIEMENT" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}>
+            <Button onClick={handleSaveOperation} loading={isAddingPayment} disabled={isAddingPayment} className={operationType === "PAIEMENT" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}>
               {isAddingPayment ? "Enregistrement..." : "Confirmer l'opération"}
             </Button>
           </DialogFooter>
@@ -1252,6 +1299,7 @@ export default function FactureDetailPage() {
           setChoixLigneOuvert(false);
           setDepenseBudget({
             demandeId: b.id,
+            typeBudget: b.type,
             modePaiement: b.modePaiement,
             ligne: {
               id: l.id,
@@ -1272,6 +1320,7 @@ export default function FactureDetailPage() {
         defaultModePaiement={depenseBudget?.modePaiement ?? 'VIREMENT'}
         depuisProforma
         plafondPetiteDepense={plafondPetiteDepense}
+        typeBudget={depenseBudget?.typeBudget}
         onClose={() => setDepenseBudget(null)}
         onSuccess={fetchFacture}
       />

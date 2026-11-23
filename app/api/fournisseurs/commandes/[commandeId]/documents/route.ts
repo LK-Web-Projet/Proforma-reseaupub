@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { TypeDocumentCommande } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { requirePage } from "@/lib/authz";
+import { requirePage, requirePermission } from "@/lib/authz";
 import { getBudgetCapabilities, type BudgetCapabilities } from "@/lib/budgetAuth";
 import { saveCommandeFiles } from "@/lib/uploadCommandeFournisseur";
 import { describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
@@ -78,6 +78,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { commandeId } = await params;
   const caps = await accesLiasse();
   if (caps instanceof NextResponse) return caps;
+  // Joindre des pièces : droit « Joindre des pièces » (Prestataires) ; le comptable et la direction
+  // classent les pièces de la liasse sans ce droit, comme avant.
+  if (!caps.canPay && !caps.canValidateMensuel) {
+    const droits = await requirePermission("fournisseurs.commandePieces");
+    if (droits instanceof NextResponse) return droits;
+  }
 
   try {
     const commande = await prisma.commandeFournisseur.findUnique({ where: { id: commandeId }, select: { id: true, statut: true } });

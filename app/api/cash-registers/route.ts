@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getBudgetCapabilities, requireCaisseUser } from '@/lib/budgetAuth';
-import { requirePage } from '@/lib/authz';
+import { getBudgetCapabilities } from '@/lib/budgetAuth';
+import { requirePage, requirePermission } from '@/lib/authz';
 
 // GET /api/cash-registers — liste des caisses (id, nom, solde), pour choisir la caisse
 // d'une dépense (ex. enregistrement d'une dépense de budget).
@@ -27,8 +27,8 @@ export async function GET() {
 
 // POST — créer une caisse : réservé au droit « Saisir au journal de caisse ».
 export async function POST(request: Request) {
-  const caps = await requireCaisseUser();
-  if (caps instanceof NextResponse) return caps;
+  const droitsAcces = await requirePermission("finance.caisses");
+  if (droitsAcces instanceof NextResponse) return droitsAcces;
   try {
     const { name } = await request.json();
 

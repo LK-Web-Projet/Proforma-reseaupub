@@ -292,7 +292,7 @@ export function AddEntryModal({ onEntryAdded, cashRegisters, selectedCashRegiste
               onChange={(e) => setFiles(e.target.files)}
             />
           </div>
-          <Button type="submit" disabled={isSubmitDisabled || isSubmitting}>
+          <Button type="submit" loading={isSubmitting} disabled={isSubmitDisabled || isSubmitting}>
             {isSubmitting ? "Enregistrement..." : "Ajouter"}
           </Button>
         </form>

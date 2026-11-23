@@ -1,7 +1,8 @@
 'use client';
 
 import React, { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next-nprogress-bar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DemandeBudgetForm, DemandeBudgetInitialData } from '@/components/DemandeBudgetForm';
