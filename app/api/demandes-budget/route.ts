@@ -157,7 +157,8 @@ export async function POST(request: NextRequest) {
         montantTotal,
         modePaiement: data.modePaiement,
         typeDepense: data.typeDepense ?? "",
-        pourLeCompteDe: data.pourLeCompteDe,
+        // Budget mensuel : plus de receveur (chaque ligne porte son département).
+        pourLeCompteDe: data.type === TypeBudget.MENSUEL ? null : data.pourLeCompteDe,
         dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : undefined,
         bonCommandeId: data.bonCommandeId || undefined,
         lignes: { create: lignesAvecMode(data) },

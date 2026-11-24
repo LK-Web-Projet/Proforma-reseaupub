@@ -79,7 +79,8 @@ export async function POST(
           modePaiement: data.modePaiement,
           // Plus saisis dans le formulaire : absents (undefined) → valeur enregistrée conservée.
           typeDepense: data.typeDepense,
-          pourLeCompteDe: data.pourLeCompteDe,
+          // Budget mensuel : plus de receveur (chaque ligne porte son département).
+          pourLeCompteDe: data.type === TypeBudget.MENSUEL ? null : data.pourLeCompteDe,
           dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : null,
           bonCommandeId: data.bonCommandeId || undefined,
           lignes: { create: lignesAvecMode(data) },

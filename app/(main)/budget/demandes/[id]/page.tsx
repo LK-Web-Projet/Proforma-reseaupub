@@ -726,7 +726,10 @@ export default function DemandeBudgetDetailPage() {
                 ? nomsDepartements.join(', ')
                 : demande.departement || '-'}
             </p>
-            <p><span className="text-muted-foreground">Pour le compte de :</span> {demande.pourLeCompteDe || '-'}</p>
+            {/* Budget mensuel : plus de receveur (chaque ligne a son département) — ligne masquée si vide. */}
+            {(demande.pourLeCompteDe || demande.type !== 'MENSUEL') && (
+              <p><span className="text-muted-foreground">Pour le compte de :</span> {demande.pourLeCompteDe || '-'}</p>
+            )}
             {/* Type de dépense : plus saisi, affiché seulement pour les anciens budgets qui en ont un. */}
             {demande.typeDepense && (
               <p><span className="text-muted-foreground">Type de dépense :</span> {demande.typeDepense}</p>

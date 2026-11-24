@@ -25,6 +25,22 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite 4) — Budget mensuel : plus de receveur
+
+**Demande / Contexte**
+Chaque ligne de budget porte maintenant son département : pour un budget mensuel (et de campagne), le receveur « Pour le compte de RESEAUPUB » n'est plus utile. Le budget de campagne n'en avait déjà plus (nom de la campagne + proforma).
+
+**Modifications apportées**
+- `components/DemandeBudgetForm.tsx` : pour un budget **mensuel**, le champ receveur est masqué et n'est plus demandé (`sansReceveur`) ; rien n'est envoyé. Le budget **ponctuel** garde son receveur, le budget **tiers** son bénéficiaire.
+- `app/api/demandes-budget/route.ts` et `[id]/resoumettre/route.ts` : un budget mensuel est enregistré sans « Pour le compte de » (vidé aussi à la re-soumission d'un ancien budget).
+- `app/(main)/budget/demandes/[id]/page.tsx` : la ligne « Pour le compte de » n'apparaît plus sur un budget mensuel qui n'en a pas.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- Créer un budget mensuel : plus de champ receveur, enregistrement accepté. Le receveur des **dépenses** reste facultatif pour les budgets mensuels et de campagne (inchangé).
+
 ## 2026-11-24 (suite 3) — Départements : table gérée, département par ligne de budget, prestataires rattachés avec poste et historique
 
 **Demande / Contexte**

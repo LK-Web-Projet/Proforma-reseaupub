@@ -194,6 +194,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   // Le bénéficiaire découle du type : campagne / tiers → un client ou une entreprise externe ;
   // mensuel / ponctuel → RESEAUPUB (dépense interne).
   const beneficiaireType: BeneficiaireType = typeBudget === 'CAMPAGNE' || typeBudget === 'TIERS' ? 'CAMPAGNE_CLIENT' : 'RESEAUPUB';
+  // Budget mensuel : pas de receveur (chaque ligne porte déjà son département) — champ masqué.
+  const sansReceveur = typeBudget === 'MENSUEL';
   const [nomCampagneClient, setNomCampagneClient] = useState('');
   const [receveurChoix, setReceveurChoix] = useState<'MOI' | 'AUTRE'>('MOI');
   const [receveurAutreNom, setReceveurAutreNom] = useState('');
@@ -383,7 +385,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       }
 
       let pourLeCompteDe: string;
-      if (beneficiaireType === 'RESEAUPUB') {
+      if (sansReceveur) {
+        pourLeCompteDe = '';
+      } else if (beneficiaireType === 'RESEAUPUB') {
         const nomReceveur = receveurChoix === 'MOI' ? nomUtilisateurCourant : receveurAutreNom.trim();
         if (!nomReceveur) {
           toast.error('Veuillez indiquer le nom du receveur.');
@@ -509,7 +513,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-6', sansReceveur && 'hidden')}>
+        {!sansReceveur && (
         <div className="space-y-2 min-w-0">
           <label>
             {typeBudget === 'CAMPAGNE'
@@ -550,6 +555,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             </p>
           )}
         </div>
+        )}
         {beneficiaireType === 'CAMPAGNE_CLIENT' && (
           <div className="space-y-2 min-w-0">
             <label>
