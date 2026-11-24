@@ -20,6 +20,12 @@ const ligneSchema = z.object({
   categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie pour chaque ligne." }),
   // Moyen de paiement prévu pour la ligne ; absent = celui de la demande (voir lignesAvecMode).
   modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
+  // Précisions facultatives (texte libre) et délai propre à la ligne ("AAAA-MM-JJ" ou ISO).
+  detail: z.string().trim().max(2000, "Le détail d'une ligne est limité à 2000 caractères.").optional(),
+  dateLimite: z
+    .string()
+    .optional()
+    .refine((v) => !v || toDateJour(v) !== null, "Le délai d'une ligne n'est pas une date valide."),
 });
 
 /**
@@ -66,9 +72,26 @@ export const demandeBudgetSchema = z
 
 export type DemandeBudgetInput = z.infer<typeof demandeBudgetSchema>;
 
-/** Lignes prêtes à créer : chaque ligne porte son moyen de paiement (celui de la demande par défaut). */
+/**
+ * Lignes prêtes à créer : chaque ligne porte son moyen de paiement (celui de la demande par défaut),
+ * son détail (vide → null) et son délai (date du jour, à midi UTC).
+ */
 export function lignesAvecMode(data: DemandeBudgetInput) {
-  return data.lignes.map((l) => ({ ...l, modePaiement: l.modePaiement ?? data.modePaiement }));
+  return data.lignes.map((l) => ({
+    ...l,
+    modePaiement: l.modePaiement ?? data.modePaiement,
+    detail: l.detail ? l.detail : null,
+    dateLimite: toDateJour(l.dateLimite),
+  }));
+}
+
+/** "2026-12-15" ou ISO → ce jour à midi UTC (pas de glissement de fuseau à l'affichage). */
+export function toDateJour(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
+  return Number.isNaN(date.getTime()) || date.getUTCDate() !== Number(match[3]) ? null : date;
 }
 
 /** Lit les champs du FormData envoyé par components/DemandeBudgetForm.tsx. */

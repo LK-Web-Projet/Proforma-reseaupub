@@ -46,9 +46,11 @@ import { BudgetAnnulationDialog, BudgetAnnulationCible } from '@/components/budg
 import { BudgetHistoriqueCard, BudgetHistoriqueEntry } from '@/components/budget/BudgetHistoriqueCard';
 import { BudgetLigneDecisionDialog, BudgetLigneDecisionCible } from '@/components/budget/BudgetLigneDecisionDialog';
 import { BudgetLigneCorrectionDialog, BudgetLigneCorrectionCible } from '@/components/budget/BudgetLigneCorrectionDialog';
+import { BudgetLigneDetailDialog, type BudgetLigneDetailCible } from '@/components/budget/BudgetLigneDetailDialog';
+import { CLASSES_DELAI, etatDelaiLigne, libelleDelai } from '@/lib/budgetDelai';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2, Printer, FileSignature, Clock } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2, Printer, FileSignature, Clock, CalendarClock, NotebookText } from 'lucide-react';
 import type { DocumentUploadType } from '@/lib/demandeBudgetAttachmentTypes';
 import { useDroits } from '@/components/DroitsProvider';
 
@@ -128,6 +130,8 @@ interface DemandeBudgetDetail {
     montant: number; // demandé
     categorie: string | null;
     modePaiement: string | null;
+    detail: string | null;
+    dateLimite: string | null;
     statutValidation: 'EN_ATTENTE' | 'ACCORDEE' | 'A_CORRIGER' | 'RETIREE';
     montantAccorde: number | null;
     decideParEmail: string | null;
@@ -167,6 +171,7 @@ export default function DemandeBudgetDetailPage() {
   const [annulationCible, setAnnulationCible] = useState<BudgetAnnulationCible | null>(null);
   const [decisionLigne, setDecisionLigne] = useState<BudgetLigneDecisionCible | null>(null);
   const [correctionLigne, setCorrectionLigne] = useState<BudgetLigneCorrectionCible | null>(null);
+  const [detailLigne, setDetailLigne] = useState<BudgetLigneDetailCible | null>(null);
   const [isClotureOpen, setIsClotureOpen] = useState(false);
   const [isAddDocsOpen, setIsAddDocsOpen] = useState(false);
   const [addDocsType, setAddDocsType] = useState<DocumentUploadType>('DEVIS');
@@ -317,6 +322,8 @@ export default function DemandeBudgetDetailPage() {
           proformas: demande.proformas.map((p) => ({ numero: p.invoice.numero, client: p.invoice.client.nom, objet: p.invoice.objet })),
           lignes: demande.lignes.map((l) => ({
             designation: l.designation,
+            detail: l.detail,
+            delai: l.dateLimite ? format(new Date(l.dateLimite), 'dd/MM/yyyy') : null,
             categorie: categorieLabel(l.categorie),
             modePaiement: modePaiementLabel(l.modePaiement || demande.modePaiement),
             demande: Number(l.montant),
@@ -466,6 +473,27 @@ export default function DemandeBudgetDetailPage() {
     (budgetOuvert || (demande.statut === 'PAYEE' && !demande.clotureeAt && demande.depenses.length > 0));
   const nbDepassementsEnAttente = demande.depassements.filter((d) => d.statut === 'EN_ATTENTE').length;
   const lignesParId = new Map(demande.lignes.map((l) => [l.id, l.designation]));
+  // Délais par ligne : alertes seulement tant que le budget peut encore être dépensé.
+  const budgetActifPourDelais = !demande.clotureeAt && demande.statut !== 'REJETEE' && demande.statut !== 'PAYEE';
+  const statutLigneLibelle = (l: (typeof suiviLignes)[number]) =>
+    l.statutValidation === 'ACCORDEE'
+      ? l.accordeeReduite ? 'Accordée partiellement' : 'Accordée'
+      : l.statutValidation === 'EN_ATTENTE' ? 'En attente' : l.statutValidation === 'A_CORRIGER' ? 'À corriger' : 'Retirée';
+  const ouvrirDetailLigne = (l: (typeof suiviLignes)[number]) =>
+    setDetailLigne({
+      designation: l.designation,
+      statutLibelle: statutLigneLibelle(l),
+      categorie: categorieLabel(l.categorie),
+      modePaiement: modePaiementLabel(l.modePaiement || demande.modePaiement),
+      demande: l.demandeLigne,
+      accorde: l.statutValidation === 'ACCORDEE' ? l.prevu : null,
+      consomme: l.consomme,
+      reste: l.reste,
+      detail: l.detail,
+      dateLimite: l.dateLimite,
+      etatDelai: etatDelaiLigne(l, budgetActifPourDelais, maintenant),
+      motifDecision: l.motifDecision,
+    });
   const documentsDemande = demande.attachments.filter((a) => !a.depenseId);
 
   return (
@@ -747,7 +775,14 @@ export default function DemandeBudgetDetailPage() {
                 <TableRow key={l.id} className={cn('align-top', l.statutValidation === 'RETIREE' && 'opacity-60')}>
                   <TableCell className="pl-6">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={cn(l.statutValidation === 'RETIREE' && 'line-through')}>{l.designation}</span>
+                      <button
+                        type="button"
+                        onClick={() => ouvrirDetailLigne(l)}
+                        className={cn('text-left hover:underline underline-offset-2', l.statutValidation === 'RETIREE' && 'line-through')}
+                        title="Voir le détail de la ligne"
+                      >
+                        {l.designation}
+                      </button>
                       <Badge
                         variant="outline"
                         className={cn(
@@ -768,6 +803,27 @@ export default function DemandeBudgetDetailPage() {
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground" title="Moyen de paiement prévu">
                         {modePaiementLabel(l.modePaiement || demande.modePaiement)}
                       </Badge>
+                      {l.dateLimite && (() => {
+                        const etat = etatDelaiLigne(l, budgetActifPourDelais, maintenant);
+                        return etat ? (
+                          <Badge
+                            variant="outline"
+                            className={cn('h-5 px-1.5 gap-1 text-[10px] font-normal', CLASSES_DELAI[etat])}
+                            title={etat === 'TERMINE' ? 'Délai de la ligne' : libelleDelai(etat, l.dateLimite, maintenant)}
+                          >
+                            <CalendarClock className="h-3 w-3" />
+                            {format(new Date(l.dateLimite), 'dd/MM/yyyy')}
+                            {(etat === 'DEPASSE' || etat === 'PROCHE') && <span className="font-medium">· {libelleDelai(etat, l.dateLimite, maintenant)}</span>}
+                          </Badge>
+                        ) : null;
+                      })()}
+                      {l.detail && (
+                        <button type="button" onClick={() => ouvrirDetailLigne(l)} title="Voir le détail de la ligne">
+                          <Badge variant="outline" className="h-5 px-1.5 gap-1 text-[10px] font-normal border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
+                            <NotebookText className="h-3 w-3" /> Détail
+                          </Badge>
+                        </button>
+                      )}
                       {l.commentaires.length > 0 && (
                         <Badge variant="secondary" className="h-5 px-1.5 gap-1 text-[10px]" title="Ligne commentée">
                           <MessageSquare className="h-3 w-3" /> {l.commentaires.length}
@@ -845,7 +901,7 @@ export default function DemandeBudgetDetailPage() {
                         )}
                         {peutCorrigerLignes && l.statutValidation === 'A_CORRIGER' && (
                           <>
-                            <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, modePaiement: l.modePaiement || demande.modePaiement, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'MODIFIER' })}>
+                            <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, modePaiement: l.modePaiement || demande.modePaiement, montant: l.demandeLigne, detail: l.detail, dateLimite: l.dateLimite, motifDecision: l.motifDecision, mode: 'MODIFIER' })}>
                               <Pencil className="h-3.5 w-3.5" /> Modifier la ligne
                             </Button>
                             <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs text-red-600" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'RETIRER' })}>
@@ -1200,6 +1256,8 @@ export default function DemandeBudgetDetailPage() {
       <BudgetLigneDecisionDialog demandeId={id} ligne={decisionLigne} onClose={() => setDecisionLigne(null)} onSuccess={fetchDemande} />
 
       <BudgetLigneCorrectionDialog demandeId={id} ligne={correctionLigne} onClose={() => setCorrectionLigne(null)} onSuccess={fetchDemande} />
+
+      <BudgetLigneDetailDialog numeroBudget={demande.numero} ligne={detailLigne} onClose={() => setDetailLigne(null)} />
 
       <BudgetHistoriqueCard historique={demande.historique} />
 

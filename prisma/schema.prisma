@@ -651,6 +651,12 @@ model DemandeBudgetLigne {
   // Moyen de paiement prévu pour la ligne (espèces, MoMo, chèque, virement, carte) — sert au
   // total prévu par moyen de paiement. Null = lignes antérieures (reprises du mode de la demande).
   modePaiement         ModePaiementDemande?
+  // Précisions libres sur la ligne (quantités, fournisseur pressenti, contexte…) — facultatif,
+  // lisible par tous ceux qui voient le budget (fenêtre « Détail » de la ligne).
+  detail               String?
+  // Délai propre à la ligne (date limite de décaissement) : chaque service a ses échéances,
+  // notamment pour les budgets mensuels et de campagne. Null = pas de délai particulier.
+  dateLimite           DateTime?
   demandeBudget        DemandeBudget         @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   depenses             BudgetDepense[]
   commentaires         BudgetCommentaire[]

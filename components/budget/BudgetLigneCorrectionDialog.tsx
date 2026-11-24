@@ -16,6 +16,8 @@ export interface BudgetLigneCorrectionCible {
   categorie: string | null;
   modePaiement?: string | null;
   montant: number;
+  detail?: string | null;
+  dateLimite?: string | null;
   motifDecision: string | null;
   mode: 'MODIFIER' | 'RETIRER';
 }
@@ -39,6 +41,8 @@ export function BudgetLigneCorrectionDialog({
   const [categorie, setCategorie] = useState('');
   const [modePaiement, setModePaiement] = useState('');
   const [montant, setMontant] = useState('');
+  const [detail, setDetail] = useState('');
+  const [dateLimite, setDateLimite] = useState('');
   const [reponse, setReponse] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,6 +52,8 @@ export function BudgetLigneCorrectionDialog({
     setCategorie(ligne.categorie ?? '');
     setModePaiement(ligne.modePaiement ?? '');
     setMontant(String(ligne.montant));
+    setDetail(ligne.detail ?? '');
+    setDateLimite(ligne.dateLimite ? ligne.dateLimite.slice(0, 10) : '');
     setReponse('');
   }, [ligne]);
 
@@ -66,6 +72,9 @@ export function BudgetLigneCorrectionDialog({
         categorie,
         montant: m,
         modePaiement: modePaiement || undefined,
+        // Toujours envoyés : une chaîne vide efface le détail ou le délai.
+        detail: detail.trim(),
+        dateLimite,
         reponse: reponse.trim() || undefined,
       };
     } else {
@@ -129,16 +138,33 @@ export function BudgetLigneCorrectionDialog({
                     <Input id="corr-montant" type="number" min={0} step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} />
                   </div>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Moyen de paiement prévu</Label>
+                    <Select value={modePaiement} onValueChange={setModePaiement}>
+                      <SelectTrigger><SelectValue placeholder="Moyen de paiement" /></SelectTrigger>
+                      <SelectContent>
+                        {MODE_PAIEMENT_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="corr-delai">Délai (facultatif)</Label>
+                    <Input id="corr-delai" type="date" value={dateLimite} onChange={(e) => setDateLimite(e.target.value)} />
+                  </div>
+                </div>
                 <div className="space-y-2">
-                  <Label>Moyen de paiement prévu</Label>
-                  <Select value={modePaiement} onValueChange={setModePaiement}>
-                    <SelectTrigger><SelectValue placeholder="Moyen de paiement" /></SelectTrigger>
-                    <SelectContent>
-                      {MODE_PAIEMENT_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="corr-detail">Détail de la ligne (facultatif)</Label>
+                  <Textarea
+                    id="corr-detail"
+                    rows={3}
+                    maxLength={2000}
+                    value={detail}
+                    onChange={(e) => setDetail(e.target.value)}
+                    placeholder="Quantités, prix unitaires, fournisseur pressenti, justification…"
+                  />
                 </div>
               </>
             ) : (

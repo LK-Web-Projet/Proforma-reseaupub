@@ -25,6 +25,34 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 — Budget : détail et délai propres à chaque ligne
+
+**Demande / Contexte**
+Lors de l'élaboration d'un budget, chaque ligne doit pouvoir porter, en option, un **détail** (zone de texte libre) après la désignation et le montant, consultable dans une fenêtre propre à la ligne par l'administrateur et par toute personne qui voit le budget. Chaque ligne doit aussi pouvoir avoir son **propre délai** : pour les budgets mensuels et de campagne, chaque service a des échéances de décaissement différentes.
+
+**Modifications apportées**
+- `prisma/schema.prisma` : `DemandeBudgetLigne.detail String?` et `DemandeBudgetLigne.dateLimite DateTime?`.
+- `prisma/migrations/20261124100000_detail_delai_ligne_budget/migration.sql` : deux colonnes ajoutées, rien d'autre (les lignes existantes restent sans détail ni délai). **À appliquer** : `pnpm prisma migrate deploy`.
+- `lib/budgetSchema.ts` : `detail` (2000 caractères au plus) et `dateLimite` facultatifs sur chaque ligne ; `toDateJour()` (date du jour à midi UTC, date invalide refusée) ; `lignesAvecMode()` enregistre le détail (vide → null) et le délai. Création et re-soumission en profitent sans autre changement.
+- `components/DemandeBudgetForm.tsx` : colonne **Délai** (date) sur chaque ligne ; icône carnet qui déplie une zone **Détail** sous la ligne (dépliée d'office si la ligne a déjà un détail). Aide sous « Date limite souhaitée » : celle-ci vaut pour tout le budget.
+- `app/(main)/budget/demandes/[id]/modifier/page.tsx` : type des lignes complété.
+- `app/api/demandes-budget/[id]/lignes/[ligneId]/route.ts` et `components/budget/BudgetLigneCorrectionDialog.tsx` : une ligne renvoyée en correction peut aussi changer de détail et de délai (chaîne vide = effacé, champ absent = inchangé).
+- `app/api/demandes-budget/[id]/reconduction/route.ts` : le détail est repris ; pour un budget **mensuel**, le délai est décalé d'autant de mois que le budget (le 10 reste le 10, le 31 devient le 30 si besoin) ; pour les autres types, il est à redéfinir.
+- `lib/budgetDelai.ts` (nouveau) : `etatDelaiLigne()` → À venir, Proche (3 jours ou moins), Dépassé, ou Terminé (ligne retirée, entièrement dépensée, budget rejeté, soldé ou clôturé) ; `libelleDelai()`, `CLASSES_DELAI`.
+- `components/budget/BudgetLigneDetailDialog.tsx` (nouveau) : fenêtre **Détail** d'une ligne (statut, catégorie, moyen, demandé, accordé, consommé, reste, délai et son état, décision du valideur, texte du détail). Lecture seule, ouverte à tous ceux qui voient le budget.
+- `app/(main)/budget/demandes/[id]/page.tsx` : la désignation de chaque ligne ouvre la fenêtre Détail ; badge du délai (bleu à venir, orange proche, rouge dépassé, gris terminé) et badge **Détail** quand la ligne en a un ; la correction transmet le détail et le délai ; le PDF les reçoit.
+- `lib/pdf/budgetPdf.ts` : sous la désignation, en petit gris : « Délai : jj/mm/aaaa » puis le détail (6 lignes au plus, « … » au-delà) ; la hauteur de la ligne s'adapte.
+- `public/docs/procedure-paiement-plateforme.md` : délai et détail de ligne décrits à l'étape de création du budget.
+
+**Erreurs rencontrées & solutions**
+- Échappements `\d` et `\r\n` perdus par le shell dans les scripts de remplacement → corrigés avec l'outil Edit (`toDateJour`) et en s'appuyant sur `wrap()` qui découpe déjà les paragraphes (PDF).
+- `modifier/page.tsx` est en LF dans la copie de travail : remis en LF après un remplacement qui avait mêlé des CRLF.
+
+**À tester / points d'attention**
+- **Migration à appliquer** (local et en ligne) avant de redémarrer : `pnpm prisma migrate deploy`. Sans elle, toute page qui lit les lignes de budget sera en erreur (colonnes `detail` et `dateLimite` absentes).
+- Vérifié : `tsc` et lint sans erreur ; 23 tests hors base (schéma, dates, états du délai, PDF généré) réussis. Le rendu visuel du PDF n'a pas pu être affiché ici (outil de rendu absent) : à regarder à l'écran.
+- À l'écran : créer un budget mensuel avec deux lignes aux délais différents et un détail ; ouvrir la fenêtre Détail ; corriger une ligne renvoyée ; imprimer le PDF ; reconduire au mois suivant (délais décalés d'un mois).
+
 ## 2026-11-21 (suite 2) — Dépense : receveur facultatif pour les budgets mensuels et de campagne
 
 **Demande / Contexte**

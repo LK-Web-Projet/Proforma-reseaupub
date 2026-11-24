@@ -24,6 +24,10 @@ export interface BudgetPdfData {
   proformas: { numero: string; client: string; objet: string }[];
   lignes: {
     designation: string;
+    /** Détail facultatif de la ligne (imprimé sous la désignation). */
+    detail?: string | null;
+    /** Délai de la ligne déjà formaté (jj/mm/aaaa), ou null. */
+    delai?: string | null;
     categorie: string;
     modePaiement: string;
     demande: number;
@@ -155,7 +159,16 @@ export async function generateBudgetPdf(data: BudgetPdfData, entreprise: BudgetP
   enTeteTableau();
   data.lignes.forEach((l, idx) => {
     const lignesDesignation = wrap(l.designation, fontRegular, 9, cols[0].w - 8);
-    const hauteur = Math.max(18, lignesDesignation.length * 11 + 7);
+    // Sous la désignation, en petit : le délai puis le détail (limité à 6 lignes pour la mise en page).
+    const complements: string[] = [];
+    if (l.retiree) complements.push("(retirée)");
+    if (l.delai) complements.push(`Délai : ${l.delai}`);
+    if (l.detail?.trim()) {
+      const lignesDetail = wrap(l.detail.trim(), fontRegular, 7, cols[0].w - 8).filter(Boolean);
+      complements.push(...lignesDetail.slice(0, 6));
+      if (lignesDetail.length > 6) complements[complements.length - 1] += " …";
+    }
+    const hauteur = Math.max(18, lignesDesignation.length * 11 + complements.length * 9 + 7);
     if (y - hauteur < 230) {
       nouvellePage();
       enTeteTableau();
@@ -163,7 +176,7 @@ export async function generateBudgetPdf(data: BudgetPdfData, entreprise: BudgetP
     page.drawRectangle({ x: M, y: y - hauteur + 12, width: W - 2 * M, height: hauteur, color: idx % 2 === 0 ? white : light });
     const couleur = l.retiree ? gray : black;
     lignesDesignation.forEach((t, i) => text(t, cols[0].x + 4, y - i * 11, 9, fontRegular, couleur));
-    if (l.retiree) text("(retirée)", cols[0].x + 4, y - lignesDesignation.length * 11, 7, fontRegular, gray);
+    complements.forEach((t, i) => text(t, cols[0].x + 4, y - lignesDesignation.length * 11 - i * 9 + 2, 7, fontRegular, gray));
     text(l.categorie, cols[1].x + 4, y, 8, fontRegular, couleur);
     text(l.modePaiement, cols[2].x + 4, y, 8, fontRegular, couleur);
     textRight(montant(l.demande), cols[3].x + cols[3].w - 4, y, 9, fontRegular, couleur);

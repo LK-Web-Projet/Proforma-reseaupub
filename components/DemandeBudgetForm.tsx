@@ -33,7 +33,7 @@ import {
   MODE_PAIEMENT_OPTIONS,
   totauxParModePaiement,
 } from '@/lib/budgetTypes';
-import { Plus, Trash2 } from 'lucide-react';
+import { NotebookPen, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -47,6 +47,12 @@ interface Ligne {
   categorie: string;
   // Moyen de paiement prévu pour la ligne (le moyen « principal » de la demande en est déduit).
   modePaiement: string;
+  // Précisions facultatives sur la ligne (visibles dans la fenêtre « Détail » de la fiche).
+  detail: string;
+  // Délai propre à la ligne (AAAA-MM-JJ, vide = pas de délai particulier).
+  dateLimite: string;
+  // Zone de détail dépliée dans le formulaire.
+  detailOuvert?: boolean;
   // Reconduction : prévu / plafond / réalisé de la même ligne sur le budget d'origine (lecture seule).
   precedent?: { prevu: number; plafond: number; realise: number };
 }
@@ -105,7 +111,7 @@ function moisMensuelMinimum(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: MODE_LIGNE_DEFAUT };
+const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: MODE_LIGNE_DEFAUT, detail: '', dateLimite: '' };
 
 const emptyForm = {
   departement: '',
@@ -133,6 +139,8 @@ export interface DemandeBudgetInitialData {
     montant: number;
     categorie?: string | null;
     modePaiement?: string | null;
+    detail?: string | null;
+    dateLimite?: string | null;
     precedent?: { prevu: number; plafond: number; realise: number };
   }[];
   existingAttachments: ExistingAttachment[];
@@ -195,6 +203,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         montant: String(l.montant),
         categorie: l.categorie ?? '',
         modePaiement: l.modePaiement || initialData.modePaiement || MODE_LIGNE_DEFAUT,
+        detail: l.detail ?? '',
+        dateLimite: l.dateLimite ? l.dateLimite.slice(0, 10) : '',
+        detailOuvert: !!l.detail,
         precedent: l.precedent,
       }))
     );
@@ -229,13 +240,20 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
   const addLigne = () => setLignes((prev) => [...prev, { ...emptyLigne }]);
   const removeLigne = (index: number) => setLignes((prev) => prev.filter((_, i) => i !== index));
-  const updateLigne = (index: number, field: 'designation' | 'montant' | 'categorie' | 'modePaiement', value: string) => {
+  const updateLigne = (
+    index: number,
+    field: 'designation' | 'montant' | 'categorie' | 'modePaiement' | 'detail' | 'dateLimite',
+    value: string
+  ) => {
     setLignes((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
       return next;
     });
   };
+
+  const basculerDetail = (index: number) =>
+    setLignes((prev) => prev.map((l, i) => (i === index ? { ...l, detailOuvert: !l.detailOuvert } : l)));
 
   const addDocument = () => setDocuments((prev) => [...prev, { type: 'DEVIS', file: null, precision: '' }]);
   const updateDocumentPrecision = (index: number, precision: string) => {
@@ -350,6 +368,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             montant: Number(l.montant),
             categorie: l.categorie,
             modePaiement: l.modePaiement,
+            detail: l.detail.trim() || undefined,
+            dateLimite: l.dateLimite || undefined,
           }))
         )
       );
@@ -495,16 +515,18 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[32%]">Désignation</TableHead>
-                <TableHead className="w-[22%] min-w-[160px]">Catégorie *</TableHead>
-                <TableHead className="w-[18%] min-w-[150px]">Moyen de paiement</TableHead>
-                <TableHead className="w-[20%] min-w-[130px]">Montant (XOF)</TableHead>
+                <TableHead className="w-[28%] min-w-[180px]">Désignation</TableHead>
+                <TableHead className="w-[18%] min-w-[150px]">Catégorie *</TableHead>
+                <TableHead className="w-[16%] min-w-[140px]">Moyen de paiement</TableHead>
+                <TableHead className="w-[16%] min-w-[130px]">Montant (XOF)</TableHead>
+                <TableHead className="w-[14%] min-w-[140px]" title="Date limite propre à cette ligne (facultatif)">Délai</TableHead>
                 <TableHead className="w-[8%]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {lignes.map((ligne, index) => (
-                <TableRow key={index}>
+                <React.Fragment key={index}>
+                <TableRow className={cn(ligne.detailOuvert && 'border-b-0')}>
                   <TableCell>
                     <Input
                       value={ligne.designation}
@@ -555,19 +577,57 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                     )}
                   </TableCell>
                   <TableCell>
-                    {lignes.length > 1 && (
+                    <Input
+                      type="date"
+                      value={ligne.dateLimite}
+                      onChange={(e) => updateLigne(index, 'dateLimite', e.target.value)}
+                      aria-label="Délai de la ligne"
+                      title="Date limite propre à cette ligne (facultatif)"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-end">
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeLigne(index)}
-                        className="text-red-500 hover:text-red-700"
+                        onClick={() => basculerDetail(index)}
+                        className={cn(ligne.detail.trim() ? 'text-indigo-700' : 'text-muted-foreground')}
+                        title={ligne.detailOuvert ? 'Masquer le détail' : 'Ajouter un détail à la ligne (facultatif)'}
+                        aria-expanded={!!ligne.detailOuvert}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <NotebookPen className="h-4 w-4" />
                       </Button>
-                    )}
+                      {lignes.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeLigne(index)}
+                          className="text-red-500 hover:text-red-700"
+                          title="Supprimer la ligne"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
+                {ligne.detailOuvert && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6} className="pt-0">
+                      <Textarea
+                        rows={3}
+                        maxLength={2000}
+                        value={ligne.detail}
+                        onChange={(e) => updateLigne(index, 'detail', e.target.value)}
+                        placeholder={`Détail de « ${ligne.designation.trim() || 'cette ligne'} » (facultatif) : quantités, prix unitaires, fournisseur pressenti, justification…`}
+                        aria-label="Détail de la ligne"
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
+                </React.Fragment>
               ))}
             </TableBody>
           </Table>
@@ -595,6 +655,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             value={form.dateLimiteSouhaitee}
             onChange={(e) => setForm((p) => ({ ...p, dateLimiteSouhaitee: e.target.value }))}
           />
+          <p className="text-xs text-muted-foreground">
+            Pour l&apos;ensemble du budget. Chaque ligne peut avoir son propre délai (colonne « Délai »).
+          </p>
         </div>
       </div>
 

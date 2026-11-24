@@ -21,7 +21,14 @@ interface DemandeBudgetRaw {
   pourLeCompteDe: string | null;
   dateLimiteSouhaitee: string | null;
   proformas: { invoice: { id: string } }[];
-  lignes: { designation: string; montant: number; categorie: string | null; modePaiement: string | null }[];
+  lignes: {
+    designation: string;
+    montant: number;
+    categorie: string | null;
+    modePaiement: string | null;
+    detail: string | null;
+    dateLimite: string | null;
+  }[];
   attachments: { id: string; kind: string; url: string; fileName: string }[];
 }
 

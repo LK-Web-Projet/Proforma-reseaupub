@@ -4,6 +4,7 @@ import { ActionBudget, CategorieDepense, ModePaiementDemande, StatutDemandeBudge
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
+import { toDateJour } from "@/lib/budgetSchema";
 import { sendDemandeValideeNotification, sendLigneCorrigeeNotification, sendDemandeRejeteeNotification } from "@/lib/email/demandeBudget";
 
 class CorrectionError extends Error {}
@@ -15,6 +16,12 @@ const schema = z.discriminatedUnion("action", [
     categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie." }),
     montant: z.number().positive("Le montant doit être supérieur à 0."),
     modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
+    // Absents = inchangés ; chaîne vide = effacés.
+    detail: z.string().trim().max(2000, "Le détail est limité à 2000 caractères.").optional(),
+    dateLimite: z
+      .string()
+      .optional()
+      .refine((v) => !v || toDateJour(v) !== null, "Le délai n'est pas une date valide."),
     reponse: z.string().trim().max(1000).optional(),
   }),
   z.object({ action: z.literal("RETIRER"), reponse: z.string().trim().max(1000).optional() }),
@@ -70,6 +77,8 @@ export async function PATCH(
             categorie: data.categorie,
             montant: data.montant,
             ...(data.modePaiement ? { modePaiement: data.modePaiement } : {}),
+            ...(data.detail !== undefined ? { detail: data.detail || null } : {}),
+            ...(data.dateLimite !== undefined ? { dateLimite: toDateJour(data.dateLimite) } : {}),
             statutValidation: StatutLigneBudget.EN_ATTENTE,
             montantAccorde: null,
           },
