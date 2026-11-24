@@ -133,6 +133,14 @@ function ChampAutoHauteur({ className, ...props }: React.ComponentProps<typeof T
   return <Textarea ref={ref} rows={1} {...props} className={cn('min-h-9 resize-none overflow-hidden py-1.5 leading-snug', className)} />;
 }
 
+/** « Nom de la campagne (Nom du client) » — sans parenthèses si le client n'est pas (encore) connu. */
+function nomAvecClient(nomCampagne: string, client: string): string {
+  const nom = nomCampagne.trim();
+  // Anciens budgets où le nom saisi était déjà celui du client : pas de « Client X (Client X) ».
+  if (!client || nom.toLowerCase() === client.toLowerCase()) return nom;
+  return `${nom} (${client})`;
+}
+
 const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: MODE_LIGNE_DEFAUT, detail: '', dateLimite: '' };
 
 const emptyForm = {
@@ -201,6 +209,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
   const [documents, setDocuments] = useState<DocumentRow[]>([{ type: 'DEVIS', file: null, precision: '' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Client de la proforma choisie : complète le nom de la campagne, « Nom de la campagne (Client) ».
+  const proformaChoisie = invoices.find((inv) => inv.id === proformaIds[0]);
+  const clientProforma = proformaChoisie?.client?.nom?.trim() || '';
 
   useEffect(() => {
     fetch('/api/factures')
@@ -252,10 +263,13 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           ? typeInitial
           : initialData.proformaIds.length > 0 ? 'CAMPAGNE' : 'TIERS';
       setTypeBudget(typeExterne);
+      const formatCampagne = typeExterne === 'CAMPAGNE' ? /^(.+?) \(([^()]+)\)$/.exec(pcd) : null;
       setNomCampagneClient(
         pcd.startsWith(CAMPAGNE_CLIENT_PREFIX) && pcd.endsWith(')')
           ? pcd.slice(CAMPAGNE_CLIENT_PREFIX.length, -1).split(' - ')[0]
-          : pcd
+          : formatCampagne
+            ? formatCampagne[1]
+            : pcd
       );
     }
   }, [initialData]);
@@ -359,15 +373,20 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         pourLeCompteDe = `${RESEAUPUB_PREFIX}${nomReceveur})`;
       } else {
         if (!nomCampagneClient.trim()) {
-          toast.error(typeBudget === 'TIERS' ? "Veuillez indiquer l'entreprise ou le client bénéficiaire." : 'Veuillez indiquer le nom du client ou de la campagne.');
+          toast.error(typeBudget === 'TIERS' ? "Veuillez indiquer l'entreprise ou le client bénéficiaire." : 'Veuillez indiquer le nom de la campagne.');
           setIsSubmitting(false);
           return;
         }
-        const numerosProformas = proformaIds
-          .map((id) => invoices.find((inv) => inv.id === id)?.numero)
-          .filter(Boolean);
-        const suffixe = numerosProformas.length > 0 ? ` - ${numerosProformas.join(', ')}` : '';
-        pourLeCompteDe = `${CAMPAGNE_CLIENT_PREFIX}${nomCampagneClient.trim()}${suffixe})`;
+        if (typeBudget === 'CAMPAGNE') {
+          // « Nom de la campagne (Nom du client) », le client étant celui de la proforma de la campagne.
+          pourLeCompteDe = nomAvecClient(nomCampagneClient, clientProforma);
+        } else {
+          const numerosProformas = proformaIds
+            .map((id) => invoices.find((inv) => inv.id === id)?.numero)
+            .filter(Boolean);
+          const suffixe = numerosProformas.length > 0 ? ` - ${numerosProformas.join(', ')}` : '';
+          pourLeCompteDe = `${CAMPAGNE_CLIENT_PREFIX}${nomCampagneClient.trim()}${suffixe})`;
+        }
       }
 
       const data = new FormData();
@@ -470,11 +489,11 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
+      <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-6', beneficiaireType === 'CAMPAGNE_CLIENT' && 'xl:grid-cols-3')}>
+        <div className="space-y-2 min-w-0">
           <label>Département{typeBudget === 'MENSUEL' ? ' *' : ''}</label>
           <Select value={form.departement} onValueChange={(v) => setForm((p) => ({ ...p, departement: v }))}>
-            <SelectTrigger><SelectValue placeholder="Sélectionner un département" /></SelectTrigger>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Sélectionner un département" /></SelectTrigger>
             <SelectContent>
               {DEPARTEMENT_OPTIONS.map((o) => (
                 <SelectItem key={o} value={o}>{o}</SelectItem>
@@ -490,10 +509,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             />
           )}
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           <label>
             {typeBudget === 'CAMPAGNE'
-              ? 'Client / campagne *'
+              ? 'Nom de la campagne *'
               : typeBudget === 'TIERS'
                 ? 'Pour le compte de (entreprise ou client) *'
                 : 'Pour le compte de RESEAUPUB — receveur *'}
@@ -501,7 +520,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
           {beneficiaireType === 'CAMPAGNE_CLIENT' ? (
             <Input
-              placeholder={typeBudget === 'TIERS' ? "Nom de l'entreprise ou du client" : 'Nom du client ou de la campagne'}
+              placeholder={typeBudget === 'TIERS' ? "Nom de l'entreprise ou du client" : 'Ex. : Lancement produit Noël'}
               value={nomCampagneClient}
               onChange={(e) => setNomCampagneClient(e.target.value)}
             />
@@ -523,7 +542,34 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
               )}
             </div>
           )}
+          {typeBudget === 'CAMPAGNE' && nomCampagneClient.trim() && (
+            <p className="text-xs text-muted-foreground break-words">
+              Enregistré comme : <span className="font-medium text-foreground">{nomAvecClient(nomCampagneClient, clientProforma)}</span>
+              {!clientProforma && ' — le client sera repris de la proforma choisie.'}
+            </p>
+          )}
         </div>
+        {beneficiaireType === 'CAMPAGNE_CLIENT' && (
+          <div className="space-y-2 min-w-0 md:col-span-2 xl:col-span-1">
+            <label>
+              {typeBudget === 'CAMPAGNE' ? 'Proforma de la campagne *' : 'Proforma associée (facultatif)'}
+            </label>
+            <InvoiceCombobox
+              invoices={invoices}
+              value={proformaIds[0] ?? ''}
+              onChange={(id) => {
+                setProformaIds(id ? [id] : []);
+                // Campagne sans nom encore saisi : on propose l'objet de la proforma.
+                const choisie = invoices.find((inv) => inv.id === id);
+                if (typeBudget === 'CAMPAGNE' && choisie?.objet && !nomCampagneClient.trim()) setNomCampagneClient(choisie.objet);
+              }}
+              placeholder={typeBudget === 'CAMPAGNE' ? 'Choisir la proforma de la campagne' : 'Associer une proforma (optionnel)'}
+            />
+            <p className="text-xs text-muted-foreground">
+              Une seule proforma par budget : ses dépenses lui seront imputées et apparaîtront dans sa fiche.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -684,23 +730,6 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           </p>
         </div>
       </div>
-
-      {beneficiaireType === 'CAMPAGNE_CLIENT' && (
-        <div className="space-y-2">
-          <label>
-            Proforma associée{typeBudget === 'CAMPAGNE' ? ' *' : ' (facultatif)'}
-          </label>
-          <p className="text-xs text-muted-foreground">
-            Une seule proforma par budget : ses dépenses lui seront imputées et apparaîtront dans sa fiche.
-          </p>
-          <InvoiceCombobox
-            invoices={invoices}
-            value={proformaIds[0] ?? ''}
-            onChange={(id) => setProformaIds(id ? [id] : [])}
-            placeholder={typeBudget === 'CAMPAGNE' ? 'Choisir la proforma de la campagne' : 'Associer une proforma (optionnel)'}
-          />
-        </div>
-      )}
 
       {initialData && initialData.existingAttachments.length > 0 && (
         <div className="space-y-2">

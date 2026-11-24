@@ -25,6 +25,26 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite 2) — Budget de campagne : « Nom de la campagne (client) », proforma à côté
+
+**Demande / Contexte**
+Dans le formulaire de budget, la proforma doit se trouver à côté du champ « Client / campagne ». Ce champ devient « Nom de la campagne » ; le bénéficiaire est enregistré au format « Nom de la campagne (Nom du client) ».
+
+**Modifications apportées**
+- `components/DemandeBudgetForm.tsx` :
+  - budget **Campagne** : champ **« Nom de la campagne * »** (au lieu de « Client / campagne ») ; le client est celui de la **proforma choisie** ; « Pour le compte de » est enregistré comme `Nom de la campagne (Nom du client)` (`nomAvecClient`), avec un aperçu « Enregistré comme : … » sous le champ ; sans parenthèses si le nom saisi est déjà celui du client (anciens budgets) ;
+  - choisir la proforma alors que le nom est vide propose l'**objet de la proforma** comme nom de campagne ;
+  - la **proforma** n'est plus en bas du formulaire : elle est sur la même rangée que le département et le nom de la campagne (3 colonnes sur grand écran, 2 puis 1 en dessous) ; même chose pour un budget **Tiers** (proforma facultative, format `CAMPAGNE/CLIENT (…)` inchangé) ;
+  - modification d'un budget : le nom de campagne est relu dans le nouveau format, et toujours dans l'ancien (`CAMPAGNE/CLIENT (Nom - RP-PRO-…)`) ;
+  - liste Département en pleine largeur.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- Créer un budget de campagne : choisir la proforma (le nom se préremplit avec son objet), corriger le nom, vérifier « Pour le compte de : Nom (Client) » sur la fiche et le PDF.
+- Les budgets déjà enregistrés gardent leur ancien libellé tant qu'ils ne sont pas re-soumis.
+
 ## 2026-11-24 (suite) — Formulaire de budget plus large, sans défilement horizontal
 
 **Demande / Contexte**
