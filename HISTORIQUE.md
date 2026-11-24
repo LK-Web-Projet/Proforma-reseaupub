@@ -25,6 +25,31 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite 6) — Catégorie de ligne de budget « Abonnements »
+
+**Demande / Contexte**
+Ajouter une catégorie pour les abonnements (outils d'IA, logiciels, outils en ligne…) aux lignes de budget.
+
+**Modifications apportées**
+- `prisma/schema.prisma` : valeur `ABONNEMENT` dans `CategorieDepense` (après `COMMUNICATION`).
+- `prisma/migrations/20261124120000_categorie_abonnement/migration.sql` : `ALTER TYPE "CategorieDepense" ADD VALUE IF NOT EXISTS 'ABONNEMENT' AFTER 'COMMUNICATION'` (ajout seulement).
+- `lib/budgetTypes.ts` : libellé « Abonnements (IA, logiciels, outils en ligne…) », placé après « Téléphone & internet » — proposé automatiquement dans le formulaire, la correction d'une ligne, les rapports et le PDF.
+
+**Erreurs rencontrées & solutions**
+- Premier essai du test en base impossible (serveur de base de données injoignable, coupure réseau) → relancé dès le retour de la connexion : réussi.
+- Le script de test du détail et du délai (écrit avant les départements) n'avait pas de département sur ses lignes d'exemple → 2 faux échecs ; données du test complétées, plus aucun échec. Ce n'était pas un défaut de l'application.
+
+**Vérifications complètes (2026-11-24)**
+- Base locale : les mises à jour droits par action, détail et délai, départements sont **appliquées sans erreur** (8 départements, 15 lignes sur 15 rattachées, 12 droits = 4 × 3 rôles). Seule « Abonnements » reste à appliquer.
+- Tests sur la vraie base, dans une transaction annulée : **25 / 25** (départements, total par département, département désactivé, rattachement et responsable unique, filtre, requêtes de la fiche, ordre des types, Tiers indisponible, catégorie Abonnements placée après Téléphone & internet) ; base contrôlée intacte après coup.
+- Tests du détail et du délai des lignes et du PDF : **23 / 23**.
+- Vérification des types et lint sur **tout le projet** : aucune erreur, aucun avertissement. Fins de ligne cohérentes.
+- Construction complète de l'application (`next build`, dans `.next-verif` pour ne pas gêner le serveur de développement) : **réussie** — compilation en 3 min, 44 pages générées, dont les nouvelles pages Départements ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base (`pnpm prisma migrate deploy`), avec les trois précédentes ; puis choisir « Abonnements » sur une ligne de budget.
+- Le détail de la ligne peut préciser l'outil (ex. : ChatGPT, Canva, Adobe, hébergement…).
+
 ## 2026-11-24 (suite 5) — Types de budget : ordre Mensuel, Campagne, Ponctuel ; Tiers indisponible
 
 **Demande / Contexte**
