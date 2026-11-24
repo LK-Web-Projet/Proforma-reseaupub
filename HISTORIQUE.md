@@ -25,6 +25,39 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite 8) — Factures de prestataires : « payée » hors plateforme ouverte par un droit, statut libre pour l'administrateur, historique
+
+**Demande / Contexte**
+Faciliter le paiement des prestataires. Jusqu'ici, seul l'administrateur (case « Valider au niveau direction ») pouvait marquer payée, à la main, une facture liée à rien ; et une facture « payée » ou « annulée » était verrouillée pour tout le monde. L'utilisateur veut un droit pour ouvrir ce pouvoir à d'autres rôles, et que l'administrateur puisse changer le statut librement (payée → annulée, annulée → payée).
+Décisions : **1a** le nouveau droit est donné au départ aux rôles qui avaient déjà ce pouvoir (ensuite cochable pour d'autres rôles) ; **2a** une facture liée à un bon de commande ou à une ligne de budget reste payée uniquement par « Appliquer le paiement » ; **3b modifié** : pour « payée » à la main, **moyen de paiement + date + preuve obligatoires** (au lieu d'un motif) ; **4a** une facture réglée par une dépense de budget ne change pas de statut à la main (annuler d'abord la dépense) ; **5a** statut libre réservé à l'administrateur (rôle qui gère les utilisateurs), avec une case dans la grille.
+État constaté : base locale avec 136 factures en attente liées à rien, 47 payées, 7 annulées, 1 en attente liée à un bon. La mise à jour « moyens de paiement » est appliquée en local (Espèces lié à Caisse Comptable).
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261124140000_statut_factures_prestataires/migration.sql` (ajouts seulement) : sur `FactureFournisseur`, `paiementManuelDate`, `paiementManuelMode` (code d'un `MoyenPaiement`), `paiementManuelPreuve`, `paiementManuelReference`, `paiementManuelParEmail` ; nouveau modèle `FactureFournisseurStatutHistorique` (ancien / nouveau statut, moyen, date, preuve, référence, motif, auteur) ; droits `fournisseurs.facturePayeeHorsPlateforme` (rôles avec `canValidateBudgetMensuel` et la page Prestataires) et `fournisseurs.factureStatutLibre` (rôles avec `canManageUsers` et la page Prestataires) — en local : Admin seulement.
+- `lib/permissions.ts` : les 2 droits (groupe « Factures prestataires ») et leur repli tant que la mise à jour n'est pas appliquée.
+- `lib/factureStatut.ts` (partagé) : droits de chaque passage (`droitsTransitionFacture`), `transitionsFacture` (menu de l'écran), `factureLieeAuBudget`, libellés.
+- `lib/factureStatutServeur.ts` : `controlerStatutFacture` (droits ; refus si une dépense active règle la facture ; « payée » interdit si liée à un bon ou une ligne ; moyen existant et actif, date non future, preuve obligatoire et de type autorisé ; réactivation d'une facture de bon : une seule facture active au montant du bon) et `appliquerStatutFacture` (statut, infos du paiement hors plateforme remplies ou effacées, retard réévalué si retour en attente, ligne d'historique).
+- Route `app/api/factures-fournisseurs/[id]/statut` : GET (historique), POST (FormData avec preuve). `app/api/factures-fournisseurs/[id]/route.ts` : l'ancienne règle (`refusChangementStatut`, case direction) est remplacée ; le changement rapide JSON passe par les mêmes contrôles et le même historique ; l'édition complète ne change plus le statut.
+- `components/fournisseurs/FactureStatutControl.tsx` : étiquette du statut (avec « hors plateforme · moyen »), menu des changements permis (choix grisés avec la raison), fenêtre « Marquer la facture payée » (moyen, date, référence, preuve), fenêtre de confirmation avec motif facultatif pour les autres changements, fenêtre « Historique ». Utilisé dans `app/(main)/fournisseur/factures/page.tsx` et `app/(main)/fournisseur/[id]/page.tsx` (anciens sélecteurs retirés). `components/FactureFournisseurModal.tsx` : statut non modifiable en modification (message).
+- Guide `public/docs/procedure-paiement-plateforme.md` : « Facture réglée hors plateforme, et changer le statut d'une facture ».
+
+**Erreurs rencontrées & solutions**
+- Base de données injoignable un moment (coupure réseau) → contrôles relancés au retour.
+- Ancien test des paiements centralisés : 2 échecs sans défaut de l'application — sa caisse de test était masquée et liée à aucun moyen (refusée depuis les règles des moyens de paiement), et la base n'avait pas encore la nouvelle mise à jour. Copie adaptée (caisse visible liée à Virement et Espèces, mise à jour jouée dans la transaction) : 31 / 31.
+- Ancien test des départements : 1 vérification supposait « Abonnements » non appliquée ; elle l'est désormais (normal).
+
+**Vérifications (2026-11-24)**
+- Tests sur la vraie base, mise à jour jouée puis annulée : **31 / 31** (droits de chaque passage, menu de l'écran, repli sans grille, droits donnés au seul Admin, aucune facture modifiée par la mise à jour ; refus : comptable sans droit, sans moyen, sans preuve, date future, moyen inconnu, fichier interdit ; payée hors plateforme sans dépense ni écriture de caisse ; direction bloquée sur une facture payée, admin : payée → annulée → payée → en attente ; historique complet et ordonné ; facture liée à une ligne refusée même pour l'admin ; facture réglée par une dépense protégée ; bon de commande avec déjà une facture : réactivation refusée) ; base contrôlée intacte.
+- Non-régression : paiements centralisés **31 / 31** (copie adaptée), détail et délai des lignes **23 / 23**, départements 24 / 25 (le seul écart vient de « Abonnements » désormais appliquée).
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement.
+- Construction complète de l'application (`next build`, dans `.next-verif`) : **réussie** — 45 pages, nouvelle adresse du statut des factures comprise ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base (`pnpm prisma migrate deploy`, en local puis en ligne ; jamais de `reset`), puis redémarrer.
+- Paramètres → Rôles : cocher « Marquer une facture payée sans paiement » pour les rôles voulus (ex. Comptable).
+- À l'écran : marquer payée une facture en attente (moyen, date, preuve), vérifier l'étiquette « hors plateforme » et l'historique ; en admin, passer une facture payée en annulée puis la remettre payée.
+- Les 47 factures déjà « payées » avant ce changement n'ont pas d'informations de paiement (ni moyen ni preuve) : elles s'affichent payées, sans la mention « hors plateforme ».
+
 ## 2026-11-24 (suite 7) — Moyens de paiement : liste gérée, caisses liées à chaque moyen
 
 **Demande / Contexte**

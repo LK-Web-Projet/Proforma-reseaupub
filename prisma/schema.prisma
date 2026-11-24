@@ -222,11 +222,11 @@ model Paiement {
 }
 
 model CashRegister {
-  id             Int             @id @default(autoincrement())
-  name           String          @unique
-  balance        Float           @default(0)
-  createdAt      DateTime        @default(now())
-  view           Boolean         @default(true)
+  id             Int                   @id @default(autoincrement())
+  name           String                @unique
+  balance        Float                 @default(0)
+  createdAt      DateTime              @default(now())
+  view           Boolean               @default(true)
   journals       CashJournal[]
   budgetDepenses BudgetDepense[]
   moyensPaiement MoyenPaiementCaisse[]
@@ -365,30 +365,63 @@ model FournisseurDocument {
 }
 
 model FactureFournisseur {
-  id              String                   @id @default(cuid())
-  reference       String                   @unique
-  montant         Decimal                  @db.Decimal(10, 2)
-  date            DateTime
-  pieceJointe     String?
-  status          StatutFactureFournisseur @default(EN_ATTENTE)
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
-  fournisseurId   String
-  createdById     String?
-  fournisseur     Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
-  createdBy       User?                    @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
+  id                      String                               @id @default(cuid())
+  reference               String                               @unique
+  montant                 Decimal                              @db.Decimal(10, 2)
+  date                    DateTime
+  pieceJointe             String?
+  status                  StatutFactureFournisseur             @default(EN_ATTENTE)
+  createdAt               DateTime                             @default(now())
+  updatedAt               DateTime                             @updatedAt
+  fournisseurId           String
+  createdById             String?
+  fournisseur             Fournisseur                          @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  createdBy               User?                                @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
   // Bon de commande réglé par cette facture (Lot C) ; la facture passe PAYEE quand une dépense de
   // budget de nature SOLDE la règle — jamais à la main.
-  commandeId      String?
-  commande        CommandeFournisseur?     @relation(fields: [commandeId], references: [id])
-  depenses        BudgetDepense[]
+  commandeId              String?
+  commande                CommandeFournisseur?                 @relation(fields: [commandeId], references: [id])
+  depenses                BudgetDepense[]
   // Prestataire interne / externe (pas de bon de commande obligatoire) : la facture peut être
   // rattachée directement à une ligne de budget (ex. budget mensuel de la comptabilité pour la paie)
   // et réglée par des dépenses sur cette ligne ; elle passe PAYEE quand elle est entièrement réglée.
-  ligneBudgetId   String?
-  ligneBudget     DemandeBudgetLigne?      @relation(fields: [ligneBudgetId], references: [id])
+  ligneBudgetId           String?
+  ligneBudget             DemandeBudgetLigne?                  @relation(fields: [ligneBudgetId], references: [id])
   // Retard de paiement déjà notifié (une seule fois par facture ; remis à zéro si la date change).
-  retardNotifieAt DateTime?
+  retardNotifieAt         DateTime?
+  // Paiement fait hors plateforme (facture liée à aucun bon ni ligne de budget, marquée « payée » à la
+  // main, sans sortie de caisse) : moyen de paiement, date, preuve (obligatoires) et référence.
+  // Remis à vide quand la facture quitte le statut « payée ».
+  paiementManuelDate      DateTime?
+  paiementManuelMode      String?
+  paiementManuelMoyen     MoyenPaiement?                       @relation("FacturePaiementManuel", fields: [paiementManuelMode], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  paiementManuelPreuve    String?
+  paiementManuelReference String?
+  paiementManuelParEmail  String?
+  historiqueStatut        FactureFournisseurStatutHistorique[]
+}
+
+// Changements de statut faits à la main sur une facture de prestataire (marquée payée hors
+// plateforme, annulée, remise en attente, réactivée…), avec leur auteur. Les changements automatiques
+// (paiement appliqué depuis le budget) n'y figurent pas : ils ont leur propre trace (dépenses).
+model FactureFournisseurStatutHistorique {
+  id                   String                   @id @default(uuid())
+  factureFournisseurId String
+  ancienStatut         StatutFactureFournisseur
+  nouveauStatut        StatutFactureFournisseur
+  // Paiement hors plateforme (nouveau statut « payée ») : moyen, date, preuve et référence.
+  modePaiement         String?
+  moyenPaiement        MoyenPaiement?           @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  datePaiement         DateTime?
+  preuve               String?
+  reference            String?
+  motif                String?
+  auteurEmail          String
+  auteurNom            String?
+  createdAt            DateTime                 @default(now())
+  factureFournisseur   FactureFournisseur       @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
+
+  @@index([factureFournisseurId])
 }
 
 model ProduitFournisseur {
@@ -631,22 +664,24 @@ enum TypeBudget {
 // dépenses et les encaissements (ESPECES, VIREMENT… pour les 6 moyens d'origine, aussi envoyés par
 // CampTrack) : il n'est jamais modifié. Un moyen se désactive, il ne se supprime pas.
 model MoyenPaiement {
-  id             String                @id @default(uuid())
-  code           String                @unique
-  nom            String                @unique
-  description    String?
+  id                         String                               @id @default(uuid())
+  code                       String                               @unique
+  nom                        String                               @unique
+  description                String?
   // Ordre d'affichage dans les listes (croissant).
-  ordre          Int                   @default(0)
-  actif          Boolean               @default(true)
-  createdByEmail String?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  ordre                      Int                                  @default(0)
+  actif                      Boolean                              @default(true)
+  createdByEmail             String?
+  createdAt                  DateTime                             @default(now())
+  updatedAt                  DateTime                             @updatedAt
   // Caisses dans lesquelles ce moyen peut être encaissé ou payé. Aucune caisse liée = aucun
   // paiement possible avec ce moyen (sauf CampTrack, qui choisit lui-même sa caisse).
-  caisses        MoyenPaiementCaisse[]
-  demandesBudget DemandeBudget[]
-  lignesBudget   DemandeBudgetLigne[]
-  depensesBudget BudgetDepense[]
+  caisses                    MoyenPaiementCaisse[]
+  demandesBudget             DemandeBudget[]
+  lignesBudget               DemandeBudgetLigne[]
+  depensesBudget             BudgetDepense[]
+  facturesPayeesManuellement FactureFournisseur[]                 @relation("FacturePaiementManuel")
+  historiquesFacture         FactureFournisseurStatutHistorique[]
 }
 
 // Lien moyen de paiement ↔ caisse (un moyen peut être lié à plusieurs caisses, une caisse à
@@ -686,10 +721,10 @@ model DemandeBudget {
   // porte son propre département (DemandeBudgetLigne.departementId). Conservé pour l'historique.
   departement         String?
   contexteMotivation  String
-  montantTotal        Decimal             @db.Decimal(12, 2)
+  montantTotal        Decimal       @db.Decimal(12, 2)
   // Moyen de paiement principal (code d'un MoyenPaiement) : celui qui pèse le plus sur les lignes.
   modePaiement        String
-  moyenPaiement       MoyenPaiement       @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  moyenPaiement       MoyenPaiement @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
   typeDepense         String
   pourLeCompteDe      String?
   dateLimiteSouhaitee DateTime?
@@ -763,27 +798,27 @@ model DemandeBudgetLigne {
 // est calculé par somme de ses dépenses NON annulées, jamais stocké. Une dépense n'est
 // jamais supprimée : son annulation crée une contre-écriture RECETTE (contreEcritureId).
 model BudgetDepense {
-  id                    String              @id @default(uuid())
+  id                    String        @id @default(uuid())
   demandeBudgetId       String
   ligneId               String
-  montant               Decimal             @db.Decimal(12, 2)
+  montant               Decimal       @db.Decimal(12, 2)
   dateDepense           DateTime
   nomReceveur           String
   // Code du MoyenPaiement utilisé.
   modePaiement          String
-  moyenPaiement         MoyenPaiement       @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  moyenPaiement         MoyenPaiement @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
   notes                 String?
   cashRegisterId        Int
-  cashJournalEntryId    Int                 @unique
+  cashJournalEntryId    Int           @unique
   invoiceId             String?
-  sansJustificatif      Boolean             @default(false)
+  sansJustificatif      Boolean       @default(false)
   motifSansJustificatif String?
   createdByEmail        String
-  createdAt             DateTime            @default(now())
+  createdAt             DateTime      @default(now())
   annuleeAt             DateTime?
   annuleeParEmail       String?
   motifAnnulation       String?
-  contreEcritureId      Int?                @unique
+  contreEcritureId      Int?          @unique
 
   demandeBudget        DemandeBudget             @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   ligne                DemandeBudgetLigne        @relation(fields: [ligneId], references: [id], onDelete: Cascade)

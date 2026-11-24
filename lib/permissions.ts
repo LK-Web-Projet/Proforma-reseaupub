@@ -225,6 +225,18 @@ export const MODULES_DROITS: ModuleDroits[] = [
       { key: "fournisseurs.factureEnregistrer", label: "Enregistrer une facture", groupe: "Factures prestataires" },
       { key: "fournisseurs.factureModifier", label: "Modifier une facture", groupe: "Factures prestataires" },
       { key: "fournisseurs.factureAnnuler", label: "Annuler une facture", groupe: "Factures prestataires" },
+      {
+        key: "fournisseurs.facturePayeeHorsPlateforme",
+        label: "Marquer une facture payée sans paiement",
+        description: "Facture réglée hors plateforme, liée à aucun bon ni ligne de budget : moyen de paiement, date et preuve obligatoires. Aucune sortie de caisse.",
+        groupe: "Factures prestataires",
+      },
+      {
+        key: "fournisseurs.factureStatutLibre",
+        label: "Changer librement le statut d'une facture",
+        description: "Payée, annulée ou en attente dans les deux sens, avec historique. Une facture réglée par une dépense reste protégée : annuler d'abord la dépense.",
+        groupe: "Factures prestataires",
+      },
       { key: "fournisseurs.commandeCreer", label: "Créer un bon de commande", groupe: "Bons de commande" },
       { key: "fournisseurs.commandeModifier", label: "Modifier un bon (brouillon)", groupe: "Bons de commande" },
       { key: "fournisseurs.commandeLivrer", label: "Marquer livré", groupe: "Bons de commande" },
@@ -394,6 +406,13 @@ export function permissionsAvantGrille(pages: string[], flags: Record<RoleFlag, 
           break;
         case "budget.exporter":
           cles.push(a.key);
+          break;
+        // Avant la grille : « payée » à la main = case direction ; statut libre = administrateur.
+        case "fournisseurs.facturePayeeHorsPlateforme":
+          if (set.has("fournisseurs") && flags.canValidateBudgetMensuel) cles.push(a.key);
+          break;
+        case "fournisseurs.factureStatutLibre":
+          if (set.has("fournisseurs") && flags.canManageUsers) cles.push(a.key);
           break;
         default:
           if (m.page && set.has(m.page)) cles.push(a.key);

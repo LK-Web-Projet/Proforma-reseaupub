@@ -228,6 +228,15 @@ En un clic : sortie de caisse, ligne de budget consommée, dépense sur la profo
 
 **Liasse** : par défaut, le solde d'un bon exige aussi le bordereau de livraison signé (ou l'attestation de service fait) et la facture avec sa pièce. La proforma fournisseur et le BAT ne bloquent jamais le paiement. Ce réglage se change dans **Paramètres → Rôles** (« Exiger la liasse complète pour payer un bon de commande »). Le scan du bon signé reste toujours exigé.
 
+### Facture réglée hors plateforme, et changer le statut d'une facture
+
+Le statut d'une facture se change depuis le **menu de statut** (clic sur le statut, dans la liste des factures ou sur la fiche du prestataire). Chaque changement fait à la main est gardé dans l'**historique** de la facture (icône horloge à côté du statut) : ancien et nouveau statut, date, auteur, moyen de paiement, preuve, motif.
+
+- **Payée (réglée hors plateforme)** : pour une facture déjà réglée en dehors de la plateforme et liée à **aucun bon de commande ni ligne de budget**. Il faut le droit *Marquer une facture payée sans paiement* (au départ : l'administration ; à ouvrir à d'autres rôles dans Paramètres → Rôles). On indique **le moyen de paiement, la date et la preuve** (obligatoires) et, au besoin, une référence. Aucune sortie de caisse : la facture est seulement notée payée, avec la mention « hors plateforme ».
+- Une facture liée à un bon de commande ou à une ligne de budget passe payée **uniquement** par *Appliquer le paiement*.
+- **Annuler** une facture en attente : droit *Annuler une facture*.
+- **Changer librement** (payée → annulée, annulée → payée, retour en attente) : droit *Changer librement le statut* (administrateur). Une facture réglée par une **dépense de budget** reste protégée : il faut d'abord annuler la dépense (l'argent revient dans la caisse).
+
 ### Délais de paiement et retards
 
 Une facture « en attente » doit être payée dans un délai qui dépend du type du prestataire, compté **à partir de la date de la facture** :

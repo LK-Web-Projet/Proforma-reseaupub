@@ -353,10 +353,12 @@ export function FactureFournisseurModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label>Statut</label>
+                {/* En modification, le statut se change depuis le menu de statut de la liste (droits,
+                    preuve du paiement, historique). */}
                 <Select
                   value={formData.status}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                  disabled={isLocked}
+                  disabled={isLocked || isEditing}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -364,10 +366,13 @@ export function FactureFournisseurModal({
                   <SelectContent>
                     <SelectItem value="EN_ATTENTE">En attente</SelectItem>
                     {/* « Payée » : uniquement par le paiement du solde depuis le budget. */}
-                    <SelectItem value="PAYEE" disabled>Payée (par le solde du budget)</SelectItem>
+                    <SelectItem value="PAYEE" disabled>Payée</SelectItem>
                     <SelectItem value="ANNULEE">Annulée</SelectItem>
                   </SelectContent>
                 </Select>
+                {isEditing && !isLocked && (
+                  <p className="text-xs text-muted-foreground">Pour changer le statut, utilisez le menu de statut dans la liste.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <label htmlFor="pieceJointe">Pièce jointe (PDF, Image)</label>
