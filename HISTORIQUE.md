@@ -25,6 +25,43 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite 7) — Moyens de paiement : liste gérée, caisses liées à chaque moyen
+
+**Demande / Contexte**
+Comme pour les départements, gérer les moyens de paiement dans une table plutôt qu'une liste figée, et relier chaque moyen à une ou plusieurs caisses (ex. : virement avec les caisses de plusieurs banques). À chaque paiement, on choisit le moyen et seules les caisses visibles liées à ce moyen sont proposées : proforma (encaissement et dépense), élaboration du budget (moyen de chaque ligne), dépense sur une ligne, facture de prestataire, avance sur un bon de commande. À la mise en place, les moyens existants sont créés sans caisse liée.
+Décisions de l'utilisateur : **1b** un moyen sans caisse liée ne permet aucun paiement ; **2a** les caisses masquées ne sont proposées nulle part (avant : seulement masquées sur la proforma) ; **3a** la règle « Espèces → Caisse Comptable » imposée sur la proforma est remplacée par les liens ; **4a** CampTrack n'est pas soumis à la règle des caisses ; **5a** seulement les 6 moyens d'origine au départ.
+
+**Modifications apportées**
+- `prisma/schema.prisma` : modèles `MoyenPaiement` (code unique et stable, nom unique, description, ordre, actif) et `MoyenPaiementCaisse` (lien moyen ↔ caisse) ; le type figé `ModePaiementDemande` est supprimé : `DemandeBudget.modePaiement`, `DemandeBudgetLigne.modePaiement` et `BudgetDepense.modePaiement` deviennent du texte relié au `code` du moyen (clé étrangère, `ON UPDATE CASCADE`, suppression interdite).
+- `prisma/migrations/20261124130000_moyens_paiement/migration.sql` (écrite à la main : Prisma proposait de supprimer puis recréer les colonnes, avec perte des données) : tables, 6 moyens d'origine (codes ESPECES, MOBILE_MONEY, CHEQUE, VIREMENT, CARTE, AUTRE, sans caisse), colonnes converties sur place (`ALTER COLUMN … TYPE TEXT USING …::text`), clés étrangères, méthode des opérations de proforma convertie en codes (« Espèces » → ESPECES, « MobileMoney » → MOBILE_MONEY, « Virement », « Chèque », « Autre »), droits `finance.moyenCreer`, `finance.moyenModifier`, `finance.moyenActiver` donnés aux rôles qui ont la page Finance.
+- `lib/moyensPaiement.ts` (partagé) : `libelleMoyen`, `caissesProposees` (liées ET visibles), `moyensProposes` (actifs + celui déjà choisi), `codeMoyenDepuisNom`, `moyenPaiementSchema`, `codeMoyenSchema`, `CODE_ESPECES`.
+- `lib/moyensPaiementServeur.ts` : `erreurMoyenEtCaisse` (moyen actif, caisse visible et liée ; aucun lien = refus), `erreurMoyensPaiement` (budgets et lignes : existants et actifs, sauf déjà présents), `codeMoyenLibre`, `erreurCaisses`, `reponseDoublonMoyen`.
+- `lib/useMoyensPaiement.ts` : chargement partagé par les écrans (30 s de cache, vidé après une modification), noms et caisses proposées.
+- Routes : `app/api/moyens-paiement` (GET pour tout compte connecté, caisses liées renvoyées seulement à ceux qui encaissent ou paient ; POST) et `[id]` (PUT nom/description/ordre/caisses, PATCH actif, DELETE → 405).
+- `lib/depenses/enregistrerDepense.ts` : contrôle moyen + caisse pour toute dépense saisie sur la plateforme (budget, facture de prestataire, avance, dépense sur proforma), pas pour CampTrack. `app/api/factures/[id]/paiements/route.ts` : même contrôle pour l'encaissement ; plus de caisse n° 1 imposée pour les espèces ; la méthode est le code du moyen.
+- Codes de moyen validés en texte (au lieu du type figé) : `lib/budgetSchema.ts`, routes budget (création, re-soumission, correction de ligne, dépenses, rattachement), `factures-fournisseurs/[id]/payer`, `commandes/[commandeId]/avance`, CampTrack (`lots-paiement`, `depenses-groupees` : mêmes codes qu'avant, toujours acceptés ; `enregistrerLotPaiement` vérifie seulement que le code existe).
+- `app/api/cash-registers` : renvoie aussi `view` (caisse visible ou masquée).
+- Écrans : nouvelle page **Finance → Moyens de paiement** (`app/(main)/journal-caisse/moyens-paiement/page.tsx`, `components/moyensPaiement/MoyenPaiementDialog.tsx` : cases à cocher des caisses, caisses masquées signalées, alerte « aucune caisse liée ») ; entrée dans le menu ; `BudgetDepenseDialog`, `PayerFactureDialog` et fiche proforma : le moyen d'abord, puis seulement les caisses liées et visibles (une seule → choisie d'office ; aucune → message) ; formulaire de budget, correction de ligne, rattachement : liste gérée ; fiche budget, PDF, rapport de suivi budgétaire, état du soir : noms de la liste gérée. La fiche proforma ne charge plus tout le journal de caisse pour obtenir la liste des caisses.
+- `lib/budgetTypes.ts` : `totauxParModePaiement` accepte la liste gérée (noms et ordre) ; les 6 libellés d'origine restent en repli.
+- `lib/permissions.ts` : 3 droits (groupe « Moyens de paiement », page Finance).
+- Guide `public/docs/procedure-paiement-plateforme.md` : section « Moyens de paiement ».
+
+**Erreurs rencontrées & solutions**
+- La version de zod du projet (v4) refuse `required_error` → remplacé par `{ error: … }`.
+- L'ancien test des départements échouait sur la base locale : il enregistre un budget alors que la base n'a pas encore la mise à jour des moyens (colonne encore du type figé). En jouant cette mise à jour dans sa transaction : plus d'échec lié aux moyens. Deux de ses vérifications supposaient INFORMATIQUE sans responsable ; un vrai responsable y a été rattaché depuis → test adapté aux données réelles (ce n'était pas un défaut de l'application).
+
+**Vérifications (2026-11-24)**
+- Tests sur la vraie base, mise à jour jouée puis annulée : **47 / 47** (6 moyens créés dans l'ordre et sans caisse, moyens des budgets, lignes et dépenses conservés à l'identique, méthodes des proformas converties, droits donnés aux 2 rôles ayant Finance, code inconnu refusé par la base, code et nom en double, règle moyen + caisse : sans lien, non liée, masquée, désactivé, inconnu ; vraie dépense acceptée avec un nouveau moyen « Wave » et refusée dans les autres cas ; CampTrack non soumis à la règle mais code inconnu refusé) ; base contrôlée intacte après coup.
+- Non-régression : départements **25 / 25** (avec la mise à jour des moyens jouée dans la transaction), détail et délai des lignes et PDF **23 / 23**.
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement.
+- Construction complète de l'application (`next build`, dans `.next-verif` pour ne pas gêner le serveur de développement) : **réussie** — compilation en 2,5 min, 45 pages générées, dont la nouvelle page Moyens de paiement ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- ⚠️ **La mise à jour de la base est obligatoire avant d'utiliser cette version** (`pnpm prisma migrate deploy`, en local puis en ligne, avec « Abonnements » si elle n'est pas encore passée ; jamais de `reset`) : sans elle, l'enregistrement d'un budget ou d'une dépense échoue.
+- ⚠️ **Choix 1b : juste après la mise à jour, aucun moyen n'a de caisse** → aucun paiement possible tant que les caisses ne sont pas liées dans Finance → Moyens de paiement (ex. : Espèces → Caisse Comptable ; Virement et Chèque → BIIC BANQUE, BIIC BANQUE 2026 ; Mobile Money → caisse MoMo à rendre visible si besoin). CampTrack continue de fonctionner.
+- Contrôle à l'écran : lier une caisse, faire un encaissement sur une proforma, une dépense sur une ligne de budget et un paiement de facture de prestataire ; vérifier que seules les caisses liées apparaissent.
+- Une nouvelle ligne de budget prend « Virement bancaire » par défaut : si ce moyen est désactivé un jour, il faudra choisir un autre moyen sur chaque ligne (le serveur l'indique).
+
 ## 2026-11-24 (suite 6) — Catégorie de ligne de budget « Abonnements »
 
 **Demande / Contexte**

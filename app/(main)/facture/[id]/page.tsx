@@ -50,6 +50,8 @@ import { ChoixLigneBudgetDialog, type BudgetDepenseOption } from "@/components/d
 import { RentabiliteCampagneCard } from "@/components/proforma/RentabiliteCampagneCard";
 import { LotPaiementDetail, type LotPaiementResume } from "@/components/depenses/LotPaiementDetail";
 import { etatLiasse, partsLignesCommande, payeSurCommande } from "@/lib/commandeFournisseurLiasse";
+import { moyensProposes } from "@/lib/moyensPaiement";
+import { useMoyensPaiement } from "@/lib/useMoyensPaiement";
 
 type Campagne = {
   id: string;
@@ -222,7 +224,7 @@ export default function FactureDetailPage() {
   const [fileToDeleteType, setFileToDeleteType] = useState<'bon' | 'facture' | null>(null);
 
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
-  const [newPayment, setNewPayment] = useState({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+  const [newPayment, setNewPayment] = useState({ montant: 0, methode: 'VIREMENT', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [operationType, setOperationType] = useState<'PAIEMENT' | 'DEPENSE'>('PAIEMENT');
@@ -232,9 +234,16 @@ export default function FactureDetailPage() {
   const [proofFiles, setProofFiles] = useState<FileList | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
 
-  const [cashRegisters, setCashRegisters] = useState<{id: number, name: string, view?: boolean}[]>([]);
   const [campagnes, setCampagnes] = useState<Campagne[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
+  // Moyens de paiement : seules les caisses visibles liées au moyen choisi sont proposées.
+  const { moyens, charge: moyensCharges, caisses: caissesDuMoyen, libelle: libelleMoyenPaiement } = useMoyensPaiement();
+  const caissesOperation = useMemo(() => caissesDuMoyen(newPayment.methode), [caissesDuMoyen, newPayment.methode]);
+  useEffect(() => {
+    setSelectedCashRegisterId((actuelle) =>
+      caissesOperation.some((c) => String(c.id) === actuelle) ? actuelle : caissesOperation.length > 0 ? String(caissesOperation[0].id) : ''
+    );
+  }, [caissesOperation]);
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
   // Droits : « Saisir au journal de caisse » (dépense d'une campagne sans budget) et « Enregistrer
   // les dépenses de budget » (dépense d'une campagne avec budget, sur une de ses lignes).
@@ -331,9 +340,8 @@ export default function FactureDetailPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const [factureRes, cashRes, gestionnairesRes, produitsRes, campagnesRes] = await Promise.all([
+      const [factureRes, gestionnairesRes, produitsRes, campagnesRes] = await Promise.all([
         fetch(`/api/factures/${id}`),
-        fetch('/api/cash-journal'),
         fetch('/api/gestionnaires'),
         fetch('/api/produits'),
         fetch(`/api/factures/${id}/campagnes`),
@@ -345,15 +353,6 @@ export default function FactureDetailPage() {
         setFormData({ ...data, gestionnaireId: data.gestionnaires?.[0]?.gestionnaireId });
       } else {
         setFacture(null);
-      }
-
-      const cashData = await cashRes.json();
-      const registers = cashData.cashRegisters || [];
-      setCashRegisters(registers);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const visibleRegisters = registers.filter((r: any) => r.view !== false);
-      if (visibleRegisters.length > 0) {
-        setSelectedCashRegisterId(visibleRegisters[0].id.toString());
       }
 
       const gestionnairesData = await gestionnairesRes.json();
@@ -559,6 +558,10 @@ export default function FactureDetailPage() {
     if (operationType === 'PAIEMENT' && facture && newPayment.montant > facture.resteAPayer) {
       setPaymentError(`Le montant dépasse le reste à payer.`); return;
     }
+    if (!selectedCashRegisterId) {
+      setPaymentError("Choisissez la caisse : seules les caisses liées au moyen de paiement sont proposées (Finance → Moyens de paiement).");
+      return;
+    }
     setIsAddingPayment(true);
     const data = new FormData();
     const paymentData = { 
@@ -567,7 +570,7 @@ export default function FactureDetailPage() {
         reference: newPayment.reference, 
         notes: newPayment.notes, 
         datePaiement: new Date(newPayment.datePaiement), 
-        cashRegisterId: newPayment.methode === 'Espèces' && operationType === 'PAIEMENT' ? 1 : parseInt(selectedCashRegisterId, 10),
+        cashRegisterId: parseInt(selectedCashRegisterId, 10),
         type: operationType,
         // Campagne sans budget : avance / solde d'un bon de commande lié à la proforma (facultatif).
         ...(operationType === 'DEPENSE' && paiementBc !== 'NORMALE'
@@ -586,7 +589,7 @@ export default function FactureDetailPage() {
       const res = await fetch(`/api/factures/${id}/paiements`, { method: 'POST', body: data });
       if (res.ok) {
         setIsPaymentDialogOpen(false);
-        setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+        setNewPayment({ montant: 0, methode: 'VIREMENT', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
         setPaymentFiles(null);
         toast.success("Opération enregistrée !");
         await fetchFacture();
@@ -917,7 +920,7 @@ export default function FactureDetailPage() {
                                                         </TooltipContent>
                                                     </Tooltip>
                                                 </TooltipProvider>
-                                                <span className="text-[10px] text-muted-foreground uppercase">{p.methode || "-"}</span>
+                                                <span className="text-[10px] text-muted-foreground uppercase">{p.methode ? libelleMoyenPaiement(p.methode) : "-"}</span>
                                                 <OrigineDepense p={p} />
                                             </div>
                                         </TableCell>
@@ -1190,20 +1193,22 @@ export default function FactureDetailPage() {
                     <Select value={newPayment.methode} onValueChange={(v) => setNewPayment({ ...newPayment, methode: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="Virement">Virement</SelectItem>
-                            <SelectItem value="Espèces">Espèces</SelectItem>
-                            <SelectItem value="Chèque">Chèque</SelectItem>
-                            <SelectItem value="MobileMoney">Mobile Money</SelectItem>
+                            {moyensProposes(moyens, newPayment.methode).map((m) => (
+                                <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
             </div>
             <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Caisse de destination</label>
-                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
-                    <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
-                    <SelectContent>{cashRegisters.filter(r => r.view !== false).map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
+                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId} disabled={caissesOperation.length === 0}>
+                    <SelectTrigger className="bg-slate-50"><SelectValue placeholder={caissesOperation.length === 0 ? 'Aucune caisse' : 'Choisir la caisse'} /></SelectTrigger>
+                    <SelectContent>{caissesOperation.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
                 </Select>
+                {moyensCharges && caissesOperation.length === 0 && (
+                    <p className="text-xs text-amber-700">Aucune caisse n&apos;est liée à ce moyen de paiement : voyez Finance → Moyens de paiement.</p>
+                )}
             </div>
             <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Référence / Objet</label>

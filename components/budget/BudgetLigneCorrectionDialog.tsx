@@ -7,7 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS, MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
+import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS } from '@/lib/budgetTypes';
+import { moyensProposes } from '@/lib/moyensPaiement';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 import { toast } from 'sonner';
 import type { DepartementOption } from '@/lib/departements';
 
@@ -49,6 +51,7 @@ export function BudgetLigneCorrectionDialog({
   const [dateLimite, setDateLimite] = useState('');
   const [reponse, setReponse] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { moyens } = useMoyensPaiement();
 
   useEffect(() => {
     if (!ligne) return;
@@ -170,8 +173,8 @@ export function BudgetLigneCorrectionDialog({
                     <Select value={modePaiement} onValueChange={setModePaiement}>
                       <SelectTrigger><SelectValue placeholder="Moyen de paiement" /></SelectTrigger>
                       <SelectContent>
-                        {MODE_PAIEMENT_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        {moyensProposes(moyens, ligne?.modePaiement, modePaiement).map((m) => (
+                          <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

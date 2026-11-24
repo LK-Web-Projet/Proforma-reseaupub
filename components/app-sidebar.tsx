@@ -22,6 +22,7 @@ import {
   Landmark,
   Wallet,
   FileDown,
+  CreditCard,
   Settings,
   Loader2,
   ClipboardList,
@@ -148,6 +149,11 @@ const finance = [
     url: "/journal-caisse/export",
     icon: FileDown,
     droit: "finance.exporter",
+  },
+  {
+    title: "Moyens de paiement",
+    url: "/journal-caisse/moyens-paiement",
+    icon: CreditCard,
   },
 ];
 

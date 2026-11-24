@@ -6,7 +6,9 @@ import { mkdirSync, existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 import { auth } from "@clerk/nextjs/server";
-import { ModePaiementDemande, NatureDepense, SourceDepense } from "@prisma/client";
+import { NatureDepense, SourceDepense } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
+import { erreurMoyenEtCaisse } from "@/lib/moyensPaiementServeur";
 import { DepenseError, enregistrerDepense } from "@/lib/depenses/enregistrerDepense";
 import { PaiementCommandeError } from "@/lib/commandeFournisseurSuivi";
 import { isSoldeInsuffisantError } from "@/lib/cashJournal";
@@ -20,7 +22,8 @@ import { proformaDansPortee } from "@/lib/proformaPortee";
 // ✅ Schéma de validation
 const paiementSchema = z.object({
   montant: z.number().positive("Le montant doit être un nombre positif."),
-  methode: z.string().optional(),
+  // Code du moyen de paiement (Finance → Moyens de paiement) : la caisse doit lui être liée.
+  methode: codeMoyenSchema,
   reference: z.string().optional(),
   notes: z.string().optional(),
   datePaiement: z.preprocess(
@@ -40,14 +43,6 @@ const paiementSchema = z.object({
   factureFournisseurId: z.string().optional(),
   nomReceveur: z.string().optional(),
 });
-
-// Méthode saisie sur la fiche proforma → moyen de paiement normalisé.
-const MODE_DEPUIS_METHODE: Record<string, ModePaiementDemande> = {
-  "Espèces": ModePaiementDemande.ESPECES,
-  "Virement": ModePaiementDemande.VIREMENT,
-  "Chèque": ModePaiementDemande.CHEQUE,
-  "MobileMoney": ModePaiementDemande.MOBILE_MONEY,
-};
 
 export async function POST(
   request: NextRequest,
@@ -106,13 +101,20 @@ export async function POST(
       auteur = { email: caisseCaps.email, name: caisseCaps.name };
     }
 
-    const finalCashRegisterId =
-      methode === "Espèces" && type === "PAIEMENT" ? 1 : cashRegisterId;
+    // La caisse est celle choisie (plus de caisse imposée pour les espèces depuis le 2026-11-24 :
+    // la caisse doit être liée au moyen choisi, voir Finance → Moyens de paiement).
+    const finalCashRegisterId = cashRegisterId;
     if (!finalCashRegisterId) {
       return NextResponse.json(
-        { error: "L'ID de la caisse est requis pour cette opération." },
+        { error: "Choisissez la caisse de cette opération." },
         { status: 400 },
       );
+    }
+    // Encaissement : moyen actif, caisse visible et liée à ce moyen (pour une dépense, le même
+    // contrôle est fait par enregistrerDepense).
+    if (type === "PAIEMENT") {
+      const erreurMoyen = await erreurMoyenEtCaisse(prisma, methode, finalCashRegisterId);
+      if (erreurMoyen) return NextResponse.json({ error: erreurMoyen }, { status: 400 });
     }
 
     const invoice = await prisma.invoice.findUnique({
@@ -188,7 +190,7 @@ export async function POST(
           dateDepense: dateOperation,
           cashRegisterId: finalCashRegisterId,
           nomReceveur: nomReceveur?.trim() || rest.reference || "—",
-          modePaiement: MODE_DEPUIS_METHODE[methode ?? ""] ?? ModePaiementDemande.AUTRE,
+          modePaiement: methode,
           notes: rest.notes,
           invoiceId,
           commandeId,

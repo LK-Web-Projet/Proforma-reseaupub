@@ -229,6 +229,7 @@ model CashRegister {
   view           Boolean         @default(true)
   journals       CashJournal[]
   budgetDepenses BudgetDepense[]
+  moyensPaiement MoyenPaiementCaisse[]
 }
 
 model CashJournal {
@@ -625,13 +626,40 @@ enum TypeBudget {
   TIERS // pour le compte d'une entreprise / d'un client, proforma facultative
 }
 
-enum ModePaiementDemande {
-  VIREMENT
-  CHEQUE
-  ESPECES
-  MOBILE_MONEY
-  CARTE
-  AUTRE
+// Moyens de paiement (Finance → Moyens de paiement) : liste gérée, qui remplace la liste figée
+// d'avant le 2026-11-24. `code` est l'identifiant stable enregistré sur les budgets, les lignes, les
+// dépenses et les encaissements (ESPECES, VIREMENT… pour les 6 moyens d'origine, aussi envoyés par
+// CampTrack) : il n'est jamais modifié. Un moyen se désactive, il ne se supprime pas.
+model MoyenPaiement {
+  id             String                @id @default(uuid())
+  code           String                @unique
+  nom            String                @unique
+  description    String?
+  // Ordre d'affichage dans les listes (croissant).
+  ordre          Int                   @default(0)
+  actif          Boolean               @default(true)
+  createdByEmail String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  // Caisses dans lesquelles ce moyen peut être encaissé ou payé. Aucune caisse liée = aucun
+  // paiement possible avec ce moyen (sauf CampTrack, qui choisit lui-même sa caisse).
+  caisses        MoyenPaiementCaisse[]
+  demandesBudget DemandeBudget[]
+  lignesBudget   DemandeBudgetLigne[]
+  depensesBudget BudgetDepense[]
+}
+
+// Lien moyen de paiement ↔ caisse (un moyen peut être lié à plusieurs caisses, une caisse à
+// plusieurs moyens). Seules les caisses visibles sont proposées au paiement.
+model MoyenPaiementCaisse {
+  moyenPaiementId String
+  cashRegisterId  Int
+  createdAt       DateTime      @default(now())
+  moyenPaiement   MoyenPaiement @relation(fields: [moyenPaiementId], references: [id], onDelete: Cascade)
+  cashRegister    CashRegister  @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+
+  @@id([moyenPaiementId, cashRegisterId])
+  @@index([cashRegisterId])
 }
 
 enum TypeAttachmentDemande {
@@ -659,7 +687,9 @@ model DemandeBudget {
   departement         String?
   contexteMotivation  String
   montantTotal        Decimal             @db.Decimal(12, 2)
-  modePaiement        ModePaiementDemande
+  // Moyen de paiement principal (code d'un MoyenPaiement) : celui qui pèse le plus sur les lignes.
+  modePaiement        String
+  moyenPaiement       MoyenPaiement       @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
   typeDepense         String
   pourLeCompteDe      String?
   dateLimiteSouhaitee DateTime?
@@ -704,9 +734,10 @@ model DemandeBudgetLigne {
   // Catégorie normalisée, pour comparer les budgets d'un mois à l'autre (null = non catégorisé,
   // lignes antérieures au Lot 3). Libellés dans lib/budgetTypes.ts.
   categorie            CategorieDepense?
-  // Moyen de paiement prévu pour la ligne (espèces, MoMo, chèque, virement, carte) — sert au
-  // total prévu par moyen de paiement. Null = lignes antérieures (reprises du mode de la demande).
-  modePaiement         ModePaiementDemande?
+  // Moyen de paiement prévu pour la ligne (code d'un MoyenPaiement) — sert au total prévu par
+  // moyen de paiement. Null = lignes antérieures (reprises du mode de la demande).
+  modePaiement         String?
+  moyenPaiement        MoyenPaiement?        @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
   // Précisions libres sur la ligne (quantités, fournisseur pressenti, contexte…) — facultatif,
   // lisible par tous ceux qui voient le budget (fenêtre « Détail » de la ligne).
   detail               String?
@@ -738,7 +769,9 @@ model BudgetDepense {
   montant               Decimal             @db.Decimal(12, 2)
   dateDepense           DateTime
   nomReceveur           String
-  modePaiement          ModePaiementDemande
+  // Code du MoyenPaiement utilisé.
+  modePaiement          String
+  moyenPaiement         MoyenPaiement       @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
   notes                 String?
   cashRegisterId        Int
   cashJournalEntryId    Int                 @unique

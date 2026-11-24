@@ -1,6 +1,7 @@
-import { ModePaiementDemande, Prisma, SourceDepense } from "@prisma/client";
+import { Prisma, SourceDepense } from "@prisma/client";
+import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
 import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
-import { budgetsDeLaProforma, enregistrerDepense } from "@/lib/depenses/enregistrerDepense";
+import { budgetsDeLaProforma, DepenseError, enregistrerDepense } from "@/lib/depenses/enregistrerDepense";
 
 type Db = Prisma.TransactionClient;
 
@@ -27,7 +28,8 @@ export interface EntreeLot {
   libelle: string;
   cashRegisterId: number;
   montant: number;
-  modePaiement: ModePaiementDemande;
+  /** Code d'un moyen de paiement existant (actif ou non : CampTrack n'est pas soumis aux règles de caisse). */
+  modePaiement: string;
   dateDepense: Date;
   ligneBudgetId?: string | null;
   comptableEmail?: string | null;
@@ -47,6 +49,10 @@ export interface EntreeLot {
  * Puis le détail du lot (LotPaiement, référence unique). Le solde de la caisse est toujours contrôlé.
  */
 export async function enregistrerLotPaiement(tx: Db, lot: EntreeLot) {
+  // Le moyen envoyé doit exister (codes d'origine : ESPECES, MOBILE_MONEY…) ; ni son état ni la caisse
+  // ne sont contrôlés — CampTrack choisit lui-même sa caisse.
+  const erreurMoyen = await erreurMoyensPaiement(tx, [lot.modePaiement], new Set([lot.modePaiement]));
+  if (erreurMoyen) throw new DepenseError(erreurMoyen);
   const n = lot.lignes.length;
   const budgets = lot.proformaId ? await budgetsDeLaProforma(tx, lot.proformaId) : [];
   let cashJournalEntry: Prisma.CashJournalGetPayload<object>;

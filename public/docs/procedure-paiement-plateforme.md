@@ -120,7 +120,7 @@ Chef de projet | **Joint le scan signé** sur la fiche du budget | bleu
 Plateforme | Budget **validé** : dépenses possibles sur les lignes accordées | vert
 ```
 
-1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, le **département** concerné (liste gérée dans *Prestataires → Départements* ; le total par département s'affiche sous le total du budget), la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche. Chaque ligne peut aussi recevoir, au choix, un **délai** (sa propre date limite : chaque service a ses échéances) et un **détail** (quantités, prix unitaires, fournisseur pressenti… via l'icône carnet de la ligne). Sur la fiche du budget, un clic sur la désignation d'une ligne ouvre sa fenêtre **Détail** ; un badge signale un délai proche (3 jours ou moins) ou dépassé.
+1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, le **département** concerné (liste gérée dans *Prestataires → Départements* ; le total par département s'affiche sous le total du budget), la catégorie, le **moyen de paiement prévu** (liste gérée dans *Finance → Moyens de paiement*) et le montant. Le total par moyen de paiement s'affiche. Chaque ligne peut aussi recevoir, au choix, un **délai** (sa propre date limite : chaque service a ses échéances) et un **détail** (quantités, prix unitaires, fournisseur pressenti… via l'icône carnet de la ligne). Sur la fiche du budget, un clic sur la désignation d'une ligne ouvre sa fenêtre **Détail** ; un badge signale un délai proche (3 jours ou moins) ou dépassé.
 2. La **DG (ou le valideur) décide d'abord sur la plateforme**, ligne par ligne : **Accorder**, **Ajuster** (un montant plus bas, avec un motif) ou **Demander une correction**. Le bouton *Tout valider* accorde d'un coup toutes les lignes en attente. Le demandeur corrige ou retire les lignes renvoyées.
 3. Dès qu'une ligne est accordée, **le demandeur reçoit une notification** « Budget signé à joindre ». Sur la fiche du budget, la section **Budget signé à joindre** s'affiche **en rouge**.
 4. Le demandeur **imprime** le budget (bouton *Imprimer*), le fait **signer par la DG**, puis **joint le scan signé** (*Joindre le budget signé*).
@@ -220,7 +220,7 @@ Plateforme | Caisse, budget, proforma mis à jour ; **facture et bon payés** | 
 
 Dans **Prestataires → Liste Factures**, chaque facture « en attente » a un bouton **Appliquer le paiement** (aussi sur la fiche du prestataire et sur la fiche du bon). La fenêtre indique la facture, le bon, la ligne de budget et **le montant à payer**, fixé au reste (facture − avances déjà versées). On choisit :
 
-- la caisse, le moyen de paiement, la date et la référence ;
+- le moyen de paiement, puis la caisse (seules les caisses liées à ce moyen sont proposées, voir « Moyens de paiement »), la date et la référence ;
 - la ligne de budget, s'il s'agit d'une facture de prestataire interne ou externe sans ligne ;
 - **la preuve de paiement, obligatoire** (reçu Mobile Money, ordre de virement, décharge espèces).
 
@@ -381,3 +381,13 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
 - Les **prestataires internes et externes** peuvent être rattachés à un département avec un **poste** : responsable de département (un seul par département), équipe, stagiaire professionnel, stagiaire académique, prestataire ponctuel. Les **fournisseurs** ne le sont jamais. Chaque changement (département ou poste) est conservé dans l'historique, avec sa date, son motif et son auteur.
 - La **fiche d'un département** montre son responsable, ses prestataires, ses dépenses des 6 derniers mois (comparées au montant mensuel indicatif) et ses lignes de budget en cours.
 - Droits (Paramètres → Rôles, page Prestataires) : créer, modifier, activer / désactiver un département ; rattacher un prestataire à un département.
+
+## Moyens de paiement
+
+- Les moyens de paiement se gèrent dans **Finance → Moyens de paiement** : nom, description, ordre d'affichage et **caisses liées**. Au départ, la liste contient les 6 moyens d'origine (Espèces, Mobile Money, Chèque, Virement bancaire, Carte bancaire, Autre) ; on peut en ajouter d'autres (Wave, Orange Money…). Un moyen ne se supprime pas : on le **désactive** (il n'est plus proposé, mais reste affiché sur les anciennes opérations).
+- Une caisse peut servir à plusieurs moyens (ex. : une banque pour le virement, le chèque et la carte) et un moyen à plusieurs caisses (ex. : le virement avec plusieurs banques).
+- **Au moment de payer** (encaissement ou dépense sur la proforma, dépense sur une ligne de budget, paiement d'une facture de prestataire, avance sur un bon de commande), on choisit d'abord le moyen : **seules les caisses visibles liées à ce moyen** sont proposées. Une caisse masquée n'est jamais proposée.
+- ⚠️ **Un moyen sans caisse liée ne permet aucun paiement.** Après la mise en place, il faut donc lier les caisses de chaque moyen avant de payer. Le serveur fait le même contrôle : on ne peut pas le contourner.
+- Les espèces ne vont plus d'office dans la « Caisse Comptable » : il suffit de lier le moyen « Espèces » à cette caisse pour obtenir le même résultat.
+- Les paiements envoyés par **Camptrack** ne sont pas soumis à cette règle : Camptrack choisit lui-même sa caisse.
+- Droits (Paramètres → Rôles, page Finance) : créer, modifier (y compris les caisses liées), activer / désactiver un moyen de paiement.

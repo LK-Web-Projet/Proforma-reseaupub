@@ -23,9 +23,10 @@ import {
   TypeBudgetValue,
   CATEGORIE_DEPENSE_VALUES,
   CATEGORIE_DEPENSE_LABELS,
-  MODE_PAIEMENT_OPTIONS,
   totauxParModePaiement,
 } from '@/lib/budgetTypes';
+import { moyensProposes } from '@/lib/moyensPaiement';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 import { NotebookPen, Plus, Trash2 } from 'lucide-react';
 import { SANS_DEPARTEMENT, type DepartementOption } from '@/lib/departements';
 import { toast } from 'sonner';
@@ -232,6 +233,14 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   }, [departements, initialData]);
   const nomDepartement = (id: string) => optionsDepartement.find((d) => d.id === id)?.nom ?? SANS_DEPARTEMENT;
 
+  // Moyens de paiement proposés sur chaque ligne : les actifs, plus ceux déjà présents sur un budget modifié.
+  const { moyens } = useMoyensPaiement();
+  const codesInitiaux = React.useMemo(
+    () => [initialData?.modePaiement, ...(initialData?.lignes ?? []).map((l) => l.modePaiement)],
+    [initialData]
+  );
+  const optionsMoyen = React.useMemo(() => moyensProposes(moyens, ...codesInitiaux), [moyens, codesInitiaux]);
+
   useEffect(() => {
     fetch('/api/factures')
       .then((res) => (res.ok ? res.json() : []))
@@ -339,7 +348,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   const total = lignes.reduce((sum, l) => sum + (Number(l.montant) || 0), 0);
   const totauxParMode = totauxParModePaiement(
     lignes.map((l) => ({ montant: Number(l.montant) || 0, modePaiement: l.modePaiement })),
-    MODE_LIGNE_DEFAUT
+    MODE_LIGNE_DEFAUT,
+    moyens
   ).filter((t) => t.demande > 0);
   // Total par département (lignes avec un montant), du plus gros au plus petit.
   const totauxParDepartement = React.useMemo(() => {
@@ -672,8 +682,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                     >
                       <SelectTrigger className={SELECT_QUI_PASSE_A_LA_LIGNE} aria-label="Moyen de paiement"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {MODE_PAIEMENT_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        {optionsMoyen.map((m) => (
+                          <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { CategorieDepense, ModePaiementDemande, TypeBudget } from "@prisma/client";
+import { CategorieDepense, TypeBudget } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import { JOURS_GRACE_CLOTURE_MENSUELLE } from "@/lib/budgetSuivi";
 
 /**
@@ -20,8 +21,9 @@ const ligneSchema = z.object({
   departementId: z.string({ message: "Choisissez le département de chaque ligne." }).min(1, "Choisissez le département de chaque ligne."),
   montant: z.number().min(0),
   categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie pour chaque ligne." }),
-  // Moyen de paiement prévu pour la ligne ; absent = celui de la demande (voir lignesAvecMode).
-  modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
+  // Moyen de paiement prévu pour la ligne (code, vérifié existant et actif par la route) ; absent =
+  // celui de la demande (voir lignesAvecMode).
+  modePaiement: codeMoyenSchema.optional(),
   // Précisions facultatives (texte libre) et délai propre à la ligne ("AAAA-MM-JJ" ou ISO).
   detail: z.string().trim().max(2000, "Le détail d'une ligne est limité à 2000 caractères.").optional(),
   dateLimite: z
@@ -44,7 +46,7 @@ export const demandeBudgetSchema = z
     departement: z.string().optional(),
     contexteMotivation: z.string().min(1, "Le contexte et la motivation sont requis."),
     // Moyen « principal » : le formulaire l'envoie, déduit des lignes (celui du plus gros montant).
-    modePaiement: z.nativeEnum(ModePaiementDemande),
+    modePaiement: codeMoyenSchema,
     // Type de dépense et bon de commande associé : plus saisis dans le formulaire (facultatifs ;
     // absents à la re-soumission → la valeur déjà enregistrée est conservée).
     typeDepense: z.string().trim().optional(),

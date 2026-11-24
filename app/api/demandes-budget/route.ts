@@ -3,6 +3,7 @@ import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, TypeBudge
 import prisma from "@/lib/prisma";
 import { logBudget, cloturerBudgetsMensuelsEchus, montantAccordeLigne } from "@/lib/budgetSuivi";
 import { erreurDepartementsLignes } from "@/lib/departementsServeur";
+import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
 import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
@@ -134,6 +135,9 @@ export async function POST(request: NextRequest) {
     // mensuel par service et par mois » a été retirée le 2026-11-24) : départements existants et actifs.
     const erreurDepartements = await erreurDepartementsLignes(prisma, data.lignes.map((l) => l.departementId));
     if (erreurDepartements) return NextResponse.json({ error: erreurDepartements }, { status: 400 });
+    // Moyens de paiement du budget et des lignes : existants et actifs.
+    const erreurMoyens = await erreurMoyensPaiement(prisma, [data.modePaiement, ...data.lignes.map((l) => l.modePaiement)]);
+    if (erreurMoyens) return NextResponse.json({ error: erreurMoyens }, { status: 400 });
 
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
 

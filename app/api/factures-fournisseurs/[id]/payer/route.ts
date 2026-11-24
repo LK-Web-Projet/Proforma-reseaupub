@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ModePaiementDemande, NatureDepense, Prisma, SourceDepense, StatutFactureFournisseur } from "@prisma/client";
+import { NatureDepense, Prisma, SourceDepense, StatutFactureFournisseur } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser } from "@/lib/budgetAuth";
 import { etatDepensable, getLigneDisponible, seuilsFranchis } from "@/lib/budgetSuivi";
@@ -146,7 +147,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 const schema = z.object({
   cashRegisterId: z.number().int().positive("Choisissez la caisse."),
   datePaiement: z.string().min(1, "La date du paiement est requise."),
-  modePaiement: z.nativeEnum(ModePaiementDemande),
+  modePaiement: codeMoyenSchema,
   reference: z.string().trim().optional(),
   ligneBudgetId: z.string().optional(),
   invoiceId: z.string().optional(),

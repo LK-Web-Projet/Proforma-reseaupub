@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
+import { moyensProposes } from '@/lib/moyensPaiement';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 
 export interface DepenseARattacher {
   id: string;
@@ -46,6 +47,7 @@ export function BudgetRattacherCard({
   const [cible, setCible] = useState<DepenseARattacher | null>(null);
   const [ligneId, setLigneId] = useState('');
   const [modePaiement, setModePaiement] = useState('MOBILE_MONEY');
+  const { moyens } = useMoyensPaiement();
   const [nomReceveur, setNomReceveur] = useState('');
   const [envoi, setEnvoi] = useState(false);
 
@@ -145,7 +147,7 @@ export function BudgetRattacherCard({
                   <Select value={modePaiement} onValueChange={setModePaiement}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {MODE_PAIEMENT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      {moyensProposes(moyens, modePaiement).map((m) => <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>

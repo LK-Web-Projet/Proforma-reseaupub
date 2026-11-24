@@ -31,7 +31,8 @@ import { DemandeBudgetAddDocumentsDialog } from '@/components/DemandeBudgetAddDo
 import { DemandeBudgetStatusBadge, DemandeBudgetStatus } from '@/components/DemandeBudgetStatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS } from '@/lib/demandeBudgetAttachmentTypes';
-import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel, modePaiementLabel, totauxParModePaiement, typeValideParAdmin } from '@/lib/budgetTypes';
+import { TYPE_BUDGET_META, TypeBudgetValue, typeBudgetLabel, categorieLabel, totauxParModePaiement, typeValideParAdmin } from '@/lib/budgetTypes';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 import { echeanceJustificatif, etatJustificatif } from '@/lib/justificatifs';
 import { generateBudgetPdf } from '@/lib/pdf/budgetPdf';
 import { BudgetProgressBar } from '@/components/budget/BudgetProgressBar';
@@ -162,6 +163,8 @@ const formatMontant = (value: number) =>
 
 export default function DemandeBudgetDetailPage() {
   const { peut } = useDroits();
+  // Noms des moyens de paiement (liste gérée : Finance → Moyens de paiement).
+  const { moyens, libelle: modePaiementLabel } = useMoyensPaiement();
   const [demande, setDemande] = useState<DemandeBudgetDetail | null>(null);
   const [role, setRole] = useState<BudgetRole>(EMPTY_ROLE);
   const [loading, setLoading] = useState(true);
@@ -334,7 +337,7 @@ export default function DemandeBudgetDetailPage() {
             accorde: l.statutValidation === 'ACCORDEE' ? Number(l.montantAccorde ?? l.montant) : null,
             retiree: l.statutValidation === 'RETIREE',
           })),
-          totauxParMode: totauxParModePaiement(demande.lignes, demande.modePaiement),
+          totauxParMode: totauxParModePaiement(demande.lignes, demande.modePaiement, moyens),
           totauxParDepartement: totauxParDepartement(demande.lignes).map((t) => ({ nom: t.nom, demande: t.demande, accorde: t.accorde })),
           preparePar: demande.type === 'CAMPAGNE' ? 'Chef de projet' : 'Demandeur',
         },
@@ -460,7 +463,7 @@ export default function DemandeBudgetDetailPage() {
   const etatJustif = (d: BudgetDepense) =>
     etatJustificatif({ createdAt: d.createdAt, annuleeAt: d.annuleeAt, nbJustificatifs: d.attachments.length, source: d.source }, maintenant);
   const nbJustificatifsEnRetard = demande.depenses.filter((d) => etatJustif(d) === 'EN_RETARD').length;
-  const totauxParMode = totauxParModePaiement(demande.lignes, demande.modePaiement);
+  const totauxParMode = totauxParModePaiement(demande.lignes, demande.modePaiement, moyens);
 
   // Séparation des tâches : qui a validé le budget n'en enregistre pas les dépenses.
   const estValideur = sameEmail(role.email, demande.validatedByEmail);

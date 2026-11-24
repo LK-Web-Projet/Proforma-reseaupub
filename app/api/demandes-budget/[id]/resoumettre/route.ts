@@ -3,6 +3,7 @@ import { ActionBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logBudget } from "@/lib/budgetSuivi";
 import { erreurDepartementsLignes } from "@/lib/departementsServeur";
+import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
 import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
@@ -48,13 +49,21 @@ export async function POST(
 
     // Départements des lignes : existants et actifs — un département désactivé depuis reste accepté
     // s'il était déjà sur ce budget.
-    const anciennesLignes = await prisma.demandeBudgetLigne.findMany({ where: { demandeBudgetId: id }, select: { departementId: true } });
+    const anciennesLignes = await prisma.demandeBudgetLigne.findMany({ where: { demandeBudgetId: id }, select: { departementId: true, modePaiement: true } });
     const erreurDepartements = await erreurDepartementsLignes(
       prisma,
       data.lignes.map((l) => l.departementId),
       new Set(anciennesLignes.map((l) => l.departementId).filter((d): d is string => !!d))
     );
     if (erreurDepartements) return NextResponse.json({ error: erreurDepartements }, { status: 400 });
+    // Moyens de paiement : existants et actifs — un moyen désactivé depuis reste accepté s'il était
+    // déjà sur ce budget.
+    const erreurMoyens = await erreurMoyensPaiement(
+      prisma,
+      [data.modePaiement, ...data.lignes.map((l) => l.modePaiement)],
+      new Set([existing.modePaiement, ...anciennesLignes.map((l) => l.modePaiement)].filter((m): m is string => !!m))
+    );
+    if (erreurMoyens) return NextResponse.json({ error: erreurMoyens }, { status: 400 });
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
 
     // Une demande rejetée n'a jamais eu de dépense ni de dépassement (ils n'existent qu'à partir

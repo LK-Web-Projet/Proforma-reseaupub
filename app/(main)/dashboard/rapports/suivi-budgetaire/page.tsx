@@ -21,8 +21,8 @@ import {
   CATEGORIE_DEPENSE_VALUES,
   CATEGORIE_DEPENSE_LABELS,
   categorieLabel,
-  modePaiementLabel,
 } from '@/lib/budgetTypes';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Download, Wallet, TrendingDown, TrendingUp, Percent } from 'lucide-react';
 import { useDroits } from '@/components/DroitsProvider';
@@ -145,6 +145,8 @@ function GroupeTable({ titre, groupes }: { titre: string; groupes: Groupe[] }) {
 
 export default function SuiviBudgetairePage() {
   const { peut } = useDroits();
+  // Noms des moyens de paiement (liste gérée : Finance → Moyens de paiement).
+  const { libelle: modePaiementLabel } = useMoyensPaiement();
   const [lignes, setLignes] = useState<Ligne[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [interdit, setInterdit] = useState(false);
@@ -196,7 +198,7 @@ export default function SuiviBudgetairePage() {
   // Procédure de paiement (section 4) : total prévu / réalisé par moyen de paiement.
   const parModePaiement = useMemo(
     () => grouper(lignesFiltrees, (l) => l.modePaiement, (m) => modePaiementLabel(m)),
-    [lignesFiltrees]
+    [lignesFiltrees, modePaiementLabel]
   );
 
   const totaux = useMemo(

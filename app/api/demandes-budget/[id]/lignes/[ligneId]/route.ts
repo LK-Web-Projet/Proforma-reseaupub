@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ActionBudget, CategorieDepense, ModePaiementDemande, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
+import { ActionBudget, CategorieDepense, StatutDemandeBudget, StatutLigneBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
 import { toDateJour } from "@/lib/budgetSchema";
 import { erreurDepartementsLignes } from "@/lib/departementsServeur";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
+import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
 import { sendDemandeValideeNotification, sendLigneCorrigeeNotification, sendDemandeRejeteeNotification } from "@/lib/email/demandeBudget";
 
 class CorrectionError extends Error {}
@@ -16,7 +18,7 @@ const schema = z.discriminatedUnion("action", [
     designation: z.string().trim().min(1, "La désignation est requise."),
     categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie." }),
     montant: z.number().positive("Le montant doit être supérieur à 0."),
-    modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
+    modePaiement: codeMoyenSchema.optional(),
     departementId: z.string().min(1).optional(),
     // Absents = inchangés ; chaîne vide = effacés.
     detail: z.string().trim().max(2000, "Le détail est limité à 2000 caractères.").optional(),
@@ -74,6 +76,10 @@ export async function PATCH(
       if (data.action === "MODIFIER") {
         if (data.departementId && data.departementId !== actuelle.departementId) {
           const erreur = await erreurDepartementsLignes(tx, [data.departementId]);
+          if (erreur) throw new CorrectionError(erreur);
+        }
+        if (data.modePaiement && data.modePaiement !== actuelle.modePaiement) {
+          const erreur = await erreurMoyensPaiement(tx, [data.modePaiement]);
           if (erreur) throw new CorrectionError(erreur);
         }
         await tx.demandeBudgetLigne.update({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ModePaiementDemande, NatureDepense, SourceDepense } from "@prisma/client";
+import { NatureDepense, SourceDepense } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser } from "@/lib/budgetAuth";
 import { BUDGET_EPSILON, etatDepensable, getLigneDisponible } from "@/lib/budgetSuivi";
@@ -73,7 +74,7 @@ const schema = z.object({
   montant: z.number().positive("Le montant doit être supérieur à 0."),
   cashRegisterId: z.number().int().positive("Choisissez la caisse."),
   datePaiement: z.string().min(1, "La date du paiement est requise."),
-  modePaiement: z.nativeEnum(ModePaiementDemande),
+  modePaiement: codeMoyenSchema,
   reference: z.string().trim().optional(),
 });
 

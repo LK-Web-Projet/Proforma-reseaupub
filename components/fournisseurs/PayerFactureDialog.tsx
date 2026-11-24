@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Loader2, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
+import { moyensProposes } from '@/lib/moyensPaiement';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 
 const fcfa = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n);
 
@@ -62,6 +63,18 @@ export function PayerFactureDialog({
   const [ligneBudgetId, setLigneBudgetId] = useState('');
   const [preuves, setPreuves] = useState<File[]>([]);
   const [envoi, setEnvoi] = useState(false);
+  const { moyens, charge: moyensCharges, caisses: caissesDuMoyen } = useMoyensPaiement();
+
+  // Caisses proposées : visibles et liées au moyen choisi (solde affiché quand il est connu).
+  const caissesProposees = useMemo(
+    () => caissesDuMoyen(modePaiement).map((c) => ({ ...c, balance: caisses.find((r) => r.id === c.id)?.balance ?? null })),
+    [caissesDuMoyen, modePaiement, caisses]
+  );
+  useEffect(() => {
+    setCashRegisterId((actuelle) =>
+      caissesProposees.some((c) => String(c.id) === actuelle) ? actuelle : caissesProposees.length === 1 ? String(caissesProposees[0].id) : ''
+    );
+  }, [caissesProposees]);
 
   useEffect(() => {
     if (!open || !url) return;
@@ -185,26 +198,29 @@ export function PayerFactureDialog({
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label>Caisse *</Label>
-                  <Select value={cashRegisterId} onValueChange={setCashRegisterId}>
-                    <SelectTrigger><SelectValue placeholder="Choisir la caisse" /></SelectTrigger>
+                  <Label>Moyen de paiement *</Label>
+                  <Select value={modePaiement} onValueChange={setModePaiement}>
+                    <SelectTrigger><SelectValue placeholder="Choisir le moyen" /></SelectTrigger>
                     <SelectContent>
-                      {caisses.map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.name} — {fcfa(c.balance)}</SelectItem>
+                      {moyensProposes(moyens, modePaiement).map((m) => (
+                        <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Moyen de paiement *</Label>
-                  <Select value={modePaiement} onValueChange={setModePaiement}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label>Caisse *</Label>
+                  <Select value={cashRegisterId} onValueChange={setCashRegisterId} disabled={caissesProposees.length === 0}>
+                    <SelectTrigger><SelectValue placeholder={caissesProposees.length === 0 ? 'Aucune caisse' : 'Choisir la caisse'} /></SelectTrigger>
                     <SelectContent>
-                      {MODE_PAIEMENT_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      {caissesProposees.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}{c.balance !== null ? ` — ${fcfa(c.balance)}` : ''}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {moyensCharges && caissesProposees.length === 0 && (
+                    <p className="text-xs text-amber-700">Aucune caisse n&apos;est liée à ce moyen de paiement : voyez Finance → Moyens de paiement.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="pf-date">Date du paiement *</Label>
