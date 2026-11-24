@@ -25,6 +25,49 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite 3) — Départements : table gérée, département par ligne de budget, prestataires rattachés avec poste et historique
+
+**Demande / Contexte**
+Le département se choisissait une fois pour tout le budget, dans une liste figée (avec « Autre » en texte libre : doublons du type « Informatique » / « informatique  » / « COMMERCIAL »). Objectif : savoir chaque mois quel département dépense le plus. Décisions de l'utilisateur : un département **par ligne** ; plus de département sur le budget entier (1b) ; règle « un seul budget mensuel par département et par mois » supprimée (2b) ; nouveaux départements créés seulement depuis leur page (3b) ; noms en MAJUSCULES ; le **responsable** est un prestataire rattaché au département avec un **poste** (responsable, équipe, stagiaire pro, stagiaire académique, prestataire ponctuel) ; les **fournisseurs** ne sont jamais rattachés, seulement des prestataires internes et (certains) externes ; changements suivis dans un historique ; **total par département** affiché sur le budget.
+
+**Modifications apportées**
+- Base (`prisma/schema.prisma`, migration `20261124110000_departements`, ajouts seulement) :
+  - `Departement` : nom (unique, majuscules), code court (unique), description, e-mail, téléphone, code analytique, couleur, montant mensuel indicatif, actif, auteur ;
+  - `DemandeBudgetLigne.departementId` (+ index) ; `Fournisseur.departementId` et `posteDepartement` ;
+  - `FournisseurDepartementHistorique` : ancien/nouveau département, ancien/nouveau poste, date d'effet, motif, auteur ;
+  - reprise : les 7 départements de l'ancienne liste (avec code et description), plus ceux saisis à la main dans les anciens budgets (« Autre » exclu, espaces et casse normalisés) ; chaque ligne existante reçoit le département de son budget ; les rôles ayant la page Prestataires reçoivent les 4 nouveaux droits.
+- `lib/departements.ts` : `normaliserNomDepartement` (majuscules), postes (`POSTES_DEPARTEMENT`), `peutAvoirDepartement` (jamais un « Fournisseur »), `totauxParDepartement`. `lib/departementSchema.ts` (validation), `lib/departementsServeur.ts` (`erreurDepartementsLignes` : département existant et actif, sauf s'il était déjà sur le budget ; `nomPrestataire` ; 409 sur doublon).
+- `lib/permissions.ts` : `fournisseurs.departementCreer`, `fournisseurs.departementModifier`, `fournisseurs.departementActiver`, `fournisseurs.affecterDepartement`.
+- API :
+  - `/api/departements` (GET pour tout compte connecté — le formulaire de budget en a besoin ; POST) et `/api/departements/[id]` (GET fiche : prestataires, historique, dépenses des 6 derniers mois par date de dépense, lignes accordées des budgets ouverts ; PUT ; PATCH actif ; DELETE → 405) ;
+  - `POST /api/fournisseurs/[id]/departement` : rattacher / changer de poste / retirer, avec historique ; refus pour un « Fournisseur », poste obligatoire, **un seul responsable actif** par département, département désactivé refusé ;
+  - prestataires : département renvoyé par la liste et la fiche ; un prestataire passé en type « Fournisseur » est retiré de son département (ligne d'historique).
+- Budget :
+  - `lib/budgetSchema.ts` : `departementId` obligatoire sur chaque ligne ; plus de département obligatoire pour un mensuel ;
+  - création et re-soumission : contrôle des départements ; règle « un mensuel par service et par mois » retirée (`budgetMensuelExistant` n'est plus appelée) ;
+  - correction d'une ligne et reconduction : département modifiable / repris (s'il est encore actif) ;
+  - liste : filtre `departement` = budgets ayant une ligne dans ce département ; colonne = départements des lignes ;
+  - fiche : badge du département sur chaque ligne, dans la fenêtre Détail, en-tête « Département(s) », bloc **Total par département** (demandé, accordé, consommé) ; PDF : département sous la désignation + « Total par département » ;
+  - rapport de suivi budgétaire, recherche et choix de ligne dans la fenêtre facture prestataire : département de la **ligne** (anciennes lignes sans département : celui du budget, sinon « Sans département »).
+- `components/DemandeBudgetForm.tsx` : champ Département du budget et liste figée supprimés ; colonne **Département *** sur chaque ligne (départements actifs, plus ceux déjà présents en modification) ; une nouvelle ligne reprend le département de la précédente ; totaux par département sous le total ; la rangée du haut ne contient plus que le nom de la campagne (ou le receveur) et la proforma.
+- Écrans prestataires :
+  - **Prestataires → Départements** (`app/(main)/fournisseur/departements`) : liste (responsable, nombre de prestataires et de lignes, montant indicatif, interrupteur actif), création / modification (`components/departements/DepartementDialog.tsx`, nom affiché en majuscules) ;
+  - **fiche département** (`…/departements/[id]`) : responsable et contact, dépensé du mois (comparé au montant indicatif), reste à dépenser, barres des 6 derniers mois, prestataires par poste, « Rattacher un prestataire », lignes en cours, historique des mouvements ;
+  - **fiche prestataire** : carte Département (poste, bouton « Changer de département ou de poste », historique) — `components/fournisseurs/PrestataireDepartementCard.tsx`, `components/departements/RattachementDepartementDialog.tsx` ;
+  - liste des prestataires : département et poste sous le type, recherche par département ; menu latéral : « Départements ».
+- `public/docs/procedure-paiement-plateforme.md` : section « Départements ».
+
+**Erreurs rencontrées & solutions**
+- `prisma format` avait réécrit le schéma en LF et réaligné d'autres modèles → remis en CRLF (réalignements conservés, sans effet).
+- Fonctions annexes exportées depuis un fichier de route (refusé par Next.js) → déplacées dans `lib/departementsServeur.ts`.
+- Test en base : la migration précédente (détail et délai) n'est pas appliquée en local → les deux migrations sont jouées dans la transaction de test.
+
+**À tester / points d'attention**
+- **Mises à jour de la base à appliquer** (local et en ligne), dans l'ordre, par `pnpm prisma migrate deploy` : droits par action, détail et délai des lignes, départements. Sans elles, les pages de budget et de prestataires sont en erreur.
+- Vérifié : `tsc` et lint sans erreur ; migration jouée sur la base locale dans une transaction annulée (8 départements, « Informatique » et « informatique  » fusionnés, 15 lignes sur 15 rattachées, 4 droits pour les 3 rôles) ; 19 tests (schémas, majuscules, total par département, département désactivé, rattachement, filtre, requêtes de la fiche), base intacte.
+- À l'écran : compléter les départements créés automatiquement (ex. COMMERCIAL) ; rattacher les prestataires internes avec leur poste ; créer un budget avec des lignes de départements différents (total par département, PDF) ; essayer deux responsables dans un même département (refus attendu).
+- Pas encore fait : rapport « Dépenses par département » mois par mois (classement, comparaison) — prochaine étape ; l'e-mail de soumission n'affiche plus de département pour les nouveaux budgets.
+
 ## 2026-11-24 (suite 2) — Budget de campagne : « Nom de la campagne (client) », proforma à côté
 
 **Demande / Contexte**

@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS, MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
 import { toast } from 'sonner';
+import type { DepartementOption } from '@/lib/departements';
 
 export interface BudgetLigneCorrectionCible {
   id: string;
@@ -18,6 +19,7 @@ export interface BudgetLigneCorrectionCible {
   montant: number;
   detail?: string | null;
   dateLimite?: string | null;
+  departementId?: string | null;
   motifDecision: string | null;
   mode: 'MODIFIER' | 'RETIRER';
 }
@@ -42,6 +44,8 @@ export function BudgetLigneCorrectionDialog({
   const [modePaiement, setModePaiement] = useState('');
   const [montant, setMontant] = useState('');
   const [detail, setDetail] = useState('');
+  const [departementId, setDepartementId] = useState('');
+  const [departements, setDepartements] = useState<DepartementOption[]>([]);
   const [dateLimite, setDateLimite] = useState('');
   const [reponse, setReponse] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,6 +57,12 @@ export function BudgetLigneCorrectionDialog({
     setModePaiement(ligne.modePaiement ?? '');
     setMontant(String(ligne.montant));
     setDetail(ligne.detail ?? '');
+    setDepartementId(ligne.departementId ?? '');
+    // Départements actifs ; celui de la ligne reste proposé même s'il a été désactivé.
+    fetch('/api/departements')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((liste: DepartementOption[]) => setDepartements(liste.filter((d) => d.actif || d.id === ligne.departementId)))
+      .catch(() => setDepartements([]));
     setDateLimite(ligne.dateLimite ? ligne.dateLimite.slice(0, 10) : '');
     setReponse('');
   }, [ligne]);
@@ -64,12 +74,14 @@ export function BudgetLigneCorrectionDialog({
     if (ligne.mode === 'MODIFIER') {
       const m = Number(montant);
       if (!designation.trim()) return void toast.error('La désignation est requise.');
+      if (!departementId) return void toast.error('Choisissez le département de la ligne.');
       if (!categorie) return void toast.error('Choisissez une catégorie.');
       if (!m || m <= 0) return void toast.error('Indiquez un montant valide.');
       body = {
         action: 'MODIFIER',
         designation: designation.trim(),
         categorie,
+        departementId,
         montant: m,
         modePaiement: modePaiement || undefined,
         // Toujours envoyés : une chaîne vide efface le détail ou le délai.
@@ -120,6 +132,20 @@ export function BudgetLigneCorrectionDialog({
                 <div className="space-y-2">
                   <Label htmlFor="corr-designation">Désignation *</Label>
                   <Input id="corr-designation" value={designation} onChange={(e) => setDesignation(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Département *</Label>
+                  <Select value={departementId} onValueChange={setDepartementId}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Département de la ligne" /></SelectTrigger>
+                    <SelectContent>
+                      {departements.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.nom}
+                          {!d.actif ? ' (désactivé)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">

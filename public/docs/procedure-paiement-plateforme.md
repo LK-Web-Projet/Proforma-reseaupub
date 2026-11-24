@@ -120,7 +120,7 @@ Chef de projet | **Joint le scan signé** sur la fiche du budget | bleu
 Plateforme | Budget **validé** : dépenses possibles sur les lignes accordées | vert
 ```
 
-1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche. Chaque ligne peut aussi recevoir, au choix, un **délai** (sa propre date limite : chaque service a ses échéances) et un **détail** (quantités, prix unitaires, fournisseur pressenti… via l'icône carnet de la ligne). Sur la fiche du budget, un clic sur la désignation d'une ligne ouvre sa fenêtre **Détail** ; un badge signale un délai proche (3 jours ou moins) ou dépassé.
+1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, le **département** concerné (liste gérée dans *Prestataires → Départements* ; le total par département s'affiche sous le total du budget), la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche. Chaque ligne peut aussi recevoir, au choix, un **délai** (sa propre date limite : chaque service a ses échéances) et un **détail** (quantités, prix unitaires, fournisseur pressenti… via l'icône carnet de la ligne). Sur la fiche du budget, un clic sur la désignation d'une ligne ouvre sa fenêtre **Détail** ; un badge signale un délai proche (3 jours ou moins) ou dépassé.
 2. La **DG (ou le valideur) décide d'abord sur la plateforme**, ligne par ligne : **Accorder**, **Ajuster** (un montant plus bas, avec un motif) ou **Demander une correction**. Le bouton *Tout valider* accorde d'un coup toutes les lignes en attente. Le demandeur corrige ou retire les lignes renvoyées.
 3. Dès qu'une ligne est accordée, **le demandeur reçoit une notification** « Budget signé à joindre ». Sur la fiche du budget, la section **Budget signé à joindre** s'affiche **en rouge**.
 4. Le demandeur **imprime** le budget (bouton *Imprimer*), le fait **signer par la DG**, puis **joint le scan signé** (*Joindre le budget signé*).
@@ -373,3 +373,11 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
 | « Vous avez validé ce budget … séparation des tâches » | Une autre personne enregistre la dépense |
 | « Le budget … n'est pas ouvert aux dépenses » | Faire valider le budget, ou en créer un nouveau s'il est clôturé |
 | « Le budget signé n'est pas encore joint » | Le demandeur imprime le budget, le fait signer par la DG et joint le scan sur la fiche du budget |
+
+## Départements
+
+- Les départements se gèrent dans **Prestataires → Départements** : nom (toujours en MAJUSCULES), code court, description, contact, code comptable, couleur, montant mensuel indicatif. Un département ne se supprime pas : on le **désactive** (il n'est plus proposé sur les nouvelles lignes).
+- **Chaque ligne de budget** est rattachée à un département ; le budget entier n'a plus de département. La fiche du budget et son PDF affichent le **total par département**.
+- Les **prestataires internes et externes** peuvent être rattachés à un département avec un **poste** : responsable de département (un seul par département), équipe, stagiaire professionnel, stagiaire académique, prestataire ponctuel. Les **fournisseurs** ne le sont jamais. Chaque changement (département ou poste) est conservé dans l'historique, avec sa date, son motif et son auteur.
+- La **fiche d'un département** montre son responsable, ses prestataires, ses dépenses des 6 derniers mois (comparées au montant mensuel indicatif) et ses lignes de budget en cours.
+- Droits (Paramètres → Rôles, page Prestataires) : créer, modifier, activer / désactiver un département ; rattacher un prestataire à un département.

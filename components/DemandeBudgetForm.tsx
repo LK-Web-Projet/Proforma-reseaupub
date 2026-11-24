@@ -26,6 +26,7 @@ import {
   totauxParModePaiement,
 } from '@/lib/budgetTypes';
 import { NotebookPen, Plus, Trash2 } from 'lucide-react';
+import { SANS_DEPARTEMENT, type DepartementOption } from '@/lib/departements';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +36,8 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 interface Ligne {
   designation: string;
+  // Département de la ligne (obligatoire) : id d'un département de la table Départements.
+  departementId: string;
   montant: string;
   categorie: string;
   // Moyen de paiement prévu pour la ligne (le moyen « principal » de la demande en est déduit).
@@ -84,16 +87,6 @@ function modePrincipal(lignes: { montant: number; modePaiement: string }[]): str
   return meilleur;
 }
 
-const DEPARTEMENT_OPTIONS = [
-  'Informatique',
-  'RH',
-  'Direction Générale',
-  'Finance',
-  'Déploiement Terrain',
-  'Régie Publicitaire',
-  'Opérationnel Logistique',
-  'Autre',
-];
 
 // Même règle que le serveur (lib/budgetSchema.ts, moisMensuelAccepte) : mois en cours ou à venir,
 // ou le mois précédent pendant les 5 premiers jours (délai de grâce de clôture).
@@ -106,7 +99,7 @@ function moisMensuelMinimum(): string {
 // Colonnes d'une ligne quand tout tient sur une rangée (conteneur ≥ 64rem) ; en dessous, 2 colonnes
 // puis 1 (téléphone), avec un libellé au-dessus de chaque champ.
 const GRILLE_LIGNE =
-  '@5xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_auto]';
+  '@5xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.1fr)_auto]';
 const LIBELLE_CHAMP = 'block text-xs font-medium text-muted-foreground @5xl:hidden';
 // Liste déroulante dont le texte passe à la ligne au lieu d'être coupé ou de déborder.
 const SELECT_QUI_PASSE_A_LA_LIGNE =
@@ -141,11 +134,9 @@ function nomAvecClient(nomCampagne: string, client: string): string {
   return `${nom} (${client})`;
 }
 
-const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: MODE_LIGNE_DEFAUT, detail: '', dateLimite: '' };
+const emptyLigne: Ligne = { designation: '', departementId: '', montant: '', categorie: '', modePaiement: MODE_LIGNE_DEFAUT, detail: '', dateLimite: '' };
 
 const emptyForm = {
-  departement: '',
-  departementAutre: '',
   contexteMotivation: '',
   dateLimiteSouhaitee: '',
 };
@@ -167,6 +158,9 @@ export interface DemandeBudgetInitialData {
   lignes: {
     designation: string;
     montant: number;
+    departementId?: string | null;
+    /** Département actuel de la ligne (modification) : gardé dans la liste même s'il a été désactivé. */
+    departement?: { id: string; nom: string; code?: string | null } | null;
     categorie?: string | null;
     modePaiement?: string | null;
     detail?: string | null;
@@ -213,6 +207,25 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   const proformaChoisie = invoices.find((inv) => inv.id === proformaIds[0]);
   const clientProforma = proformaChoisie?.client?.nom?.trim() || '';
 
+  // Départements proposés sur chaque ligne (actifs), plus ceux déjà présents sur un budget modifié.
+  const [departements, setDepartements] = useState<DepartementOption[]>([]);
+  useEffect(() => {
+    fetch('/api/departements?actifs=1')
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setDepartements)
+      .catch(() => setDepartements([]));
+  }, []);
+  const optionsDepartement = React.useMemo(() => {
+    const liste = [...departements];
+    for (const l of initialData?.lignes ?? []) {
+      if (l.departement && !liste.some((d) => d.id === l.departement!.id)) {
+        liste.push({ id: l.departement.id, nom: l.departement.nom, code: l.departement.code ?? null, couleur: null, actif: false });
+      }
+    }
+    return liste.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  }, [departements, initialData]);
+  const nomDepartement = (id: string) => optionsDepartement.find((d) => d.id === id)?.nom ?? SANS_DEPARTEMENT;
+
   useEffect(() => {
     fetch('/api/factures')
       .then((res) => (res.ok ? res.json() : []))
@@ -222,17 +235,14 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
   useEffect(() => {
     if (!initialData) return;
-    const departementValeur = initialData.departement ?? '';
-    const departementConnu = departementValeur !== '' && DEPARTEMENT_OPTIONS.includes(departementValeur);
     setForm({
-      departement: departementValeur === '' ? '' : departementConnu ? departementValeur : 'Autre',
-      departementAutre: departementConnu || departementValeur === '' ? '' : departementValeur,
       contexteMotivation: initialData.contexteMotivation,
       dateLimiteSouhaitee: initialData.dateLimiteSouhaitee ? initialData.dateLimiteSouhaitee.split('T')[0] : '',
     });
     setLignes(
       initialData.lignes.map((l) => ({
         designation: l.designation,
+        departementId: l.departementId ?? l.departement?.id ?? '',
         montant: String(l.montant),
         categorie: l.categorie ?? '',
         modePaiement: l.modePaiement || initialData.modePaiement || MODE_LIGNE_DEFAUT,
@@ -274,11 +284,13 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     }
   }, [initialData]);
 
-  const addLigne = () => setLignes((prev) => [...prev, { ...emptyLigne }]);
+  // Nouvelle ligne : même département que la précédente (souvent identique), modifiable.
+  const addLigne = () =>
+    setLignes((prev) => [...prev, { ...emptyLigne, departementId: prev[prev.length - 1]?.departementId ?? '' }]);
   const removeLigne = (index: number) => setLignes((prev) => prev.filter((_, i) => i !== index));
   const updateLigne = (
     index: number,
-    field: 'designation' | 'montant' | 'categorie' | 'modePaiement' | 'detail' | 'dateLimite',
+    field: 'designation' | 'departementId' | 'montant' | 'categorie' | 'modePaiement' | 'detail' | 'dateLimite',
     value: string
   ) => {
     setLignes((prev) => {
@@ -320,6 +332,16 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     lignes.map((l) => ({ montant: Number(l.montant) || 0, modePaiement: l.modePaiement })),
     MODE_LIGNE_DEFAUT
   ).filter((t) => t.demande > 0);
+  // Total par département (lignes avec un montant), du plus gros au plus petit.
+  const totauxParDepartement = React.useMemo(() => {
+    const totaux = new Map<string, number>();
+    for (const l of lignes) {
+      const m = Number(l.montant) || 0;
+      if (m <= 0) continue;
+      totaux.set(l.departementId, (totaux.get(l.departementId) ?? 0) + m);
+    }
+    return [...totaux.entries()].map(([id, montant]) => ({ id, montant })).sort((a, b) => b.montant - a.montant);
+  }, [lignes]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -334,6 +356,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       toast.error('Ajoutez au moins une ligne de dépense avec un montant valide.');
       return;
     }
+    if (lignesValides.some((l) => !l.departementId)) {
+      toast.error('Choisissez le département de chaque ligne.');
+      return;
+    }
     if (lignesValides.some((l) => !l.categorie)) {
       toast.error('Choisissez une catégorie pour chaque ligne.');
       return;
@@ -345,14 +371,8 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
 
     setIsSubmitting(true);
     try {
-      const departement = form.departement === 'Autre' ? form.departementAutre.trim() : form.departement;
-      if (form.departement === 'Autre' && !departement) {
-        toast.error('Veuillez préciser le département.');
-        setIsSubmitting(false);
-        return;
-      }
-      if (typeBudget === 'MENSUEL' && (!departement || !periodeMois)) {
-        toast.error('Un budget mensuel nécessite un service et un mois.');
+      if (typeBudget === 'MENSUEL' && !periodeMois) {
+        toast.error('Un budget mensuel nécessite un mois.');
         setIsSubmitting(false);
         return;
       }
@@ -392,7 +412,6 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       const data = new FormData();
       data.append('type', typeBudget);
       if (typeBudget === 'MENSUEL') data.append('periodeMois', periodeMois);
-      data.append('departement', departement);
       data.append('contexteMotivation', form.contexteMotivation);
       data.append(
         'modePaiement',
@@ -406,6 +425,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         JSON.stringify(
           lignesValides.map((l) => ({
             designation: l.designation,
+            departementId: l.departementId,
             montant: Number(l.montant),
             categorie: l.categorie,
             modePaiement: l.modePaiement,
@@ -489,26 +509,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         />
       </div>
 
-      <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-6', beneficiaireType === 'CAMPAGNE_CLIENT' && 'xl:grid-cols-3')}>
-        <div className="space-y-2 min-w-0">
-          <label>Département{typeBudget === 'MENSUEL' ? ' *' : ''}</label>
-          <Select value={form.departement} onValueChange={(v) => setForm((p) => ({ ...p, departement: v }))}>
-            <SelectTrigger className="w-full"><SelectValue placeholder="Sélectionner un département" /></SelectTrigger>
-            <SelectContent>
-              {DEPARTEMENT_OPTIONS.map((o) => (
-                <SelectItem key={o} value={o}>{o}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {form.departement === 'Autre' && (
-            <Input
-              className="mt-2"
-              placeholder="Précisez le département"
-              value={form.departementAutre}
-              onChange={(e) => setForm((p) => ({ ...p, departementAutre: e.target.value }))}
-            />
-          )}
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2 min-w-0">
           <label>
             {typeBudget === 'CAMPAGNE'
@@ -550,7 +551,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           )}
         </div>
         {beneficiaireType === 'CAMPAGNE_CLIENT' && (
-          <div className="space-y-2 min-w-0 md:col-span-2 xl:col-span-1">
+          <div className="space-y-2 min-w-0">
             <label>
               {typeBudget === 'CAMPAGNE' ? 'Proforma de la campagne *' : 'Proforma associée (facultatif)'}
             </label>
@@ -584,6 +585,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         <div className="@container rounded-md border">
           <div className={cn('hidden @5xl:grid gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground', GRILLE_LIGNE)}>
             <span>Désignation</span>
+            <span>Département *</span>
             <span>Catégorie *</span>
             <span>Moyen de paiement</span>
             <span>Montant (XOF)</span>
@@ -603,6 +605,22 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                       placeholder="Ex: Achat de bâches"
                       aria-label="Désignation"
                     />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <span className={LIBELLE_CHAMP}>Département *</span>
+                    <Select value={ligne.departementId} onValueChange={(v) => updateLigne(index, 'departementId', v)}>
+                      <SelectTrigger className={SELECT_QUI_PASSE_A_LA_LIGNE} aria-label="Département">
+                        <SelectValue placeholder={optionsDepartement.length === 0 ? 'Aucun département' : 'Département'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {optionsDepartement.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.nom}
+                            {!d.actif ? ' (désactivé)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="min-w-0 space-y-1">
                     <span className={LIBELLE_CHAMP}>Catégorie *</span>
@@ -704,6 +722,16 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         </div>
         <div className="flex flex-col items-end gap-1">
           <div className="text-lg font-bold">Total : {formatMontant(total)}</div>
+          {totauxParDepartement.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {totauxParDepartement.map((t) => (
+                <span key={t.id || 'aucun'}>
+                  {t.id ? nomDepartement(t.id) : 'Département à choisir'} :{' '}
+                  <span className="font-medium text-foreground">{formatMontant(t.montant)}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {totauxParMode.length > 1 && (
             <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs text-muted-foreground">
               {totauxParMode.map((t) => (

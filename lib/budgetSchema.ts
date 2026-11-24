@@ -16,6 +16,8 @@ export function moisMensuelAccepte(periode: Date, now = new Date()): boolean {
 
 const ligneSchema = z.object({
   designation: z.string().min(1),
+  // Département de la ligne : obligatoire (vérifié existant et actif par la route).
+  departementId: z.string({ message: "Choisissez le département de chaque ligne." }).min(1, "Choisissez le département de chaque ligne."),
   montant: z.number().min(0),
   categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie pour chaque ligne." }),
   // Moyen de paiement prévu pour la ligne ; absent = celui de la demande (voir lignesAvecMode).
@@ -31,7 +33,7 @@ const ligneSchema = z.object({
 /**
  * Validation commune à la création (POST /api/demandes-budget) et à la re-soumission
  * (POST /api/demandes-budget/[id]/resoumettre), avec les règles propres à chaque type :
- * - MENSUEL  : mois et service obligatoires ;
+ * - MENSUEL  : mois obligatoire (le département est porté par chaque ligne) ;
  * - CAMPAGNE : sa proforma, une seule (les dépenses lui seront imputées) ;
  * - TIERS    : bénéficiaire ("pour le compte de") obligatoire, proforma facultative (une au plus).
  */
@@ -60,7 +62,6 @@ export const demandeBudgetSchema = z
       if (periode && !moisMensuelAccepte(periode)) {
         ctx.addIssue({ code: "custom", path: ["periodeMois"], message: "Ce mois est terminé : un budget mensuel ne peut viser que le mois en cours ou un mois à venir." });
       }
-      if (!d.departement) ctx.addIssue({ code: "custom", path: ["departement"], message: "Le service est requis pour un budget mensuel." });
     }
     if (d.type === TypeBudget.CAMPAGNE && d.proformaIds.length === 0) {
       ctx.addIssue({ code: "custom", path: ["proformaIds"], message: "Un budget de campagne doit être associé à sa proforma." });

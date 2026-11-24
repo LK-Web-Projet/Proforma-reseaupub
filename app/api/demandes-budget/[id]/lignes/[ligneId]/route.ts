@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { logBudget, majStatutApresDecision } from "@/lib/budgetSuivi";
 import { toDateJour } from "@/lib/budgetSchema";
+import { erreurDepartementsLignes } from "@/lib/departementsServeur";
 import { sendDemandeValideeNotification, sendLigneCorrigeeNotification, sendDemandeRejeteeNotification } from "@/lib/email/demandeBudget";
 
 class CorrectionError extends Error {}
@@ -16,6 +17,7 @@ const schema = z.discriminatedUnion("action", [
     categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie." }),
     montant: z.number().positive("Le montant doit être supérieur à 0."),
     modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
+    departementId: z.string().min(1).optional(),
     // Absents = inchangés ; chaîne vide = effacés.
     detail: z.string().trim().max(2000, "Le détail est limité à 2000 caractères.").optional(),
     dateLimite: z
@@ -70,6 +72,10 @@ export async function PATCH(
       }
 
       if (data.action === "MODIFIER") {
+        if (data.departementId && data.departementId !== actuelle.departementId) {
+          const erreur = await erreurDepartementsLignes(tx, [data.departementId]);
+          if (erreur) throw new CorrectionError(erreur);
+        }
         await tx.demandeBudgetLigne.update({
           where: { id: ligne.id },
           data: {
@@ -77,6 +83,7 @@ export async function PATCH(
             categorie: data.categorie,
             montant: data.montant,
             ...(data.modePaiement ? { modePaiement: data.modePaiement } : {}),
+            ...(data.departementId ? { departementId: data.departementId } : {}),
             ...(data.detail !== undefined ? { detail: data.detail || null } : {}),
             ...(data.dateLimite !== undefined ? { dateLimite: toDateJour(data.dateLimite) } : {}),
             statutValidation: StatutLigneBudget.EN_ATTENTE,

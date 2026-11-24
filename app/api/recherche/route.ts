@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
                 { departement: ci(m) },
                 { requesterName: ci(m) },
                 { lignes: { some: { designation: ci(m) } } },
+                { lignes: { some: { departement: { OR: [{ nom: ci(m) }, { code: ci(m) }] } } } },
                 { proformas: { some: { invoice: { OR: [{ numero: ci(m) }, { client: { nom: ci(m) } }] } } } },
               ],
             })),

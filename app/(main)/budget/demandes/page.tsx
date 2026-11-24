@@ -40,6 +40,8 @@ interface DemandeBudget {
   requesterEmail: string;
   requesterName: string | null;
   departement: string | null;
+  /** Départements des lignes (du plus gros montant au plus petit). */
+  departements?: string[];
   montantTotal: number;
   montantConsomme: number;
   montantPlafond: number;
@@ -493,7 +495,13 @@ export default function DemandesBudgetListPage() {
                     )}
                   </TableCell>
                   {isImplique && <TableCell className="text-sm">{demande.requesterName || demande.requesterEmail}</TableCell>}
-                  <TableCell className="text-sm text-muted-foreground">{demande.departement || '-'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground max-w-[220px]">
+                    {demande.departements && demande.departements.length > 0 ? (
+                      <span className="line-clamp-2" title={demande.departements.join(', ')}>{demande.departements.join(', ')}</span>
+                    ) : (
+                      demande.departement || '-'
+                    )}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{format(new Date(demande.createdAt), 'dd/MM/yyyy')}</TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(Number(demande.montantTotal))}</TableCell>
                   <TableCell>

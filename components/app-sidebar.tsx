@@ -117,6 +117,11 @@ const fournisseur = [
     url: "/fournisseur/commandes",
     icon: ClipboardList,
   },
+  {
+    title: "Départements",
+    url: "/fournisseur/departements",
+    icon: Building2,
+  },
 ];
 
 const produitsNav = [

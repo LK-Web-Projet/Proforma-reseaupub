@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { safeCreatedById, requireAnyPage, requirePermission } from '@/lib/authz';
 import { etatEcheance } from '@/lib/retardPaiement';
 import { getDelaisPaiement } from '@/lib/retardPaiementServeur';
+import { peutAvoirDepartement } from '@/lib/departements';
 
 // GET /api/fournisseurs/[id] - Récupérer un fournisseur par ID
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> },) {
@@ -20,6 +21,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         statutHistorique: {
           orderBy: { createdAt: 'desc' },
           include: { createdBy: { select: { nom: true } } },
+        },
+        departement: { select: { id: true, nom: true, code: true, actif: true } },
+        departementHistorique: {
+          orderBy: [{ dateEffet: 'desc' }, { createdAt: 'desc' }],
+          include: {
+            ancienDepartement: { select: { nom: true } },
+            nouveauDepartement: { select: { nom: true } },
+          },
         },
       },
     });
@@ -63,9 +72,33 @@ export async function PUT(req: Request,{ params }: { params: Promise<{ id: strin
     const body = await req.json();
     const { nom, prenom, entreprise, contact, domaineActivite, adresse, email, typeFournisseur, dateDebutContrat, dateFinContrat } = body;
 
+    // Passage au type « Fournisseur » : il ne peut plus être rattaché à un département — il en est
+    // retiré, avec une ligne d'historique.
+    const avant = await prisma.fournisseur.findUnique({ where: { id }, select: { departementId: true, posteDepartement: true } });
+    const retirerDepartement = !!avant?.departementId && !peutAvoirDepartement(typeFournisseur?.trim() || null);
+    const auteur = retirerDepartement ? await prisma.user.findUnique({ where: { id: droitsAcces.userId }, select: { nom: true } }) : null;
+
     const updatedFournisseur = await prisma.fournisseur.update({
       where: { id },
       data: {
+        ...(retirerDepartement
+          ? {
+              departementId: null,
+              posteDepartement: null,
+              departementHistorique: {
+                create: {
+                  ancienDepartementId: avant!.departementId,
+                  nouveauDepartementId: null,
+                  ancienPoste: avant!.posteDepartement,
+                  nouveauPoste: null,
+                  dateEffet: new Date(),
+                  motif: 'Passé en type « Fournisseur » : un fournisseur ne se rattache pas à un département.',
+                  auteurEmail: droitsAcces.email,
+                  auteurNom: auteur?.nom ?? null,
+                },
+              },
+            }
+          : {}),
         nom,
         prenom,
         entreprise,

@@ -84,14 +84,14 @@ export function FactureFournisseurModal({
     if (!isOpen) return;
     fetch('/api/demandes-budget')
       .then((res) => (res.ok ? res.json() : []))
-      .then((demandes: { numero: string; statut: string; type: string; departement: string | null; lignes: { id: string; designation: string; statutValidation: string }[] }[]) =>
+      .then((demandes: { numero: string; statut: string; type: string; departement: string | null; lignes: { id: string; designation: string; statutValidation: string; departement?: { nom: string } | null }[] }[]) =>
         setLignesBudget(
           demandes
             .filter((d) => ['VALIDATION_PARTIELLE', 'VALIDEE', 'EN_COURS'].includes(d.statut))
             .flatMap((d) =>
               d.lignes
                 .filter((l) => l.statutValidation === 'ACCORDEE')
-                .map((l) => ({ id: l.id, label: `${d.numero}${d.departement ? ` (${d.departement})` : ''} — ${l.designation}` }))
+                .map((l) => ({ id: l.id, label: `${d.numero}${(l.departement?.nom ?? d.departement) ? ` (${l.departement?.nom ?? d.departement})` : ''} — ${l.designation}` }))
             )
         )
       )

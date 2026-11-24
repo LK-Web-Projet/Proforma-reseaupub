@@ -28,6 +28,8 @@ interface DemandeBudgetRaw {
     modePaiement: string | null;
     detail: string | null;
     dateLimite: string | null;
+    departementId: string | null;
+    departement: { id: string; nom: string; code: string | null } | null;
   }[];
   attachments: { id: string; kind: string; url: string; fileName: string }[];
 }

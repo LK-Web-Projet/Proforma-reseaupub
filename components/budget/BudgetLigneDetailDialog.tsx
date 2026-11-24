@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 export interface BudgetLigneDetailCible {
   designation: string;
   statutLibelle: string;
+  departement: string;
   categorie: string;
   modePaiement: string;
   demande: number;
@@ -54,6 +55,9 @@ export function BudgetLigneDetailDialog({
             </DialogHeader>
 
             <div className="flex flex-wrap gap-1.5">
+              <Badge variant="outline" className="font-medium border-indigo-200 bg-indigo-50/60 text-indigo-800" title="Département de la ligne">
+                {ligne.departement}
+              </Badge>
               <Badge variant="outline" className="font-normal text-muted-foreground">{ligne.categorie}</Badge>
               <Badge variant="outline" className="font-normal text-muted-foreground" title="Moyen de paiement prévu">
                 {ligne.modePaiement}

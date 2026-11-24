@@ -9,21 +9,21 @@ datasource db {
 }
 
 model Role {
-  id                       String     @id @default(uuid())
-  nom                      String     @unique
-  canManageUsers           Boolean    @default(false)
+  id                       String           @id @default(uuid())
+  nom                      String           @unique
+  canManageUsers           Boolean          @default(false)
   // Droits du circuit budget — cochés par rôle dans Paramètres > Rôles (aucun nom de rôle codé en dur).
-  canValidateBudgetMensuel Boolean    @default(false) // budgets mensuels + budgets au-dessus du plafond délégué
-  canValidateBudget        Boolean    @default(false) // budgets hors mensuels, jusqu'au plafond délégué
-  canPayBudget             Boolean    @default(false) // enregistrer les dépenses (comptable)
+  canValidateBudgetMensuel Boolean          @default(false) // budgets mensuels + budgets au-dessus du plafond délégué
+  canValidateBudget        Boolean          @default(false) // budgets hors mensuels, jusqu'au plafond délégué
+  canPayBudget             Boolean          @default(false) // enregistrer les dépenses (comptable)
   // Saisie directe au journal de caisse (hors budget) : opérations manuelles, transferts,
   // création de caisses, dépenses imputées à une proforma. Sans ce droit, aucun argent ne sort
   // autrement que par le circuit budget (procédure de paiement, règle d'or n° 2).
-  canSaisirCaisse          Boolean    @default(false)
+  canSaisirCaisse          Boolean          @default(false)
   // Petites dépenses hors bon (accueil) : sur une ligne de budget, en espèces seulement, jusqu'à
   // EntrepriseConfig.plafondPetiteDepense. Ne permet ni de payer un BC ni une facture.
-  canSaisirPetiteDepense   Boolean    @default(false)
-  createdAt                DateTime   @default(now())
+  canSaisirPetiteDepense   Boolean          @default(false)
+  createdAt                DateTime         @default(now())
   pages                    RolePage[]
   permissions              RolePermission[]
   users                    User[]
@@ -264,25 +264,78 @@ model CashJournalAttachment {
 }
 
 model Fournisseur {
-  id               String                        @id @default(cuid())
-  nom              String?
-  prenom           String?
-  entreprise       String                        @unique
-  contact          String
-  domaineActivite  String
-  adresse          String
-  email            String?                       @unique
-  typeFournisseur  String?
-  actif            Boolean                       @default(true)
-  dateDebutContrat DateTime?
-  dateFinContrat   DateTime?
-  createdAt        DateTime                      @default(now())
-  updatedAt        DateTime                      @updatedAt
-  commandes        CommandeFournisseur[]
-  factures         FactureFournisseur[]
-  produits         ProduitFournisseur[]
-  statutHistorique FournisseurStatutHistorique[]
-  documents        FournisseurDocument[]
+  id                    String                             @id @default(cuid())
+  nom                   String?
+  prenom                String?
+  entreprise            String                             @unique
+  contact               String
+  domaineActivite       String
+  adresse               String
+  email                 String?                            @unique
+  typeFournisseur       String?
+  actif                 Boolean                            @default(true)
+  dateDebutContrat      DateTime?
+  dateFinContrat        DateTime?
+  createdAt             DateTime                           @default(now())
+  updatedAt             DateTime                           @updatedAt
+  commandes             CommandeFournisseur[]
+  factures              FactureFournisseur[]
+  produits              ProduitFournisseur[]
+  statutHistorique      FournisseurStatutHistorique[]
+  documents             FournisseurDocument[]
+  // Département de rattachement (prestataires internes et certains externes ; jamais un « Fournisseur »)
+  // et poste occupé (lib/departements.ts : RESPONSABLE, EQUIPE, STAGIAIRE_PRO…). Chaque changement
+  // est tracé dans FournisseurDepartementHistorique.
+  departementId         String?
+  departement           Departement?                       @relation(fields: [departementId], references: [id])
+  posteDepartement      String?
+  departementHistorique FournisseurDepartementHistorique[]
+
+  @@index([departementId])
+}
+
+// Départements (services) de l'entreprise : chaque ligne de budget est rattachée à un département,
+// ce qui permet de suivre les dépenses par département et par mois. Le nom est toujours en
+// majuscules (normalisé par le serveur). Un département utilisé ne se supprime pas : on le désactive.
+model Departement {
+  id                 String   @id @default(uuid())
+  nom                String   @unique
+  code               String?  @unique // code court : INFO, RH, DG…
+  description        String?
+  emailContact       String?
+  telephone          String?
+  codeAnalytique     String? // centre de coût utilisé en comptabilité
+  couleur            String? // couleur des graphiques (#RRGGBB)
+  enveloppeMensuelle Decimal? @db.Decimal(12, 2) // montant mensuel indicatif, pour comparer au dépensé
+  actif              Boolean  @default(true)
+  createdByEmail     String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  lignesBudget DemandeBudgetLigne[]
+  prestataires Fournisseur[]
+  arrivees     FournisseurDepartementHistorique[] @relation("HistoriqueNouveauDepartement")
+  departs      FournisseurDepartementHistorique[] @relation("HistoriqueAncienDepartement")
+}
+
+// Historique des rattachements d'un prestataire : changement de département et/ou de poste.
+model FournisseurDepartementHistorique {
+  id                   String       @id @default(uuid())
+  fournisseurId        String
+  ancienDepartementId  String?
+  nouveauDepartementId String?
+  ancienPoste          String?
+  nouveauPoste         String?
+  dateEffet            DateTime
+  motif                String?
+  auteurEmail          String?
+  auteurNom            String?
+  createdAt            DateTime     @default(now())
+  fournisseur          Fournisseur  @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  ancienDepartement    Departement? @relation("HistoriqueAncienDepartement", fields: [ancienDepartementId], references: [id])
+  nouveauDepartement   Departement? @relation("HistoriqueNouveauDepartement", fields: [nouveauDepartementId], references: [id])
+
+  @@index([fournisseurId, dateEffet])
 }
 
 model FournisseurStatutHistorique {
@@ -600,6 +653,8 @@ model DemandeBudget {
   requesterEmail String
   requesterName  String?
 
+  // Ancien département du budget entier (texte libre) : plus saisi depuis le 2026-11-24, chaque ligne
+  // porte son propre département (DemandeBudgetLigne.departementId). Conservé pour l'historique.
   departement         String?
   contexteMotivation  String
   montantTotal        Decimal             @db.Decimal(12, 2)
@@ -657,12 +712,18 @@ model DemandeBudgetLigne {
   // Délai propre à la ligne (date limite de décaissement) : chaque service a ses échéances,
   // notamment pour les budgets mensuels et de campagne. Null = pas de délai particulier.
   dateLimite           DateTime?
+  // Département de la ligne (obligatoire pour toute nouvelle ligne, contrôlé par le serveur ; null =
+  // ancienne ligne sans département reconnu). Sert au total par département et aux rapports.
+  departementId        String?
+  departement          Departement?          @relation(fields: [departementId], references: [id])
   demandeBudget        DemandeBudget         @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   depenses             BudgetDepense[]
   commentaires         BudgetCommentaire[]
   depassements         BudgetDepassement[]
   commandes            CommandeFournisseur[]
   facturesPrestataires FactureFournisseur[]
+
+  @@index([departementId])
 }
 
 // Une dépense réelle imputée à une ligne de budget. Toujours adossée à UNE écriture

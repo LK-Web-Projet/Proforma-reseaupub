@@ -37,6 +37,7 @@ import type { EtatEcheance } from "@/lib/retardPaiement";
 import { useDroits } from "@/components/DroitsProvider";
 import { useActionEnCours } from "@/lib/useActionEnCours";
 import { Indicateur } from "@/components/ui/indicateur";
+import { PrestataireDepartementCard, type HistoriqueDepartementEntree } from "@/components/fournisseurs/PrestataireDepartementCard";
 
 interface StatutHistoriqueEntry {
   id: string;
@@ -51,6 +52,9 @@ interface FournisseurDetails extends Fournisseur {
   /** echeance : échéance de paiement selon le type du prestataire (null si payée ou annulée). */
   factures: (FactureFournisseur & { echeance?: EtatEcheance | null })[];
   statutHistorique: StatutHistoriqueEntry[];
+  posteDepartement: string | null;
+  departement: { id: string; nom: string; code: string | null; actif: boolean } | null;
+  departementHistorique: HistoriqueDepartementEntree[];
 }
 
 export default function FournisseurDetailsPage() {
@@ -167,6 +171,8 @@ export default function FournisseurDetailsPage() {
         <span>Début de contrat : {fournisseur.dateDebutContrat ? format(new Date(fournisseur.dateDebutContrat), "dd/MM/yyyy") : "—"}</span>
         <span>Fin de contrat : {fournisseur.dateFinContrat ? format(new Date(fournisseur.dateFinContrat), "dd/MM/yyyy") : "—"}</span>
       </div>
+
+      <PrestataireDepartementCard prestataire={fournisseur} onChange={fetchFournisseurDetails} />
 
       <div className="rounded-md border bg-white mb-8">
         <div className="flex items-center justify-between px-4 py-3 border-b">

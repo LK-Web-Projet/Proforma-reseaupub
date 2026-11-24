@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const source = await prisma.demandeBudget.findUnique({
       where: { id },
       include: {
-        lignes: { orderBy: { designation: "asc" } },
+        lignes: { orderBy: { designation: "asc" }, include: { departement: { select: { id: true, actif: true } } } },
         proformas: { select: { invoiceId: true } },
         depenses: { where: { annuleeAt: null }, select: { ligneId: true, montant: true } },
         depassements: { where: { statut: StatutDepassement.APPROUVE }, select: { ligneId: true, montant: true } },
@@ -71,6 +71,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           categorie: l.categorie,
           modePaiement: l.modePaiement ?? source.modePaiement,
           detail: l.detail,
+          // Département repris s'il est toujours actif (sinon à choisir à nouveau).
+          departementId: l.departement?.actif ? l.departement.id : null,
           // Mensuel : délai décalé d'autant de mois que le budget ; autres types : à redéfinir.
           dateLimite: l.dateLimite && decalageMois !== null ? decalerMois(l.dateLimite, decalageMois).toISOString() : null,
           precedent: { prevu: accorde, plafond: accorde + depassement, realise },

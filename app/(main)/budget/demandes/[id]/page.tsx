@@ -48,6 +48,7 @@ import { BudgetLigneDecisionDialog, BudgetLigneDecisionCible } from '@/component
 import { BudgetLigneCorrectionDialog, BudgetLigneCorrectionCible } from '@/components/budget/BudgetLigneCorrectionDialog';
 import { BudgetLigneDetailDialog, type BudgetLigneDetailCible } from '@/components/budget/BudgetLigneDetailDialog';
 import { CLASSES_DELAI, etatDelaiLigne, libelleDelai } from '@/lib/budgetDelai';
+import { SANS_DEPARTEMENT, totauxParDepartement } from '@/lib/departements';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2, Printer, FileSignature, Clock, CalendarClock, NotebookText } from 'lucide-react';
@@ -132,6 +133,8 @@ interface DemandeBudgetDetail {
     modePaiement: string | null;
     detail: string | null;
     dateLimite: string | null;
+    departementId: string | null;
+    departement: { id: string; nom: string; code: string | null; couleur: string | null } | null;
     statutValidation: 'EN_ATTENTE' | 'ACCORDEE' | 'A_CORRIGER' | 'RETIREE';
     montantAccorde: number | null;
     decideParEmail: string | null;
@@ -323,6 +326,7 @@ export default function DemandeBudgetDetailPage() {
           lignes: demande.lignes.map((l) => ({
             designation: l.designation,
             detail: l.detail,
+            departement: l.departement?.nom ?? null,
             delai: l.dateLimite ? format(new Date(l.dateLimite), 'dd/MM/yyyy') : null,
             categorie: categorieLabel(l.categorie),
             modePaiement: modePaiementLabel(l.modePaiement || demande.modePaiement),
@@ -331,6 +335,7 @@ export default function DemandeBudgetDetailPage() {
             retiree: l.statutValidation === 'RETIREE',
           })),
           totauxParMode: totauxParModePaiement(demande.lignes, demande.modePaiement),
+          totauxParDepartement: totauxParDepartement(demande.lignes).map((t) => ({ nom: t.nom, demande: t.demande, accorde: t.accorde })),
           preparePar: demande.type === 'CAMPAGNE' ? 'Chef de projet' : 'Demandeur',
         },
         {
@@ -484,6 +489,7 @@ export default function DemandeBudgetDetailPage() {
       designation: l.designation,
       statutLibelle: statutLigneLibelle(l),
       categorie: categorieLabel(l.categorie),
+      departement: l.departement?.nom ?? SANS_DEPARTEMENT,
       modePaiement: modePaiementLabel(l.modePaiement || demande.modePaiement),
       demande: l.demandeLigne,
       accorde: l.statutValidation === 'ACCORDEE' ? l.prevu : null,
@@ -495,6 +501,9 @@ export default function DemandeBudgetDetailPage() {
       motifDecision: l.motifDecision,
     });
   const documentsDemande = demande.attachments.filter((a) => !a.depenseId);
+  // Total par département (lignes non retirées) : demandé, accordé, consommé.
+  const totauxDepartements = totauxParDepartement(demande.lignes, new Map(suiviLignes.map((l) => [l.id, l.consomme])));
+  const nomsDepartements = totauxDepartements.map((t) => t.nom);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -711,7 +720,12 @@ export default function DemandeBudgetDetailPage() {
             <CardTitle className="text-base text-indigo-700">Détails de la demande</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p><span className="text-muted-foreground">Département :</span> {demande.departement || '-'}</p>
+            <p>
+              <span className="text-muted-foreground">{nomsDepartements.length > 1 ? 'Départements :' : 'Département :'}</span>{' '}
+              {nomsDepartements.length > 0 && !(nomsDepartements.length === 1 && nomsDepartements[0] === SANS_DEPARTEMENT)
+                ? nomsDepartements.join(', ')
+                : demande.departement || '-'}
+            </p>
             <p><span className="text-muted-foreground">Pour le compte de :</span> {demande.pourLeCompteDe || '-'}</p>
             {/* Type de dépense : plus saisi, affiché seulement pour les anciens budgets qui en ont un. */}
             {demande.typeDepense && (
@@ -796,6 +810,13 @@ export default function DemandeBudgetDetailPage() {
                         {l.statutValidation === 'ACCORDEE'
                           ? l.accordeeReduite ? 'Accordée partiellement' : 'Accordée'
                           : l.statutValidation === 'EN_ATTENTE' ? 'En attente' : l.statutValidation === 'A_CORRIGER' ? 'À corriger' : 'Retirée'}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="h-5 px-1.5 text-[10px] font-medium border-indigo-200 bg-indigo-50/60 text-indigo-800"
+                        title={l.departement ? `Département : ${l.departement.nom}` : 'Ligne sans département'}
+                      >
+                        {l.departement?.nom ?? SANS_DEPARTEMENT}
                       </Badge>
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground">
                         {categorieLabel(l.categorie)}
@@ -901,7 +922,7 @@ export default function DemandeBudgetDetailPage() {
                         )}
                         {peutCorrigerLignes && l.statutValidation === 'A_CORRIGER' && (
                           <>
-                            <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, modePaiement: l.modePaiement || demande.modePaiement, montant: l.demandeLigne, detail: l.detail, dateLimite: l.dateLimite, motifDecision: l.motifDecision, mode: 'MODIFIER' })}>
+                            <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, modePaiement: l.modePaiement || demande.modePaiement, montant: l.demandeLigne, detail: l.detail, dateLimite: l.dateLimite, departementId: l.departementId, motifDecision: l.motifDecision, mode: 'MODIFIER' })}>
                               <Pencil className="h-3.5 w-3.5" /> Modifier la ligne
                             </Button>
                             <Button size="sm" variant="ghost" className="gap-1 h-7 px-2 text-xs text-red-600" onClick={() => setCorrectionLigne({ id: l.id, designation: l.designation, categorie: l.categorie, montant: l.demandeLigne, motifDecision: l.motifDecision, mode: 'RETIRER' })}>
@@ -961,7 +982,35 @@ export default function DemandeBudgetDetailPage() {
           </Table>
           </div>
           <Separator />
-          <div className="flex flex-col sm:flex-row sm:items-end justify-end gap-4 p-4 pr-6">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-end gap-4 p-4 pr-6">
+            {totauxDepartements.length > 0 && (
+              <div className="text-sm min-w-[260px] lg:mr-auto">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total par département</p>
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-[11px] text-muted-foreground">
+                      <th className="text-left font-normal pr-4"></th>
+                      <th className="text-right font-normal">Demandé</th>
+                      {nbLignesAccordees > 0 && <th className="text-right font-normal pl-3">Accordé</th>}
+                      {totalConsomme > 0 && <th className="text-right font-normal pl-3">Consommé</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {totauxDepartements.map((t) => (
+                      <tr key={t.id ?? 'aucun'}>
+                        <td className="pr-4 py-0.5">
+                          {t.nom}
+                          <span className="text-xs text-muted-foreground"> · {t.nbLignes} ligne{t.nbLignes > 1 ? 's' : ''}</span>
+                        </td>
+                        <td className="text-right py-0.5 whitespace-nowrap font-medium">{formatMontant(t.demande)}</td>
+                        {nbLignesAccordees > 0 && <td className="text-right py-0.5 pl-3 whitespace-nowrap text-muted-foreground">{formatMontant(t.accorde)}</td>}
+                        {totalConsomme > 0 && <td className="text-right py-0.5 pl-3 whitespace-nowrap text-muted-foreground">{formatMontant(t.consomme)}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {totauxParMode.length > 0 && (
               <div className="text-sm min-w-[260px]">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Prévu par moyen de paiement</p>
