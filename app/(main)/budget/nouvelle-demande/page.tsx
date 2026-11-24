@@ -35,7 +35,7 @@ function NouvelleDemandeContent() {
   const initialData: DemandeBudgetInitialData | undefined = source ? { ...source, existingAttachments: [] } : undefined;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => router.push('/budget/demandes')}>
           <ArrowLeft className="w-5 h-5" />

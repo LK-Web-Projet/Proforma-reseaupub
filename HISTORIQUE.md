@@ -25,6 +25,27 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite) — Formulaire de budget plus large, sans défilement horizontal
+
+**Demande / Contexte**
+Le formulaire de saisie d'un budget était trop étroit : le tableau des lignes (désignation, catégorie, moyen, montant, délai) défilait horizontalement. Il faut un formulaire plus large où tout s'affiche bien, et un texte trop long doit passer à la ligne plutôt que défiler.
+
+**Modifications apportées**
+- `app/(main)/budget/nouvelle-demande/page.tsx` et `app/(main)/budget/demandes/[id]/modifier/page.tsx` : largeur maximale `max-w-4xl` → `max-w-6xl` (y compris l'écran de chargement).
+- `components/DemandeBudgetForm.tsx` :
+  - le tableau des lignes (`Table`, cellules en `whitespace-nowrap` et largeurs minimales) est remplacé par une **grille adaptative** fondée sur des requêtes de conteneur Tailwind (`@container`) : une seule rangée quand le bloc fait au moins 64rem (en-tête de colonnes affiché), deux colonnes en dessous (désignation sur toute la largeur), une colonne sur téléphone, avec un libellé au-dessus de chaque champ ; colonnes en `minmax(0, …fr)`, jamais de débordement ;
+  - `ChampAutoHauteur` : la désignation est une zone de texte d'une ligne qui **grandit avec son contenu** (passage à la ligne, hauteur recalculée si la largeur change) ; Entrée et retours à la ligne collés sont neutralisés (la désignation reste un texte d'une ligne) ;
+  - listes Catégorie et Moyen : pleine largeur, le texte passe à la ligne au lieu d'être coupé ;
+  - boutons Détail et Supprimer : icônes seules sur une rangée, icône + texte en mode étroit ;
+  - documents à joindre : type et fichier empilés sur petit écran.
+- Classes générées vérifiées en compilant `app/globals.css` avec Tailwind (`@5xl:grid-cols-[…]`, `@xl:grid-cols-2`, `data-[size=default]:h-auto`, `line-clamp-none`…).
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- À l'écran : formulaire en plein écran (une rangée par ligne), fenêtre réduite (deux colonnes), téléphone (empilé) ; désignation très longue (doit passer à la ligne) ; reconduction (texte « Précédent » sous le montant).
+
 ## 2026-11-24 — Budget : détail et délai propres à chaque ligne
 
 **Demande / Contexte**

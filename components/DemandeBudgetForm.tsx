@@ -7,14 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -109,6 +101,36 @@ function moisMensuelMinimum(): string {
   const now = new Date();
   const d = new Date(now.getFullYear(), now.getMonth() - (now.getDate() <= 5 ? 1 : 0), 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Colonnes d'une ligne quand tout tient sur une rangée (conteneur ≥ 64rem) ; en dessous, 2 colonnes
+// puis 1 (téléphone), avec un libellé au-dessus de chaque champ.
+const GRILLE_LIGNE =
+  '@5xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_auto]';
+const LIBELLE_CHAMP = 'block text-xs font-medium text-muted-foreground @5xl:hidden';
+// Liste déroulante dont le texte passe à la ligne au lieu d'être coupé ou de déborder.
+const SELECT_QUI_PASSE_A_LA_LIGNE =
+  'w-full min-h-9 data-[size=default]:h-auto whitespace-normal text-left *:data-[slot=select-value]:line-clamp-none';
+
+/** Zone de texte d'une ligne qui grandit avec son contenu (le texte passe à la ligne, jamais de défilement). */
+function ChampAutoHauteur({ className, ...props }: React.ComponentProps<typeof Textarea>) {
+  const ref = React.useRef<HTMLTextAreaElement>(null);
+  const ajuster = React.useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, []);
+  React.useLayoutEffect(ajuster, [props.value, ajuster]);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    // La largeur change (fenêtre, passage en 2 colonnes) : la hauteur nécessaire aussi.
+    const observateur = new ResizeObserver(ajuster);
+    observateur.observe(el);
+    return () => observateur.disconnect();
+  }, [ajuster]);
+  return <Textarea ref={ref} rows={1} {...props} className={cn('min-h-9 resize-none overflow-hidden py-1.5 leading-snug', className)} />;
 }
 
 const emptyLigne: Ligne = { designation: '', montant: '', categorie: '', modePaiement: MODE_LIGNE_DEFAUT, detail: '', dateLimite: '' };
@@ -511,63 +533,69 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             <Plus className="mr-2 h-4 w-4" /> Ajouter une ligne
           </Button>
         </div>
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[28%] min-w-[180px]">Désignation</TableHead>
-                <TableHead className="w-[18%] min-w-[150px]">Catégorie *</TableHead>
-                <TableHead className="w-[16%] min-w-[140px]">Moyen de paiement</TableHead>
-                <TableHead className="w-[16%] min-w-[130px]">Montant (XOF)</TableHead>
-                <TableHead className="w-[14%] min-w-[140px]" title="Date limite propre à cette ligne (facultatif)">Délai</TableHead>
-                <TableHead className="w-[8%]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lignes.map((ligne, index) => (
-                <React.Fragment key={index}>
-                <TableRow className={cn(ligne.detailOuvert && 'border-b-0')}>
-                  <TableCell>
-                    <Input
+        {/* Grille adaptative (requêtes de conteneur) : une seule rangée quand la place suffit, deux
+            colonnes sinon, empilé sur téléphone — jamais de défilement horizontal, le texte passe à la ligne. */}
+        <div className="@container rounded-md border">
+          <div className={cn('hidden @5xl:grid gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground', GRILLE_LIGNE)}>
+            <span>Désignation</span>
+            <span>Catégorie *</span>
+            <span>Moyen de paiement</span>
+            <span>Montant (XOF)</span>
+            <span title="Date limite propre à cette ligne (facultatif)">Délai</span>
+            <span className="w-[76px]" aria-hidden="true" />
+          </div>
+          <div className="divide-y">
+            {lignes.map((ligne, index) => (
+              <div key={index} className="space-y-2 p-3">
+                <div className={cn('grid grid-cols-1 @xl:grid-cols-2 gap-3 items-start', GRILLE_LIGNE)}>
+                  <div className="min-w-0 space-y-1 @xl:col-span-2 @5xl:col-span-1">
+                    <span className={LIBELLE_CHAMP}>Désignation</span>
+                    <ChampAutoHauteur
                       value={ligne.designation}
-                      onChange={(e) => updateLigne(index, 'designation', e.target.value)}
+                      onChange={(e) => updateLigne(index, 'designation', e.target.value.replace(/\s*\n\s*/g, ' '))}
+                      onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                       placeholder="Ex: Achat de bâches"
+                      aria-label="Désignation"
                     />
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <span className={LIBELLE_CHAMP}>Catégorie *</span>
                     <Select value={ligne.categorie} onValueChange={(v) => updateLigne(index, 'categorie', v)}>
-                      <SelectTrigger><SelectValue placeholder="Catégorie" /></SelectTrigger>
+                      <SelectTrigger className={SELECT_QUI_PASSE_A_LA_LIGNE} aria-label="Catégorie"><SelectValue placeholder="Catégorie" /></SelectTrigger>
                       <SelectContent>
                         {CATEGORIE_DEPENSE_VALUES.map((c) => (
                           <SelectItem key={c} value={c}>{CATEGORIE_DEPENSE_LABELS[c]}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <span className={LIBELLE_CHAMP}>Moyen de paiement</span>
                     <Select
                       value={ligne.modePaiement || MODE_LIGNE_DEFAUT}
                       onValueChange={(v) => updateLigne(index, 'modePaiement', v)}
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger className={SELECT_QUI_PASSE_A_LA_LIGNE} aria-label="Moyen de paiement"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {MODE_PAIEMENT_OPTIONS.map((o) => (
                           <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <span className={LIBELLE_CHAMP}>Montant (XOF)</span>
                     <Input
                       type="number"
                       step="0.01"
                       value={ligne.montant}
                       onChange={(e) => updateLigne(index, 'montant', e.target.value)}
+                      aria-label="Montant (XOF)"
                     />
                     {ligne.precedent && (
                       <p
                         className={cn(
-                          'text-[11px] mt-1 leading-tight',
+                          'text-[11px] leading-tight',
                           ligne.precedent.realise > ligne.precedent.prevu ? 'text-orange-700' : 'text-muted-foreground'
                         )}
                         title="Budget d'origine : prévu / dépensé réellement"
@@ -575,8 +603,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                         Précédent : {formatMontant(ligne.precedent.prevu)} prévu, {formatMontant(ligne.precedent.realise)} dépensé
                       </p>
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <span className={LIBELLE_CHAMP}>Délai (facultatif)</span>
                     <Input
                       type="date"
                       value={ligne.dateLimite}
@@ -584,53 +613,48 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
                       aria-label="Délai de la ligne"
                       title="Date limite propre à cette ligne (facultatif)"
                     />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end">
+                  </div>
+                  <div className="flex items-center justify-end gap-1 @xl:col-span-2 @5xl:col-span-1 @5xl:w-[76px]">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => basculerDetail(index)}
+                      className={cn('@5xl:size-9 @5xl:px-0', ligne.detail.trim() ? 'text-indigo-700' : 'text-muted-foreground')}
+                      title={ligne.detailOuvert ? 'Masquer le détail' : 'Ajouter un détail à la ligne (facultatif)'}
+                      aria-expanded={!!ligne.detailOuvert}
+                    >
+                      <NotebookPen className="h-4 w-4" />
+                      <span className="@5xl:hidden">{ligne.detailOuvert ? 'Masquer le détail' : 'Détail'}</span>
+                    </Button>
+                    {lignes.length > 1 && (
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        onClick={() => basculerDetail(index)}
-                        className={cn(ligne.detail.trim() ? 'text-indigo-700' : 'text-muted-foreground')}
-                        title={ligne.detailOuvert ? 'Masquer le détail' : 'Ajouter un détail à la ligne (facultatif)'}
-                        aria-expanded={!!ligne.detailOuvert}
+                        size="sm"
+                        onClick={() => removeLigne(index)}
+                        className="text-red-500 hover:text-red-700 @5xl:size-9 @5xl:px-0"
+                        title="Supprimer la ligne"
                       >
-                        <NotebookPen className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" />
+                        <span className="@5xl:hidden">Supprimer</span>
                       </Button>
-                      {lignes.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeLigne(index)}
-                          className="text-red-500 hover:text-red-700"
-                          title="Supprimer la ligne"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
+                    )}
+                  </div>
+                </div>
                 {ligne.detailOuvert && (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={6} className="pt-0">
-                      <Textarea
-                        rows={3}
-                        maxLength={2000}
-                        value={ligne.detail}
-                        onChange={(e) => updateLigne(index, 'detail', e.target.value)}
-                        placeholder={`Détail de « ${ligne.designation.trim() || 'cette ligne'} » (facultatif) : quantités, prix unitaires, fournisseur pressenti, justification…`}
-                        aria-label="Détail de la ligne"
-                      />
-                    </TableCell>
-                  </TableRow>
+                  <Textarea
+                    rows={3}
+                    maxLength={2000}
+                    value={ligne.detail}
+                    onChange={(e) => updateLigne(index, 'detail', e.target.value)}
+                    placeholder={`Détail de « ${ligne.designation.trim() || 'cette ligne'} » (facultatif) : quantités, prix unitaires, fournisseur pressenti, justification…`}
+                    aria-label="Détail de la ligne"
+                  />
                 )}
-                </React.Fragment>
-              ))}
-            </TableBody>
-          </Table>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="flex flex-col items-end gap-1">
           <div className="text-lg font-bold">Total : {formatMontant(total)}</div>
@@ -711,9 +735,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
         <div className="space-y-2">
           {documents.map((doc, index) => (
             <div key={index} className="space-y-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Select value={doc.type} onValueChange={(v) => updateDocumentType(index, v as DocumentUploadType)}>
-                <SelectTrigger className="w-[220px] shrink-0"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[220px] shrink-0"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {DOCUMENT_UPLOAD_TYPES.map((t) => (
                     <SelectItem key={t} value={t}>{ATTACHMENT_TYPE_LABELS[t]}</SelectItem>
