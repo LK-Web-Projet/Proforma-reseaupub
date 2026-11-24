@@ -25,6 +25,23 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-24 (suite 5) — Types de budget : ordre Mensuel, Campagne, Ponctuel ; Tiers indisponible
+
+**Demande / Contexte**
+Réorganiser les cartes de type de budget : Mensuel, puis Campagne, puis Ponctuel ; le type Tiers est rendu indisponible (grisé) pour le moment.
+
+**Modifications apportées**
+- `lib/budgetTypes.ts` : ordre `TYPE_BUDGET_VALUES` = Mensuel, Campagne, Ponctuel, Tiers (cartes du formulaire, mini-cartes de la liste des budgets, filtre du rapport) ; `TYPES_BUDGET_INDISPONIBLES` (Tiers) et `typeBudgetDisponible()`.
+- `components/DemandeBudgetForm.tsx` : carte Tiers grisée, non cliquable, mention « Bientôt » / « Indisponible pour le moment » ; type proposé par défaut : **Mensuel** (première carte) ; un budget Tiers déjà enregistré qu'on modifie garde son type ; une reconduction d'un budget Tiers doit choisir un autre type (message).
+- `app/api/demandes-budget/route.ts` : création d'un budget Tiers refusée (« indisponibles pour le moment ») ; `[id]/resoumettre/route.ts` : refus seulement si le budget n'était pas déjà Tiers.
+- Les budgets Tiers existants restent visibles, filtrables et consultables.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- Formulaire : ordre des cartes, carte Tiers grisée, Mensuel sélectionné d'office. Pour rouvrir Tiers plus tard : retirer 'TIERS' de `TYPES_BUDGET_INDISPONIBLES`.
+
 ## 2026-11-24 (suite 4) — Budget mensuel : plus de receveur
 
 **Demande / Contexte**

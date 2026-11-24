@@ -1,7 +1,18 @@
 // Types de budget — libellés et couleurs partagés par les écrans budget (aucune dépendance
 // serveur : importable côté client). Voir l'enum TypeBudget dans prisma/schema.prisma.
-export const TYPE_BUDGET_VALUES = ['MENSUEL', 'PONCTUEL', 'CAMPAGNE', 'TIERS'] as const;
+// Ordre d'affichage (cartes du formulaire, filtres, rapports) : Mensuel, Campagne, Ponctuel, Tiers.
+export const TYPE_BUDGET_VALUES = ['MENSUEL', 'CAMPAGNE', 'PONCTUEL', 'TIERS'] as const;
 export type TypeBudgetValue = (typeof TYPE_BUDGET_VALUES)[number];
+
+/**
+ * Types qu'on ne peut pas choisir pour un NOUVEAU budget pour le moment (carte grisée, refus du
+ * serveur). Les budgets déjà enregistrés de ce type restent consultables et peuvent être resoumis.
+ */
+export const TYPES_BUDGET_INDISPONIBLES: readonly TypeBudgetValue[] = ['TIERS'];
+
+export function typeBudgetDisponible(type: string): boolean {
+  return !(TYPES_BUDGET_INDISPONIBLES as readonly string[]).includes(type);
+}
 
 export const TYPE_BUDGET_META: Record<TypeBudgetValue, { label: string; description: string; className: string }> = {
   MENSUEL: {

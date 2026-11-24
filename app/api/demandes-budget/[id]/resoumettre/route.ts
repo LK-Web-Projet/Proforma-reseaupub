@@ -3,6 +3,7 @@ import { ActionBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logBudget } from "@/lib/budgetSuivi";
 import { erreurDepartementsLignes } from "@/lib/departementsServeur";
+import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
@@ -39,6 +40,11 @@ export async function POST(
     }
     const data = validation.data;
     assertTypedAttachmentsAllowed(formData);
+
+    // Type indisponible (Tiers) : seulement si le budget était déjà de ce type.
+    if (!typeBudgetDisponible(data.type) && existing.type !== data.type) {
+      return NextResponse.json({ error: `Les budgets « ${typeBudgetLabel(data.type)} » sont indisponibles pour le moment.` }, { status: 400 });
+    }
 
     // Départements des lignes : existants et actifs — un département désactivé depuis reste accepté
     // s'il était déjà sur ce budget.

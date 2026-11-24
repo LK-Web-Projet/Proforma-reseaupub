@@ -19,6 +19,7 @@ import { DOCUMENT_UPLOAD_TYPES, DocumentUploadType, ATTACHMENT_TYPE_LABELS, ATTA
 import {
   TYPE_BUDGET_VALUES,
   TYPE_BUDGET_META,
+  typeBudgetDisponible,
   TypeBudgetValue,
   CATEGORIE_DEPENSE_VALUES,
   CATEGORIE_DEPENSE_LABELS,
@@ -189,7 +190,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     'Moi';
 
   const [form, setForm] = useState(emptyForm);
-  const [typeBudget, setTypeBudget] = useState<TypeBudgetValue>('PONCTUEL');
+  // Premier type proposé : Mensuel (ordre des cartes : Mensuel, Campagne, Ponctuel, Tiers).
+  const [typeBudget, setTypeBudget] = useState<TypeBudgetValue>('MENSUEL');
+  // Type du budget modifié (ou reconduit) : reste sélectionnable même s'il est indisponible.
+  const [typeDeDepart, setTypeDeDepart] = useState<TypeBudgetValue | null>(null);
   const [periodeMois, setPeriodeMois] = useState(() => new Date().toISOString().slice(0, 7));
   // Le bénéficiaire découle du type : campagne / tiers → un client ou une entreprise externe ;
   // mensuel / ponctuel → RESEAUPUB (dépense interne).
@@ -264,7 +268,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       : 'PONCTUEL';
     if (initialData.periodeMois) setPeriodeMois(initialData.periodeMois.slice(0, 7));
     if (pcd.startsWith(RESEAUPUB_PREFIX) && pcd.endsWith(')')) {
-      setTypeBudget(typeInitial === 'CAMPAGNE' || typeInitial === 'TIERS' ? 'PONCTUEL' : typeInitial);
+      const typeRetenu = typeInitial === 'CAMPAGNE' || typeInitial === 'TIERS' ? 'PONCTUEL' : typeInitial;
+      setTypeBudget(typeRetenu);
+      if (mode === 'edit') setTypeDeDepart(typeRetenu);
       setReceveurChoix('AUTRE');
       setReceveurAutreNom(pcd.slice(RESEAUPUB_PREFIX.length, -1));
     } else {
@@ -275,6 +281,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
           ? typeInitial
           : initialData.proformaIds.length > 0 ? 'CAMPAGNE' : 'TIERS';
       setTypeBudget(typeExterne);
+      if (mode === 'edit') setTypeDeDepart(typeExterne);
       const formatCampagne = typeExterne === 'CAMPAGNE' ? /^(.+?) \(([^()]+)\)$/.exec(pcd) : null;
       setNomCampagneClient(
         pcd.startsWith(CAMPAGNE_CLIENT_PREFIX) && pcd.endsWith(')')
@@ -284,7 +291,7 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
             : pcd
       );
     }
-  }, [initialData]);
+  }, [initialData, mode]);
 
   // Nouvelle ligne : même département que la précédente (souvent identique), modifiable.
   const addLigne = () =>
@@ -348,6 +355,10 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!typeBudgetDisponible(typeBudget) && typeDeDepart !== typeBudget) {
+      toast.error(`Les budgets « ${TYPE_BUDGET_META[typeBudget].label} » sont indisponibles pour le moment : choisissez un autre type.`);
+      return;
+    }
     if (!form.contexteMotivation.trim()) {
       toast.error('Le contexte et la motivation de la demande sont requis.');
       return;
@@ -472,20 +483,34 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
       <div className="space-y-2">
         <label>Type de budget *</label>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          {TYPE_BUDGET_VALUES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTypeBudget(t)}
-              className={cn(
-                'rounded-lg border p-3 text-left transition-colors',
-                typeBudget === t ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted/50'
-              )}
-            >
-              <p className="text-sm font-semibold">{TYPE_BUDGET_META[t].label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{TYPE_BUDGET_META[t].description}</p>
-            </button>
-          ))}
+          {TYPE_BUDGET_VALUES.map((t) => {
+            // Type indisponible (Tiers) : carte grisée, sauf pour un budget déjà de ce type (modification).
+            const indisponible = !typeBudgetDisponible(t) && typeDeDepart !== t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => !indisponible && setTypeBudget(t)}
+                disabled={indisponible}
+                aria-disabled={indisponible || undefined}
+                title={indisponible ? 'Indisponible pour le moment' : undefined}
+                className={cn(
+                  'rounded-lg border p-3 text-left transition-colors',
+                  indisponible
+                    ? 'cursor-not-allowed bg-muted/40 opacity-60'
+                    : typeBudget === t ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted/50'
+                )}
+              >
+                <p className="text-sm font-semibold flex items-center justify-between gap-2">
+                  {TYPE_BUDGET_META[t].label}
+                  {indisponible && <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Bientôt</span>}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                  {indisponible ? 'Indisponible pour le moment.' : TYPE_BUDGET_META[t].description}
+                </p>
+              </button>
+            );
+          })}
         </div>
         {typeBudget === 'MENSUEL' && (
           <div className="flex items-center gap-2 pt-1">

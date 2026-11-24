@@ -3,6 +3,7 @@ import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, TypeBudge
 import prisma from "@/lib/prisma";
 import { logBudget, cloturerBudgetsMensuelsEchus, montantAccordeLigne } from "@/lib/budgetSuivi";
 import { erreurDepartementsLignes } from "@/lib/departementsServeur";
+import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
@@ -124,6 +125,10 @@ export async function POST(request: NextRequest) {
     }
     const data = validation.data;
     assertTypedAttachmentsAllowed(formData);
+
+    if (!typeBudgetDisponible(data.type)) {
+      return NextResponse.json({ error: `Les budgets « ${typeBudgetLabel(data.type)} » sont indisponibles pour le moment.` }, { status: 400 });
+    }
 
     // Chaque ligne porte son département (le budget entier n'en a plus, et la règle « un seul budget
     // mensuel par service et par mois » a été retirée le 2026-11-24) : départements existants et actifs.
