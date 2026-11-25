@@ -3,8 +3,8 @@ import prisma from "@/lib/prisma";
 import { getDroits, reponseMigrationManquante, requirePermission } from "@/lib/authz";
 import { proformaDansPortee, refusHorsPortee } from "@/lib/proformaPortee";
 import { getEntrepriseConfig } from "@/lib/entreprise";
-import { isTypeDocumentProforma } from "@/lib/proformaPieces";
-import { descriptionDocument, validerChampsDocument } from "@/lib/documentProformaServeur";
+import { isTypeDocumentProforma, proformaSoldee } from "@/lib/proformaPieces";
+import { chargerProforma, descriptionDocument, validerChampsDocument } from "@/lib/documentProformaServeur";
 import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
 import { saveDocumentProforma } from "@/lib/uploadDocumentProforma";
 import { UploadRejectedError } from "@/lib/uploadSecurity";
@@ -60,12 +60,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: "Choisissez le fichier à joindre." }, { status: 400 });
 
-    const config = await getEntrepriseConfig();
-    const champs = validerChampsDocument(type, Object.fromEntries(form.entries()), config.delaiRelanceFactureClient);
-    if ("erreur" in champs) return NextResponse.json({ error: champs.erreur }, { status: 400 });
-
-    const invoice = await prisma.invoice.findUnique({ where: { id }, select: { numero: true } });
+    const invoice = await chargerProforma(id);
     if (!invoice) return NextResponse.json({ error: "Proforma introuvable." }, { status: 404 });
+
+    const config = await getEntrepriseConfig();
+    const champs = validerChampsDocument(type, Object.fromEntries(form.entries()), config.delaiRelanceFactureClient, {
+      soldee: proformaSoldee(invoice),
+    });
+    if ("erreur" in champs) return NextResponse.json({ error: champs.erreur }, { status: 400 });
     const auteur = await prisma.user.findUnique({ where: { id: droits.userId }, select: { nom: true } });
 
     const fichier = await saveDocumentProforma(file, type, invoice.numero);

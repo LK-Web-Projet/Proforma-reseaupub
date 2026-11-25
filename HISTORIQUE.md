@@ -25,6 +25,27 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 3) — Facture normalisée d'une proforma déjà soldée : sans délai ni relance
+
+**Demande / Contexte**
+Quand la proforma est déjà soldée, joindre la facture normalisée ne doit demander que l'essentiel (la date d'émission), sans date d'envoi au client ni délai de relance : il n'y a plus rien à réclamer.
+
+**Modifications apportées**
+- `lib/proformaPieces.ts` : règle partagée `proformaSoldee` (statut « Soldée », ou plus rien à encaisser après une recette), aussi utilisée par `etatPiecesProforma`.
+- `lib/documentProformaServeur.ts` : `validerChampsDocument(..., { soldee })` — proforma soldée : date d'émission obligatoire (pas dans le futur), précision, numéro et montant gardés, date d'envoi et délai à vide ; `chargerProforma` (numéro, statut, reste à payer, présence d'une recette) ; le texte de l'historique ne dit plus « pas encore envoyée » ni « relance à … j » pour une facture sans délai.
+- `app/api/factures/[id]/documents/route.ts` (ajout) et `[documentId]/route.ts` (modification) : le serveur détermine lui-même si la proforma est soldée ; en modification, la date d'envoi et le délai déjà enregistrés restent tels quels.
+- `components/proforma/PiecesProformaCard.tsx` : proforma soldée → la fenêtre n'affiche que précision, n° de facture, montant et « Émise le », avec le message « Proforma déjà soldée : il suffit de joindre la facture et sa date d'émission. Pas de délai ni de relance. » ; dans la liste des pièces, plus de mention d'envoi ni de relance.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Test des règles (lecture seule sur la base de test) : **17 / 17** — soldée selon le statut ou le reste à payer, date d'envoi et délai ignorés, date d'émission toujours obligatoire et jamais dans le futur, proforma non soldée inchangée (délai par défaut 30, délai 0 refusé), texte de l'historique, aucune alerte, reconnaissance sur de vraies proformas.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+
+**À tester / points d'attention**
+- À l'écran : sur une proforma soldée, « Ajouter une pièce » → Facture normalisée : seuls précision, numéro, montant et date d'émission. Sur une proforma en cours de paiement : date d'envoi et délai toujours demandés.
+
 ## 2026-11-25 (suite 2) — Écran d'attente à l'ouverture d'une proforma
 
 **Demande / Contexte**

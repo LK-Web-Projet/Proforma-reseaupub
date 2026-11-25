@@ -1,3 +1,4 @@
+import prisma from "@/lib/prisma";
 import { toDateJour } from "@/lib/budgetSchema";
 import { LIBELLES_DOCUMENT_PROFORMA, type TypeDocumentProformaValue } from "@/lib/proformaPieces";
 import { fcfa } from "@/lib/proformaHistorique";
@@ -28,12 +29,15 @@ const texte = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? 
  * Vérifie les informations d'une pièce. Facture normalisée : date d'émission et délai de relance
  * obligatoires, date d'envoi au client facultative (à renseigner dès l'envoi : c'est elle qui fait
  * partir le délai), envoi au plus tôt le jour de l'émission, aucune date dans le futur. Les autres
- * pièces n'ont qu'une précision. Renvoie les valeurs, ou le message d'erreur.
+ * pièces n'ont qu'une précision. Proforma déjà soldée (`soldee`) : plus de relance, seules la date
+ * d'émission (obligatoire), la précision, le numéro et le montant sont retenus — date d'envoi et
+ * délai valent null. Renvoie les valeurs, ou le message d'erreur.
  */
 export function validerChampsDocument(
   type: TypeDocumentProformaValue,
   brut: ChampsDocumentBruts,
-  delaiDefaut: number
+  delaiDefaut: number,
+  options: { soldee?: boolean } = {}
 ): ChampsDocument | { erreur: string } {
   const precision = texte(brut.precision, 200);
   if (type !== "FACTURE_NORMALISEE") {
@@ -47,6 +51,10 @@ export function validerChampsDocument(
   }
   const dateEmission = typeof brut.dateEmission === "string" && brut.dateEmission ? toDateJour(brut.dateEmission) : null;
   if (!dateEmission) return { erreur: "Indiquez la date d'émission de la facture normalisée." };
+  if (options.soldee) {
+    if (dateEmission.getTime() > Date.now() + UN_JOUR) return { erreur: "La date d'émission ne peut pas être dans le futur." };
+    return { precision, numeroFacture, montant, dateEmission, dateEnvoiClient: null, delaiRelanceJours: null };
+  }
   const dateEnvoiClient = typeof brut.dateEnvoiClient === "string" && brut.dateEnvoiClient ? toDateJour(brut.dateEnvoiClient) : null;
   if (typeof brut.dateEnvoiClient === "string" && brut.dateEnvoiClient && !dateEnvoiClient) {
     return { erreur: "La date d'envoi au client n'est pas une date valide." };
@@ -62,6 +70,16 @@ export function validerChampsDocument(
   return { precision, numeroFacture, montant, dateEmission, dateEnvoiClient, delaiRelanceJours: delai };
 }
 
+/** Proforma d'une pièce : numéro (rangement) et de quoi savoir si elle est soldée (`proformaSoldee`). */
+export async function chargerProforma(invoiceId: string) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { numero: true, statut: true, resteAPayer: true, _count: { select: { paiements: { where: { type: "PAIEMENT" } } } } },
+  });
+  if (!invoice) return null;
+  return { numero: invoice.numero, statut: invoice.statut as string, resteAPayer: Number(invoice.resteAPayer), aRecette: invoice._count.paiements > 0 };
+}
+
 const jour = (d: Date | null | undefined) => (d ? d.toLocaleDateString("fr-FR", { timeZone: "UTC" }) : null);
 
 /** Texte de l'historique pour une pièce (ajout, modification, retrait). */
@@ -74,7 +92,10 @@ export function descriptionDocument(
   if (d.numeroFacture) parts.push(`n° ${d.numeroFacture}`);
   if (d.montant !== null && d.montant !== undefined) parts.push(fcfa(Number(d.montant)));
   if (d.dateEmission) parts.push(`émise le ${jour(d.dateEmission)}`);
-  if (type === "FACTURE_NORMALISEE") parts.push(d.dateEnvoiClient ? `envoyée au client le ${jour(d.dateEnvoiClient)}` : "pas encore envoyée");
+  // Facture sans délai (proforma déjà soldée) : pas de suivi d'envoi ni de relance à mentionner.
+  if (type === "FACTURE_NORMALISEE" && (d.dateEnvoiClient || d.delaiRelanceJours)) {
+    parts.push(d.dateEnvoiClient ? `envoyée au client le ${jour(d.dateEnvoiClient)}` : "pas encore envoyée");
+  }
   if (d.delaiRelanceJours) parts.push(`relance à ${d.delaiRelanceJours} j`);
   return parts.join(" — ");
 }

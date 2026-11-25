@@ -15,6 +15,7 @@ import {
   echeanceRelance,
   etatPiecesProforma,
   LIBELLES_DOCUMENT_PROFORMA,
+  proformaSoldee,
   TYPES_DOCUMENT_PROFORMA,
   type TypeDocumentProformaValue,
 } from '@/lib/proformaPieces';
@@ -57,6 +58,7 @@ function DocumentProformaDialog({
   invoiceId,
   typeInitial,
   document,
+  soldee,
   onClose,
   onSuccess,
 }: {
@@ -65,6 +67,8 @@ function DocumentProformaDialog({
   typeInitial: TypeDocumentProformaValue;
   /** Pièce à modifier ; null = ajout. */
   document: DocumentProforma | null;
+  /** Proforma déjà soldée : facture normalisée sans date d'envoi ni délai (pas de relance). */
+  soldee: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -105,7 +109,9 @@ function DocumentProformaDialog({
   }, [open, document, typeInitial, invoiceId]);
 
   const facture = type === 'FACTURE_NORMALISEE';
-  const echeance = facture && dateEnvoiClient && Number(delai) > 0 ? echeanceRelance(dateEnvoiClient, Number(delai)) : null;
+  /** Suivi d'envoi et de relance : seulement tant que la proforma n'est pas soldée. */
+  const avecRelance = facture && !soldee;
+  const echeance = avecRelance && dateEnvoiClient && Number(delai) > 0 ? echeanceRelance(dateEnvoiClient, Number(delai)) : null;
 
   const valider = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,7 +119,9 @@ function DocumentProformaDialog({
     if (facture && !dateEmission) return void toast.error("Indiquez la date d'émission de la facture.");
     setEnvoi(true);
     try {
-      const champs = { precision, numeroFacture, montant, dateEmission, dateEnvoiClient, delaiRelanceJours: delai };
+      const champs: Record<string, string> = avecRelance
+        ? { precision, numeroFacture, montant, dateEmission, dateEnvoiClient, delaiRelanceJours: delai }
+        : { precision, numeroFacture, montant, dateEmission };
       let res: Response;
       if (document) {
         res = await fetch(`/api/factures/${invoiceId}/documents/${document.id}`, {
@@ -146,7 +154,9 @@ function DocumentProformaDialog({
         <DialogHeader>
           <DialogTitle>{document ? `Modifier : ${LIBELLES_DOCUMENT_PROFORMA[document.type]}` : 'Ajouter une pièce'}</DialogTitle>
           <DialogDescription>
-            {facture
+            {facture && soldee
+              ? "Proforma déjà soldée : il suffit de joindre la facture et sa date d'émission. Pas de délai ni de relance."
+              : facture
               ? "L'échéance de paiement se calcule à partir de la date d'envoi au client : date d'envoi + délai de relance."
               : 'La pièce est rangée avec les autres documents de la proforma.'}
           </DialogDescription>
@@ -187,11 +197,13 @@ function DocumentProformaDialog({
                   <Input id="piece-montant" type="number" min={0} value={montant} onChange={(e) => setMontant(e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className={cn('grid grid-cols-1 gap-4', avecRelance && 'sm:grid-cols-3')}>
                 <div className="space-y-1.5">
                   <Label htmlFor="piece-emission">Émise le *</Label>
                   <Input id="piece-emission" type="date" value={dateEmission} max={aujourdhui()} onChange={(e) => setDateEmission(e.target.value)} required />
                 </div>
+                {avecRelance && (
+                <>
                 <div className="space-y-1.5">
                   <Label htmlFor="piece-envoi">Envoyée au client le</Label>
                   <Input id="piece-envoi" type="date" value={dateEnvoiClient} min={dateEmission || undefined} max={aujourdhui()} onChange={(e) => setDateEnvoiClient(e.target.value)} />
@@ -200,12 +212,16 @@ function DocumentProformaDialog({
                   <Label htmlFor="piece-delai">Relance après (jours) *</Label>
                   <Input id="piece-delai" type="number" min={1} max={365} value={delai} onChange={(e) => setDelai(e.target.value)} required />
                 </div>
+                </>
+                )}
               </div>
+              {avecRelance && (
               <p className="text-xs text-muted-foreground">
                 {echeance
                   ? `Paiement à réclamer à partir du ${format(echeance, 'dd/MM/yyyy')} s'il n'est pas soldé.`
                   : "Sans date d'envoi, pas de relance : renseignez-la dès que la facture part chez le client."}
               </p>
+              )}
             </>
           )}
           <DialogFooter>
@@ -259,6 +275,7 @@ export function PiecesProformaCard({
   }, [demandeAjout, peutJoindre, onDemandeAjoutTraitee]);
 
   const etat = useMemo(() => etatPiecesProforma({ statut, resteAPayer, aRecette, documents }), [statut, resteAPayer, aRecette, documents]);
+  const soldee = proformaSoldee({ statut, resteAPayer, aRecette });
   const relanceDe = (id: string) => etat.relances.find((r) => r.documentId === id);
 
   const retirer = async () => {
@@ -285,6 +302,7 @@ export function PiecesProformaCard({
         invoiceId={invoiceId}
         typeInitial={dialogue.type}
         document={dialogue.document}
+        soldee={soldee}
         onClose={() => setDialogue((d) => ({ ...d, open: false }))}
         onSuccess={onChange}
       />
@@ -382,7 +400,11 @@ export function PiecesProformaCard({
                       <p className="text-xs text-muted-foreground">
                         {d.numeroFacture ? `N° ${d.numeroFacture} · ` : ''}
                         {d.montant !== null && d.montant !== '' ? `${fcfa(Number(d.montant))} · ` : ''}
-                        émise le {jourFr(d.dateEmission)} · {d.dateEnvoiClient ? `envoyée le ${jourFr(d.dateEnvoiClient)}` : 'pas encore envoyée'} · relance à {d.delaiRelanceJours ?? DELAI_RELANCE_DEFAUT} j
+                        émise le {jourFr(d.dateEmission)}
+                        {/* Proforma soldée (ou facture jointe sans délai) : ni envoi ni relance à suivre. */}
+                        {!soldee && (d.dateEnvoiClient || d.delaiRelanceJours) && (
+                          <> · {d.dateEnvoiClient ? `envoyée le ${jourFr(d.dateEnvoiClient)}` : 'pas encore envoyée'} · relance à {d.delaiRelanceJours ?? DELAI_RELANCE_DEFAUT} j</>
+                        )}
                         {relance && (
                           <span className={cn('ml-1 font-semibold', relance.enRetard ? 'text-red-700' : relance.proche ? 'text-amber-700' : 'text-slate-600')}>
                             → échéance {jourFr(relance.echeance)}

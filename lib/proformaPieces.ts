@@ -83,6 +83,15 @@ export function echeanceRelance(dateEnvoi: Date | string, delaiJours: number): D
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + delaiJours, 12));
 }
 
+/**
+ * Proforma soldée : statut « Soldée », ou plus rien à encaisser après au moins une recette. Une
+ * facture normalisée jointe alors n'a pas de relance : seules la date d'émission et ses références
+ * comptent (ni date d'envoi au client, ni délai).
+ */
+export function proformaSoldee(p: { statut: string; resteAPayer: number | string; aRecette: boolean }): boolean {
+  return p.statut === "Solde" || (Number(p.resteAPayer) <= 0 && p.aRecette);
+}
+
 export function etatPiecesProforma(
   p: { statut: string; resteAPayer: number | string; aRecette: boolean; documents: DocumentProformaInfo[] },
   maintenant: Date = new Date()
@@ -91,7 +100,7 @@ export function etatPiecesProforma(
   const factures = p.documents.filter((d) => d.type === "FACTURE_NORMALISEE");
   const attestation = p.documents.some((d) => d.type === "ATTESTATION_BONNE_FIN");
   const reste = Number(p.resteAPayer);
-  const solde = p.statut === "Solde" || (reste <= 0 && p.aRecette);
+  const solde = proformaSoldee(p);
 
   const factureManquante =
     !sansAlerte && p.statut !== "Annuler" && factures.length === 0 && (STATUTS_FACTURE_ATTENDUE.includes(p.statut) || p.aRecette);

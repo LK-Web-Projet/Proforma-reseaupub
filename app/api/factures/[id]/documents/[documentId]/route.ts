@@ -3,9 +3,9 @@ import prisma from "@/lib/prisma";
 import { reponseMigrationManquante, requirePermission } from "@/lib/authz";
 import { refusHorsPortee } from "@/lib/proformaPortee";
 import { getEntrepriseConfig } from "@/lib/entreprise";
-import { descriptionDocument, validerChampsDocument } from "@/lib/documentProformaServeur";
+import { chargerProforma, descriptionDocument, validerChampsDocument } from "@/lib/documentProformaServeur";
 import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
-import type { TypeDocumentProformaValue } from "@/lib/proformaPieces";
+import { proformaSoldee, type TypeDocumentProformaValue } from "@/lib/proformaPieces";
 
 type Params = { params: Promise<{ id: string; documentId: string }> };
 
@@ -29,9 +29,14 @@ export async function PATCH(request: Request, { params }: Params) {
   try {
     const doc = await charger(id, documentId);
     if (!doc) return NextResponse.json({ error: "Pièce introuvable." }, { status: 404 });
+    const proforma = await chargerProforma(id);
+    if (!proforma) return NextResponse.json({ error: "Proforma introuvable." }, { status: 404 });
+    const soldee = proformaSoldee(proforma);
     const config = await getEntrepriseConfig();
-    const champs = validerChampsDocument(doc.type as TypeDocumentProformaValue, await request.json(), config.delaiRelanceFactureClient);
-    if ("erreur" in champs) return NextResponse.json({ error: champs.erreur }, { status: 400 });
+    const valides = validerChampsDocument(doc.type as TypeDocumentProformaValue, await request.json(), config.delaiRelanceFactureClient, { soldee });
+    if ("erreur" in valides) return NextResponse.json({ error: valides.erreur }, { status: 400 });
+    // Proforma soldée : plus de relance, la date d'envoi et le délai déjà enregistrés restent tels quels.
+    const champs = soldee ? { ...valides, dateEnvoiClient: doc.dateEnvoiClient, delaiRelanceJours: doc.delaiRelanceJours } : valides;
     const auteur = await prisma.user.findUnique({ where: { id: droits.userId }, select: { nom: true } });
     const relanceChange =
       (champs.dateEnvoiClient?.getTime() ?? null) !== (doc.dateEnvoiClient?.getTime() ?? null) || champs.delaiRelanceJours !== doc.delaiRelanceJours;
