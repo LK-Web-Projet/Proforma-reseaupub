@@ -25,6 +25,29 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 8) — Fiche du bon : « Rattacher à un budget » avec la question campagne / hors campagne
+
+**Demande / Contexte**
+Pour les bons existants rattachés ni à un budget ni à une proforma : un bouton « Rattacher à un budget ». La fenêtre demande toujours « campagne ou hors campagne » : campagne → même circuit que le formulaire (proforma, puis ligne de son budget) ; hors campagne → choisir un budget validé disponible (sauf campagne), puis sa ligne. Plus de rattachement direct à une ligne pour un brouillon.
+
+**Modifications apportées**
+- `components/fournisseurs/RattachementCommandeDialog.tsx` (nouveau) : fenêtre qui reprend `RattachementCommandeField` (campagne / hors campagne, proforma, budget, ligne), proformas associables chargées à l'ouverture ; enregistre proforma + ligne ; « rattaché et validé » si la ligne est accordée.
+- `components/fournisseurs/CommandeLiasseCard.tsx` : brouillon sans paiement → bouton **« Rattacher à un budget »** (lié à rien, mis en avant) ou **« Changer le rattachement »** ; texte « Rattaché à rien : rattachez ce bon… ». Bon déjà validé ou livré sans paiement : « Changer de ligne » inchangé (bons existants non repris).
+- `app/api/fournisseurs/commandes/[commandeId]/route.ts` (PATCH) : accepte `proformaId` (ou null = hors campagne) en plus de la ligne ; changement de proforma seulement pour un brouillon sans paiement, proforma validée / payée / soldée ; la règle `refusRattachementCommande` s'applique au rattachement visé (proforma + ligne) ; ligne accordée → validé d'office ; le mode de validation à la main suit le rattachement visé.
+- `app/(main)/fournisseur/commandes/page.tsx` : pastille **« À rattacher »** sur les brouillons liés à rien.
+- Guide : section « Le bon de commande », points 1 et 4.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test, dans une transaction annulée : **9 / 9** — ancien brouillon lié à rien « à rattacher », rattachement campagne sans budget (proforma enregistrée, validation directe), correction en hors campagne (proforma retirée, ligne posée, validé d'office), refus proforma sans budget + ligne ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : liste des bons → BCF-2026-0004 « À rattacher » → fiche → « Rattacher à un budget » → « Hors campagne » → budget → ligne → le bon passe « Validée » ; autre essai en « Campagne » ; « Changer le rattachement » sur un brouillon déjà rattaché.
+
 ## 2026-11-25 (suite 7) — Bon de commande : rattachement obligatoire (campagne ou hors campagne)
 
 **Demande / Contexte**

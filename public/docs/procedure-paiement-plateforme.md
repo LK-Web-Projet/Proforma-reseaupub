@@ -157,7 +157,7 @@ Comptable | **Appliquer le paiement** : bon **payé** | vert
      - La proforma **n'a pas de budget** : pas de ligne ; le bon reste en brouillon et la **direction le valide directement** depuis sa fiche.
    - **Hors campagne** : choisir un **budget validé** qui n'est pas un budget de campagne et qui n'est lié à aucune proforma (mensuel, ponctuel…), puis **sa ligne**.
 
-   Erreur de rattachement : tant que le bon est **en brouillon** (et sans paiement), on le corrige par **Modifier** (campagne ou non, proforma, budget, ligne) ou, sur la fiche, par *Changer de ligne* ; il suit alors le bon circuit. Une ligne d'un autre budget est toujours refusée.
+   Erreur de rattachement : tant que le bon est **en brouillon** (et sans paiement), on le corrige par **Modifier**, ou sur la fiche par **Changer le rattachement** : la fenêtre repose la question « campagne ou hors campagne », puis proforma (et ligne de son budget) ou budget puis ligne. Il suit alors le bon circuit. Une ligne d'un autre budget est toujours refusée.
 2. **Ligne accordée = bon validé d'office.** Si la ligne est accordée et que le bon tient dans ce qui reste à engager sur elle (plafond − déjà dépensé − autres bons en cours), il passe **« Validé »** tout de suite. Une notification part : « Le bon de commande X a été émis pour l'exécution de l'activité liée à la proforma Y » (demandeur du budget, comptables, direction). Au-delà du reste, le bon est refusé : réduire le bon ou demander un dépassement.
 3. **Scan du bon signé** : on l'imprime, la DG le signe, on **joint le scan** sur la fiche du bon. Tant qu'il manque :
    - la partie « Scan du bon de commande signé à joindre » est **en rouge** sur la fiche ;
@@ -165,7 +165,7 @@ Comptable | **Appliquer le paiement** : bon **payé** | vert
    - un rappel est envoyé au demandeur et à la direction ;
    - **aucun paiement** (avance ou solde) n'est possible.
 4. **Campagne sans budget** : la direction **valide directement** le bon depuis sa fiche (statut « Validée »), sans attendre le scan signé. Le scan reste exigé avant tout paiement (avance ou solde, payés depuis la proforma), et le rappel de le joindre est envoyé.
-   **Anciens bons** : un brouillon lié à rien doit d'abord être rattaché (*Modifier*) avant d'être validé ; les autres anciens brouillons (proforma avec budget mais sans ligne…) sont validés par la DG une fois le scan signé joint. Les bons déjà validés, livrés ou payés ne changent pas.
+   **Anciens bons** : un brouillon lié à rien porte la pastille **« À rattacher »** dans la liste ; sur sa fiche, le bouton **« Rattacher à un budget »** ouvre la même fenêtre (campagne ou hors campagne…). Il ne peut pas être validé avant ; les autres anciens brouillons (proforma avec budget mais sans ligne…) sont validés par la DG une fois le scan signé joint. Les bons déjà validés, livrés ou payés ne changent pas.
 5. La fiche du bon affiche la **liasse**, le **payé et le reste par ligne de produit**, les avances et le solde.
 
 ### La liasse du bon de commande

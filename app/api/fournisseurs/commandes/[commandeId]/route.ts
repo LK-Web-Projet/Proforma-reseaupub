@@ -128,9 +128,11 @@ export async function GET(
 const patchSchema = z.object({
     statut: z.nativeEnum(StatutCommandeFournisseur).optional(),
     ligneBudgetId: z.string().nullable().optional(),
+    // Rattachement depuis la fiche (brouillon sans paiement) : proforma de la campagne, ou null (hors campagne).
+    proformaId: z.string().nullable().optional(),
 });
 
-// PATCH /api/fournisseurs/commandes/[commandeId] — statut et/ou ligne de budget, section
+// PATCH /api/fournisseurs/commandes/[commandeId] — statut, ligne de budget et/ou proforma, section
 // « Prestataires » requise. Statut : BROUILLON → VALIDEE → LIVREE, ANNULEE depuis BROUILLON ou
 // VALIDEE (sans paiement), jamais de retour en arrière. Un brouillon rattaché à une ligne de budget
 // ACCORDÉE est validé d'office (validationAutomatiqueCommande). À la main, VALIDEE est réservé au droit
@@ -154,7 +156,7 @@ export async function PATCH(
         if (!validation.success) {
             return NextResponse.json({ error: "Statut ou ligne de budget invalide." }, { status: 400 });
         }
-        const { statut: nouveauStatut, ligneBudgetId } = validation.data;
+        const { statut: nouveauStatut, ligneBudgetId, proformaId } = validation.data;
 
         const actuelle = await prisma.commandeFournisseur.findUnique({
             where: { id: commandeId },
@@ -187,23 +189,43 @@ export async function PATCH(
                         : null
                 : null;
         if (droitNecessaire && !peut(droits, droitNecessaire)) return refusDroit(droitNecessaire);
-        if (ligneBudgetId !== undefined && ligneBudgetId !== actuelle.ligneBudgetId && !peut(droits, "fournisseurs.commandeModifier")) {
+        // Rattachement visé (ce qui est envoyé, sinon l'actuel) : proforma et ligne de budget.
+        const proformaActuelle = actuelle.proformas[0]?.invoiceId ?? null;
+        const proformaVisee = proformaId !== undefined ? proformaId || null : proformaActuelle;
+        const ligneVisee = ligneBudgetId !== undefined ? ligneBudgetId || null : actuelle.ligneBudgetId;
+        const proformaChange = proformaVisee !== proformaActuelle;
+        const ligneChange = ligneVisee !== actuelle.ligneBudgetId;
+        if ((proformaChange || ligneChange) && !peut(droits, "fournisseurs.commandeModifier")) {
             return refusDroit("fournisseurs.commandeModifier");
         }
 
-        if (ligneBudgetId !== undefined && ligneBudgetId !== actuelle.ligneBudgetId) {
+        if (proformaChange || ligneChange) {
             if (actuelle.imputations.length > 0) {
-                return NextResponse.json({ error: "Des paiements ont déjà été faits sur ce bon : sa ligne de budget ne peut plus changer." }, { status: 400 });
+                return NextResponse.json({ error: "Des paiements ont déjà été faits sur ce bon : son rattachement ne peut plus changer." }, { status: 400 });
             }
-            const refusLigne = await refusRattachementCommande(prisma, { ligneBudgetId, proformaId: actuelle.proformas[0]?.invoiceId });
+            if (proformaChange) {
+                // Campagne ↔ hors campagne, ou autre proforma : seulement tant que le bon est en brouillon.
+                if (actuelle.statut !== StatutCommandeFournisseur.BROUILLON) {
+                    return NextResponse.json({ error: "Seul un bon en brouillon peut changer de proforma." }, { status: 400 });
+                }
+                if (proformaVisee) {
+                    const proforma = await prisma.invoice.findUnique({ where: { id: proformaVisee }, select: { statut: true } });
+                    if (!proforma || !STATUTS_PROFORMA_ASSOCIABLES.includes(proforma.statut)) {
+                        return NextResponse.json({ error: "Seules les proformas validées, payées ou soldées peuvent être associées à un bon de commande." }, { status: 400 });
+                    }
+                }
+            }
+            const refusLigne = await refusRattachementCommande(prisma, { ligneBudgetId: ligneVisee, proformaId: proformaVisee });
             if (refusLigne) return NextResponse.json({ error: refusLigne }, { status: 400 });
-            data.ligneBudgetId = ligneBudgetId;
+            if (ligneChange) data.ligneBudgetId = ligneVisee;
             // Ligne accordée : contrôle de l'engagement, et un brouillon est validé d'office.
-            const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId, montantNet: Number(actuelle.montantNet), commandeIdExclu: actuelle.id });
-            if (auto.refus) return NextResponse.json({ error: auto.refus }, { status: 400 });
-            if (auto.valider && actuelle.statut === StatutCommandeFournisseur.BROUILLON && !nouveauStatut) {
-                data.statut = StatutCommandeFournisseur.VALIDEE;
-                emisSurBudget = true;
+            if (ligneVisee) {
+                const auto = await validationAutomatiqueCommande(prisma, { ligneBudgetId: ligneVisee, montantNet: Number(actuelle.montantNet), commandeIdExclu: actuelle.id });
+                if (auto.refus) return NextResponse.json({ error: auto.refus }, { status: 400 });
+                if (auto.valider && actuelle.statut === StatutCommandeFournisseur.BROUILLON && !nouveauStatut) {
+                    data.statut = StatutCommandeFournisseur.VALIDEE;
+                    emisSurBudget = true;
+                }
             }
         }
 
@@ -219,8 +241,8 @@ export async function PATCH(
                     return NextResponse.json({ error: "Seule la direction (signataire des bons de commande) peut valider un bon de commande." }, { status: 403 });
                 }
                 const mode = await modeValidationCommande(prisma, {
-                    ligneBudgetId: data.ligneBudgetId !== undefined ? data.ligneBudgetId : actuelle.ligneBudgetId,
-                    proformaId: actuelle.proformas[0]?.invoiceId,
+                    ligneBudgetId: ligneVisee,
+                    proformaId: proformaVisee,
                     nbBudgetsRattaches: actuelle.demandesBudget.length,
                 });
                 if (mode === "A_RATTACHER") {
@@ -242,7 +264,10 @@ export async function PATCH(
 
         const updatedCommande = await prisma.commandeFournisseur.update({
             where: { id: commandeId },
-            data,
+            data: {
+                ...data,
+                ...(proformaChange ? { proformas: { deleteMany: {}, create: proformaVisee ? [{ invoiceId: proformaVisee }] : [] } } : {}),
+            },
             include: commandeInclude,
         });
 
