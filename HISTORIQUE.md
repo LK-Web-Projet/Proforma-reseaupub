@@ -25,6 +25,33 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 9) — Page « Budget » dans les droits des rôles
+
+**Demande / Contexte**
+La section Budget était ouverte à tout utilisateur connecté (hors des cases par page). Elle doit désormais faire partie des droits : une page « Budget » à cocher par rôle.
+
+**Modifications apportées**
+- `lib/permissions.ts` : page `budget` (« Budget (demandes et suivi) »), adresses `/budget/*`, adresse d'accueil `/budget/demandes` ; le module Budget de la grille est rattaché à cette page (le PDF d'un budget suit la page ; les cases valider / payer / petites dépenses restent valables depuis la proforma et les prestataires) ; sans aucune page, l'accueil mène à « Accès refusé » (Budget n'est plus un repli).
+- `prisma/migrations/20261125120000_page_budget/migration.sql` (ajouts seulement) : tous les rôles existants reçoivent la page Budget (personne ne perd l'accès) ; un nouveau rôle ne l'a pas.
+- `components/app-sidebar.tsx` : rubrique Budget affichée seulement avec la page (lue dans les droits à jour de la base).
+- `app/api/demandes-budget/route.ts` (création) et `[id]/resoumettre/route.ts` : page Budget exigée.
+- `app/api/me/droits/route.ts` : si les pages du compte de connexion sont en retard sur la base (page ajoutée par la mise à jour), elles sont resynchronisées — sinon le contrôle des pages bloquerait `/budget` aux comptes existants.
+- Contrôle des pages (`middleware.ts`, inchangé) : `/budget` est maintenant protégé comme les autres sections (réglage `ENABLE_PAGE_PERMISSIONS=true`).
+- Guide : « Rôles et droits », point « Page Budget ».
+
+**Erreurs rencontrées & solutions**
+- Une ligne de commentaire du fichier de mise à jour coupée à l'écriture (apostrophes) : fichier réécrit.
+
+**Vérifications (2026-11-25)**
+- Test (mise à jour de la base jouée puis annulée) : **17 / 17** — page dans la liste, adresses `/budget/...` (et pas `/budgetx`), accueil (Budget seul, Proforma d'abord, aucune page → accès refusé), module rattaché, PDF refusé sans la page et accordé avec, valider / payer valables sans la page, droit retiré quand la page est décochée, les 3 rôles existants reçoivent la page sans toucher aux autres, mise à jour rejouable sans doublon ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base : `pnpm prisma migrate deploy` (jamais de `reset`), puis redémarrer.
+- Paramètres → Rôles : la carte Budget a maintenant « Accès à la page » ; la décocher pour un rôle de test → rubrique Budget absente du menu, `/budget/demandes` → « Accès refusé », création d'une demande refusée.
+- Comptes existants : leurs pages se resynchronisent à l'ouverture de l'application ; si le menu Budget n'apparaît pas tout de suite, recharger la page (ou se reconnecter).
+
 ## 2026-11-25 (suite 8) — Fiche du bon : « Rattacher à un budget » avec la question campagne / hors campagne
 
 **Demande / Contexte**

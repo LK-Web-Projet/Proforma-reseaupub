@@ -106,6 +106,7 @@ Une action non cochée disparaît de l'écran, et le serveur la refuse avec un m
 - **Commerciaux** : un commercial désactivé n'est plus proposé sur les nouvelles proformas. Ses proformas existantes ne changent pas.
 - **Exports** : chaque export (Excel, PDF) a son droit. Le PDF d'un budget à faire signer reste toujours imprimable.
 - Les cases du circuit budget et de la caisse, décrites dans le tableau ci-dessus, figurent aussi dans cette grille.
+- **Page Budget** : elle se coche comme les autres (avant, tout le monde y avait accès). Sans elle, la rubrique Budget disparaît du menu, on ne peut ni faire une demande de budget ni ouvrir les budgets, et le PDF d'un budget n'est plus téléchargeable. Les cases *Valider les budgets*, *Valider au niveau direction*, *Dépenser / payer* et *Petites dépenses* restent valables depuis la proforma et les prestataires. Lors de la mise à jour, tous les rôles existants ont reçu la page : l'administrateur la retire aux rôles qui ne doivent plus la voir ; un nouveau rôle ne l'a pas.
 
 ---
 

@@ -8,6 +8,7 @@ import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
 import { fcfa } from "@/lib/proformaHistorique";
 import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
+import { requirePage } from "@/lib/authz";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
@@ -119,6 +120,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const caps = await requireBudgetUser();
   if (caps instanceof NextResponse) return caps;
+  // Faire une demande de budget : page « Budget » cochée sur le rôle (depuis le 2026-11-25).
+  const refusPage = await requirePage("budget");
+  if (refusPage) return refusPage;
 
   try {
     const formData = await request.formData();
