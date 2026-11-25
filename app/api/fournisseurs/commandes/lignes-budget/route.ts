@@ -5,9 +5,10 @@ import { lignesBudgetPourCommande } from "@/lib/commandeFournisseurSuivi";
 
 /**
  * GET /api/fournisseurs/commandes/lignes-budget?proformaId=…&commandeId=…
- * Lignes de budget proposées pour financer un bon de commande, selon SA proforma (une seule par bon) :
- * - `aBudget: true` → lignes accordées du budget de la proforma, ligne OBLIGATOIRE ;
- * - `aBudget: false` → lignes des budgets sans proforma (mensuel, ponctuel…), au choix.
+ * Lignes de budget proposées pour financer un bon de commande (voir refusRattachementCommande) :
+ * - campagne, `aBudget: true` → lignes accordées du budget de la proforma, ligne OBLIGATOIRE ;
+ * - campagne, `aBudget: false` → aucune ligne (validation directe par la direction) ;
+ * - hors campagne (sans `proformaId`) → lignes des budgets non « Campagne » sans proforma (mensuel, ponctuel…).
  * Chaque ligne porte ce qui reste à engager (`reste`). `commandeId` : bon en cours de modification
  * (son propre montant n'est pas compté comme engagé).
  */

@@ -21,7 +21,16 @@ interface DemandeBudgetRaw {
   pourLeCompteDe: string | null;
   dateLimiteSouhaitee: string | null;
   proformas: { invoice: { id: string } }[];
-  lignes: { designation: string; montant: number; categorie: string | null; modePaiement: string | null }[];
+  lignes: {
+    designation: string;
+    montant: number;
+    categorie: string | null;
+    modePaiement: string | null;
+    detail: string | null;
+    dateLimite: string | null;
+    departementId: string | null;
+    departement: { id: string; nom: string; code: string | null } | null;
+  }[];
   attachments: { id: string; kind: string; url: string; fileName: string }[];
 }
 
@@ -58,7 +67,7 @@ export default function ModifierDemandeBudgetPage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6 animate-pulse">
+      <div className="max-w-6xl mx-auto space-y-6 animate-pulse">
         <div className="h-8 bg-gray-200 rounded w-1/3" />
         <div className="h-96 bg-gray-200 rounded" />
       </div>
@@ -70,7 +79,7 @@ export default function ModifierDemandeBudgetPage() {
 
   if (!demande || demande.statut !== 'REJETEE' || !isAutorise) {
     return (
-      <div className="max-w-4xl mx-auto text-center py-20">
+      <div className="max-w-6xl mx-auto text-center py-20">
         <p className="text-gray-500 text-lg">
           {!demande
             ? 'Demande introuvable.'
@@ -100,7 +109,7 @@ export default function ModifierDemandeBudgetPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => router.push(`/budget/demandes/${id}`)}>
           <ArrowLeft className="w-5 h-5" />

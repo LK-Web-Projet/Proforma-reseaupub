@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { MODE_PAIEMENT_OPTIONS, receveurObligatoire } from '@/lib/budgetTypes';
+import { receveurObligatoire } from '@/lib/budgetTypes';
+import { moyensProposes } from '@/lib/moyensPaiement';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 import { etatLiasse, partsLignesCommande, payeSurCommande } from '@/lib/commandeFournisseurLiasse';
 
 // 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts).
@@ -105,6 +107,19 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
   // Ligne de produit du bon payée ; '' = tout le bon (réparti au prorata du reste de chaque ligne).
   const [ligneCommandeId, setLigneCommandeId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { moyens, charge: moyensCharges, caisses: caissesDuMoyen } = useMoyensPaiement();
+
+  // Caisses proposées : visibles et liées au moyen choisi (solde affiché quand il est connu).
+  const caissesProposees = useMemo(
+    () => caissesDuMoyen(modePaiement).map((c) => ({ ...c, balance: cashRegisters.find((r) => r.id === c.id)?.balance ?? null })),
+    [caissesDuMoyen, modePaiement, cashRegisters]
+  );
+  // Changement de moyen : la caisse choisie doit rester proposée (une seule → choisie d'office).
+  useEffect(() => {
+    setCashRegisterId((actuelle) =>
+      caissesProposees.some((c) => String(c.id) === actuelle) ? actuelle : caissesProposees.length === 1 ? String(caissesProposees[0].id) : ''
+    );
+  }, [caissesProposees]);
 
   // Cette fenêtre ne saisit plus que des dépenses hors bon (PAIEMENT_SIMPLE) : avances et factures se
   // paient depuis la fiche du bon et la liste des factures (PayerFactureDialog). Le reste du calcul
@@ -255,28 +270,31 @@ export function BudgetDepenseDialog({ demandeId, ligne, proformas, defaultModePa
                 <Input id="dep-date" type="date" value={dateDepense} max={new Date().toISOString().split('T')[0]} onChange={(e) => setDateDepense(e.target.value)} required />
               </div>
               <div className="space-y-2">
-                <Label>Caisse *</Label>
-                <Select value={cashRegisterId} onValueChange={setCashRegisterId}>
-                  <SelectTrigger><SelectValue placeholder="Choisir la caisse" /></SelectTrigger>
+                <Label>Mode de paiement *</Label>
+                <Select value={modePaiement} onValueChange={setModePaiement} disabled={petite}>
+                  <SelectTrigger><SelectValue placeholder="Choisir le moyen" /></SelectTrigger>
                   <SelectContent>
-                    {cashRegisters.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name} — {formatMontant(c.balance)}
-                      </SelectItem>
+                    {moyensProposes(moyens, modePaiement).map((m) => (
+                      <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Mode de paiement *</Label>
-                <Select value={modePaiement} onValueChange={setModePaiement} disabled={petite}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label>Caisse *</Label>
+                <Select value={cashRegisterId} onValueChange={setCashRegisterId} disabled={caissesProposees.length === 0}>
+                  <SelectTrigger><SelectValue placeholder={caissesProposees.length === 0 ? 'Aucune caisse' : 'Choisir la caisse'} /></SelectTrigger>
                   <SelectContent>
-                    {MODE_PAIEMENT_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    {caissesProposees.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}{c.balance !== null ? ` — ${formatMontant(c.balance)}` : ''}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {moyensCharges && caissesProposees.length === 0 && (
+                  <p className="text-xs text-amber-700">Aucune caisse n&apos;est liée à ce moyen de paiement : voyez Finance → Moyens de paiement.</p>
+                )}
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="dep-receveur">

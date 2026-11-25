@@ -120,7 +120,7 @@ Chef de projet | **Joint le scan signé** sur la fiche du budget | bleu
 Plateforme | Budget **validé** : dépenses possibles sur les lignes accordées | vert
 ```
 
-1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, la catégorie, le **moyen de paiement prévu** (espèces, Mobile Money, chèque, virement, carte) et le montant. Le total par moyen de paiement s'affiche.
+1. **Le chef de projet crée le budget** (*Budget → Faire une demande*), type « Campagne », en le liant à **la** proforma du client (un budget n'a qu'**une seule** proforma). Pour chaque ligne, il indique la désignation, le **département** concerné (liste gérée dans *Prestataires → Départements* ; le total par département s'affiche sous le total du budget), la catégorie, le **moyen de paiement prévu** (liste gérée dans *Finance → Moyens de paiement*) et le montant. Le total par moyen de paiement s'affiche. Chaque ligne peut aussi recevoir, au choix, un **délai** (sa propre date limite : chaque service a ses échéances) et un **détail** (quantités, prix unitaires, fournisseur pressenti… via l'icône carnet de la ligne). Sur la fiche du budget, un clic sur la désignation d'une ligne ouvre sa fenêtre **Détail** ; un badge signale un délai proche (3 jours ou moins) ou dépassé.
 2. La **DG (ou le valideur) décide d'abord sur la plateforme**, ligne par ligne : **Accorder**, **Ajuster** (un montant plus bas, avec un motif) ou **Demander une correction**. Le bouton *Tout valider* accorde d'un coup toutes les lignes en attente. Le demandeur corrige ou retire les lignes renvoyées.
 3. Dès qu'une ligne est accordée, **le demandeur reçoit une notification** « Budget signé à joindre ». Sur la fiche du budget, la section **Budget signé à joindre** s'affiche **en rouge**.
 4. Le demandeur **imprime** le budget (bouton *Imprimer*), le fait **signer par la DG**, puis **joint le scan signé** (*Joindre le budget signé*).
@@ -150,18 +150,22 @@ Fournisseur | Envoie sa **facture** (même montant que le bon) | violet
 Comptable | **Appliquer le paiement** : bon **payé** | vert
 ```
 
-1. Le bon est créé dans **Prestataires → Bons de commande**, avec **une seule proforma**. Le champ **« Ligne de budget »** propose :
-   - **proforma liée à un budget** : **uniquement les lignes accordées de ce budget**, avec ce qui reste à engager sur chacune ;
-   - **pas de proforma** (achat interne) ou **proforma sans budget** : les lignes des budgets sans proforma (mensuel, ponctuel…).
+1. Le bon est créé dans **Prestataires → Bons de commande**. Le formulaire demande d'abord : **« Ce bon de commande est-il pour une campagne ? »**. **Un bon est toujours rattaché** : il n'y a plus de bon lié à rien.
+   - **Campagne** : la **proforma** est obligatoire (une seule, validée, payée ou soldée).
+     - La proforma a un **budget validé** : la **ligne de ce budget** qui finance le bon est obligatoire (seules ses lignes accordées sont proposées, avec ce qui reste à engager).
+     - La proforma a un budget **pas encore validé** : le bon ne peut pas être émis ; attendre la validation du budget.
+     - La proforma **n'a pas de budget** : pas de ligne ; le bon reste en brouillon et la **direction le valide directement** depuis sa fiche.
+   - **Hors campagne** : choisir un **budget validé** qui n'est pas un budget de campagne et qui n'est lié à aucune proforma (mensuel, ponctuel…), puis **sa ligne**.
 
-   La ligne est **facultative à la création** (choix « Plus tard ») : sans ligne, le bon reste en brouillon. On la choisit ensuite sur la **fiche du bon** (*Rattacher à une ligne de budget*), qui ne montre, elle aussi, que les lignes du budget de la proforma du bon. Une ligne d'un autre budget est toujours refusée.
+   Erreur de rattachement : tant que le bon est **en brouillon** (et sans paiement), on le corrige par **Modifier**, ou sur la fiche par **Changer le rattachement** : la fenêtre repose la question « campagne ou hors campagne », puis proforma (et ligne de son budget) ou budget puis ligne. Il suit alors le bon circuit. Une ligne d'un autre budget est toujours refusée.
 2. **Ligne accordée = bon validé d'office.** Si la ligne est accordée et que le bon tient dans ce qui reste à engager sur elle (plafond − déjà dépensé − autres bons en cours), il passe **« Validé »** tout de suite. Une notification part : « Le bon de commande X a été émis pour l'exécution de l'activité liée à la proforma Y » (demandeur du budget, comptables, direction). Au-delà du reste, le bon est refusé : réduire le bon ou demander un dépassement.
 3. **Scan du bon signé** : on l'imprime, la DG le signe, on **joint le scan** sur la fiche du bon. Tant qu'il manque :
    - la partie « Scan du bon de commande signé à joindre » est **en rouge** sur la fiche ;
    - une **pastille rouge « Scan signé manquant »** s'affiche dans la liste des bons ;
    - un rappel est envoyé au demandeur et à la direction ;
    - **aucun paiement** (avance ou solde) n'est possible.
-4. Un bon sans ligne de budget (campagne sans budget) suit l'ancien circuit : la DG le valide une fois le scan joint.
+4. **Campagne sans budget** : la direction **valide directement** le bon depuis sa fiche (statut « Validée »), sans attendre le scan signé. Le scan reste exigé avant tout paiement (avance ou solde, payés depuis la proforma), et le rappel de le joindre est envoyé.
+   **Anciens bons** : un brouillon lié à rien porte la pastille **« À rattacher »** dans la liste ; sur sa fiche, le bouton **« Rattacher à un budget »** ouvre la même fenêtre (campagne ou hors campagne…). Il ne peut pas être validé avant ; les autres anciens brouillons (proforma avec budget mais sans ligne…) sont validés par la DG une fois le scan signé joint. Les bons déjà validés, livrés ou payés ne changent pas.
 5. La fiche du bon affiche la **liasse**, le **payé et le reste par ligne de produit**, les avances et le solde.
 
 ### La liasse du bon de commande
@@ -220,13 +224,22 @@ Plateforme | Caisse, budget, proforma mis à jour ; **facture et bon payés** | 
 
 Dans **Prestataires → Liste Factures**, chaque facture « en attente » a un bouton **Appliquer le paiement** (aussi sur la fiche du prestataire et sur la fiche du bon). La fenêtre indique la facture, le bon, la ligne de budget et **le montant à payer**, fixé au reste (facture − avances déjà versées). On choisit :
 
-- la caisse, le moyen de paiement, la date et la référence ;
+- le moyen de paiement, puis la caisse (seules les caisses liées à ce moyen sont proposées, voir « Moyens de paiement »), la date et la référence ;
 - la ligne de budget, s'il s'agit d'une facture de prestataire interne ou externe sans ligne ;
 - **la preuve de paiement, obligatoire** (reçu Mobile Money, ordre de virement, décharge espèces).
 
 En un clic : sortie de caisse, ligne de budget consommée, dépense sur la proforma de la campagne, facture **« payée »**, et bon **« payé »** s'il ne reste rien. Si quelque chose bloque (scan du bon manquant, liasse incomplète, budget pas ouvert), la fenêtre l'indique en rouge.
 
 **Liasse** : par défaut, le solde d'un bon exige aussi le bordereau de livraison signé (ou l'attestation de service fait) et la facture avec sa pièce. La proforma fournisseur et le BAT ne bloquent jamais le paiement. Ce réglage se change dans **Paramètres → Rôles** (« Exiger la liasse complète pour payer un bon de commande »). Le scan du bon signé reste toujours exigé.
+
+### Facture réglée hors plateforme, et changer le statut d'une facture
+
+Le statut d'une facture se change depuis le **menu de statut** (clic sur le statut, dans la liste des factures ou sur la fiche du prestataire). Chaque changement fait à la main est gardé dans l'**historique** de la facture (icône horloge à côté du statut) : ancien et nouveau statut, date, auteur, moyen de paiement, preuve, motif.
+
+- **Payée (réglée hors plateforme)** : pour une facture déjà réglée en dehors de la plateforme et liée à **aucun bon de commande ni ligne de budget**. Il faut le droit *Marquer une facture payée sans paiement* (au départ : l'administration ; à ouvrir à d'autres rôles dans Paramètres → Rôles). On indique **le moyen de paiement, la date et la preuve** (obligatoires) et, au besoin, une référence. Aucune sortie de caisse : la facture est seulement notée payée, avec la mention « hors plateforme ».
+- Une facture liée à un bon de commande ou à une ligne de budget passe payée **uniquement** par *Appliquer le paiement*.
+- **Annuler** une facture en attente : droit *Annuler une facture*.
+- **Changer librement** (payée → annulée, annulée → payée, retour en attente) : droit *Changer librement le statut* (administrateur). Une facture réglée par une **dépense de budget** reste protégée : il faut d'abord annuler la dépense (l'argent revient dans la caisse).
 
 ### Délais de paiement et retards
 
@@ -351,7 +364,7 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
   - les paiements Camptrack à rattacher.
 - **Notifications** : la cloche en haut de la barre latérale. Dans **Paramètres → Notifications**, l'admin choisit pour chaque événement : email, application ou les deux.
 - **Recherche** : un numéro, un client, un prestataire, un nom de fichier ou un montant permet de retrouver budgets, pièces, bons de commande, factures, écritures de caisse et proformas. Chacun ne voit que ce que ses droits permettent.
-- **Rapports** : *Dashboard → Rapports → Suivi budgétaire*, par service, catégorie et moyen de paiement, avec export Excel.
+- **Rapports** : *Dashboard → Rapports → Suivi budgétaire*, par service, catégorie et moyen de paiement, avec export Excel ; *Dashboard → Rapports → Dépenses par département* (voir « Départements »).
 
 ---
 
@@ -373,3 +386,38 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
 | « Vous avez validé ce budget … séparation des tâches » | Une autre personne enregistre la dépense |
 | « Le budget … n'est pas ouvert aux dépenses » | Faire valider le budget, ou en créer un nouveau s'il est clôturé |
 | « Le budget signé n'est pas encore joint » | Le demandeur imprime le budget, le fait signer par la DG et joint le scan sur la fiche du budget |
+
+## Départements
+
+- Les départements se gèrent dans **Prestataires → Départements** : nom (toujours en MAJUSCULES), code court, description, contact, code comptable, couleur, montant mensuel indicatif. Un département ne se supprime pas : on le **désactive** (il n'est plus proposé sur les nouvelles lignes).
+- **Chaque ligne de budget** est rattachée à un département ; le budget entier n'a plus de département. La fiche du budget et son PDF affichent le **total par département**.
+- Les **prestataires internes et externes** peuvent être rattachés à un département avec un **poste** : responsable de département (un seul par département), équipe, stagiaire professionnel, stagiaire académique, prestataire ponctuel. Les **fournisseurs** ne le sont jamais. Chaque changement (département ou poste) est conservé dans l'historique, avec sa date, son motif et son auteur.
+- La **fiche d'un département** montre son responsable, ses prestataires, ses dépenses des 6 derniers mois (comparées au montant mensuel indicatif) et ses lignes de budget en cours.
+- Droits (Paramètres → Rôles, page Prestataires) : créer, modifier, activer / désactiver un département ; rattacher un prestataire à un département.
+- **Rapport « Dépenses par département »** (*Dashboard → Rapports*, réservé aux rôles du circuit budget) : qui dépense le plus chaque mois.
+  - Une dépense compte dans le **mois où l'argent est réellement sorti** (sa date), sur le département de sa ligne de budget, même si le budget appartient à un autre mois. Les dépenses annulées ne comptent pas.
+  - Pour le mois choisi : classement des départements, part de chacun, comparaison avec le mois précédent, **prévu** des budgets de ce mois, **montant mensuel indicatif** du département (signalé s'il est dépassé), répartition par catégorie.
+  - Sur la période : graphique et tableau mois par mois. **Sorties hors budget** : sorties de caisse rattachées à aucune ligne de budget (hors transferts entre caisses), qu'aucun département ne porte.
+  - Export Excel (droit « Exporter les rapports ») : classement, par mois, par catégorie, détail des dépenses.
+  - Résumé sur le **tableau de bord**, onglet « Ce mois » : les 5 départements qui dépensent le plus.
+
+## Moyens de paiement
+
+- Les moyens de paiement se gèrent dans **Finance → Moyens de paiement** : nom, description, ordre d'affichage et **caisses liées**. Au départ, la liste contient les 6 moyens d'origine (Espèces, Mobile Money, Chèque, Virement bancaire, Carte bancaire, Autre) ; on peut en ajouter d'autres (Wave, Orange Money…). Un moyen ne se supprime pas : on le **désactive** (il n'est plus proposé, mais reste affiché sur les anciennes opérations).
+- Une caisse peut servir à plusieurs moyens (ex. : une banque pour le virement, le chèque et la carte) et un moyen à plusieurs caisses (ex. : le virement avec plusieurs banques).
+- **Au moment de payer** (encaissement ou dépense sur la proforma, dépense sur une ligne de budget, paiement d'une facture de prestataire, avance sur un bon de commande), on choisit d'abord le moyen : **seules les caisses visibles liées à ce moyen** sont proposées. Une caisse masquée n'est jamais proposée.
+- ⚠️ **Un moyen sans caisse liée ne permet aucun paiement.** Après la mise en place, il faut donc lier les caisses de chaque moyen avant de payer. Le serveur fait le même contrôle : on ne peut pas le contourner.
+- Les espèces ne vont plus d'office dans la « Caisse Comptable » : il suffit de lier le moyen « Espèces » à cette caisse pour obtenir le même résultat.
+- Les paiements envoyés par **Camptrack** ne sont pas soumis à cette règle : Camptrack choisit lui-même sa caisse.
+- Droits (Paramètres → Rôles, page Finance) : créer, modifier (y compris les caisses liées), activer / désactiver un moyen de paiement.
+
+## Pièces de la proforma, relances clients et historique
+
+- **Une seule liste de pièces** sur la fiche de la proforma : bon de commande du client, **facture normalisée**, **attestation de bonne fin d'exécution**, autre document. On peut joindre plusieurs pièces de la même sorte (ex. une facture d'acompte puis une facture de solde). Ajouter ou retirer une pièce demande le droit *Joindre ou retirer des pièces* ; un retrait est noté dans l'historique (le fichier est conservé).
+- **Ajouter une pièce ne change jamais le statut** de la proforma : seuls les encaissements (Payée, Soldée) et les décisions des utilisateurs le font avancer.
+- **Facture normalisée** : on indique sa date d'émission, sa **date d'envoi au client** et le **délai de relance** (30 jours proposés, réglables dans Paramètres → Rôles, modifiable pour chaque facture), et au besoin son numéro et son montant. **Échéance = date d'envoi + délai.** Sans date d'envoi, pas de relance : la renseigner dès que la facture part.
+- **Alertes rouges** (fiche et liste des proformas, avec filtres) :
+  - *Facture normalisée manquante* : proforma validée, en cours de paiement ou soldée — ou recette déjà encaissée — sans facture normalisée. Juste après un encaissement, la plateforme propose de la joindre tout de suite.
+  - *Paiement à réclamer* : l'échéance d'une facture envoyée est atteinte et la proforma n'est pas soldée (orange 2 jours avant). Les comptables et la direction sont prévenus **une fois**, le matin (jours ouvrés).
+- **Dossier complet** : facture normalisée + attestation de bonne fin + proforma soldée. La fiche affiche « Dossier complet » ou ce qui manque ; l'archivage reste manuel.
+- **Historique de la proforma** : toutes les actions la concernant (création, modifications, statuts, encaissements, dépenses — y compris celles du budget et de Camptrack —, annulations, pièces, justificatifs, e-mails, budget lié, relances), avec leur auteur. Pour les proformas existantes, l'historique a été reconstitué à partir des données (marqué « repris de l'existant »).

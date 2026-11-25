@@ -6,6 +6,8 @@ import prisma from "@/lib/prisma";
 import { z } from "zod";
 import { StatusFacture } from "@prisma/client";
 import { sendProformaValidatedNotification } from "@/lib/email/proformaValidation";
+import { journaliserProforma, type AuteurHistorique } from "@/lib/proformaHistoriqueServeur";
+import { fcfa, libelleStatutProforma } from "@/lib/proformaHistorique";
 
 // ---------- Schéma de validation ----------
 const productSchema = z.object({
@@ -74,8 +76,8 @@ export async function GET(
         client: true,
         produits: { include: { produit: true } },
         gestionnaires: { include: { gestionnaire: true } },
-        bonCommande: true, // Added
-        factureNormaliser: true, // Added
+        // Pièces de la proforma (bon de commande du client, factures normalisées, attestation…).
+        documents: { orderBy: { createdAt: "desc" } },
         paiements: {
           include: {
             cashJournalEntry: {
@@ -125,7 +127,7 @@ export async function GET(
 }
 
 // ---------- Fonction commune mise à jour ----------
-async function updateFacture(id: string, body: unknown) {
+async function updateFacture(id: string, body: unknown, auteur: AuteurHistorique | null) {
   console.log(`Début de la mise à jour pour la facture ID: ${id}`);
   console.log("Données reçues:", body);
 
@@ -286,10 +288,49 @@ async function updateFacture(id: string, body: unknown) {
           produits: { include: { produit: true } },
           client: true,
           gestionnaires: { include: { gestionnaire: true } },
-          bonCommande: true,
-          factureNormaliser: true,
+          documents: { orderBy: { createdAt: "desc" } },
         },
       });
+
+      // Historique : ce qui a changé (contenu), puis le statut s'il a changé.
+      const libellesChamps: [boolean, string][] = [
+        [!!produits, "lignes"],
+        [!!objet && objet !== currentInvoice.objet, "objet"],
+        [!!devise && devise !== currentInvoice.devise, "devise"],
+        [!!info && info !== currentInvoice.info, "informations"],
+        [paymentConditionPercentage !== undefined && paymentConditionPercentage !== currentInvoice.paymentConditionPercentage, "conditions de paiement"],
+        [isTaxExempt !== undefined && isTaxExempt !== currentInvoice.isTaxExempt, "exonération de TVA"],
+        [
+          (isDiscountEnabled !== undefined && isDiscountEnabled !== currentInvoice.isDiscountEnabled) ||
+            (discountType !== undefined && discountType !== currentInvoice.discountType) ||
+            (discountValue !== undefined && discountValue !== Number(currentInvoice.discountValue)),
+          "remise",
+        ],
+        [gestionnaireId !== undefined, "commercial"],
+      ];
+      const champsModifies = libellesChamps.filter(([change]) => change).map(([, libelle]) => libelle);
+      if (champsModifies.length > 0) {
+        const totalAvant = Number(currentInvoice.totalTTC);
+        const totalApres = Number(finalUpdate.totalTTC);
+        await journaliserProforma(
+          tx,
+          id,
+          "MODIFICATION",
+          `Modifié : ${champsModifies.join(", ")}${Math.abs(totalApres - totalAvant) > 0.5 ? ` — total TTC ${fcfa(totalAvant)} → ${fcfa(totalApres)}` : ""}`,
+          auteur,
+          { champs: champsModifies, totalAvant, totalApres }
+        );
+      }
+      if (finalUpdate.statut !== currentInvoice.statut) {
+        await journaliserProforma(
+          tx,
+          id,
+          "STATUT",
+          `Statut : ${libelleStatutProforma(currentInvoice.statut)} → ${libelleStatutProforma(finalUpdate.statut)}${statut === finalUpdate.statut ? "" : " (recalcul des encaissements)"}`,
+          auteur,
+          { ancien: currentInvoice.statut, nouveau: finalUpdate.statut }
+        );
+      }
 
       return finalUpdate;
     }, {
@@ -352,7 +393,8 @@ async function modifierAvecDroits(id: string, body: unknown) {
   const droitNecessaire = cible ? droitChangementStatutProforma(actuelle.statut, cible) : null;
   if (droitNecessaire && !peut(droits, droitNecessaire)) return refusDroit(droitNecessaire);
 
-  return updateFacture(id, body);
+  const utilisateur = await prisma.user.findUnique({ where: { id: droits.userId }, select: { nom: true } });
+  return updateFacture(id, body, { email: droits.email, nom: utilisateur?.nom ?? null });
 }
 
 // ---------- PATCH / PUT ----------
@@ -409,7 +451,8 @@ export async function DELETE(
 
     await prisma.invoiceProduit.deleteMany({ where: { invoiceId: id } });
     await prisma.invoiceGestionnaire.deleteMany({ where: { invoiceId: id } });
-    // Also delete bonCommande and factureNormaliser if they exist
+    // Anciennes tables des pièces (conservées jusqu'à leur suppression) ; les pièces et
+    // l'historique de la nouvelle table partent avec la proforma.
     await prisma.bonCommande.deleteMany({ where: { invoiceId: id } });
     await prisma.factureNormaliser.deleteMany({ where: { invoiceId: id } });
 

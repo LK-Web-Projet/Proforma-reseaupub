@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionBudget, Prisma, StatutDemandeBudget, StatutDepassement, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget, budgetMensuelExistant, cloturerBudgetsMensuelsEchus, montantAccordeLigne } from "@/lib/budgetSuivi";
+import { logBudget, cloturerBudgetsMensuelsEchus, montantAccordeLigne } from "@/lib/budgetSuivi";
+import { erreurDepartementsLignes } from "@/lib/departementsServeur";
+import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
+import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
+import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
@@ -49,7 +54,15 @@ export async function GET(request: NextRequest) {
         };
       }
     }
-    if (departement) where.departement = departement;
+    // Département (id ou nom) : budgets ayant au moins une ligne (non retirée) dans ce département.
+    if (departement) {
+      where.lignes = {
+        some: {
+          statutValidation: { not: "RETIREE" },
+          departement: { OR: [{ id: departement }, { nom: departement.trim().toLocaleUpperCase("fr-FR") }] },
+        },
+      };
+    }
     if (year) {
       const parsedYear = parseInt(year, 10);
       if (!Number.isNaN(parsedYear)) {
@@ -67,7 +80,7 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { createdAt: "desc" },
       include: {
-        lignes: true,
+        lignes: { include: { departement: { select: { id: true, nom: true, code: true } } } },
         bonCommande: { select: { id: true, numero: true } },
         proformas: { include: { invoice: { include: { client: true } } } },
         depenses: { where: { annuleeAt: null }, select: { montant: true, createdAt: true, source: true, _count: { select: { attachments: true } } } },
@@ -92,6 +105,8 @@ export async function GET(request: NextRequest) {
         ).length,
         nbDepassementsEnAttente: depassements.filter((x) => x.statut === StatutDepassement.EN_ATTENTE).length,
         nbLignesACorriger: d.lignes.filter((l) => l.statutValidation === "A_CORRIGER").length,
+        // Départements des lignes (non retirées), du plus gros montant au plus petit.
+        departements: departementsDuBudget(d.lignes),
       }))
     );
   } catch (error) {
@@ -114,19 +129,17 @@ export async function POST(request: NextRequest) {
     const data = validation.data;
     assertTypedAttachmentsAllowed(formData);
 
-    // Un seul budget mensuel par service et par mois (hors demandes rejetées).
-    if (data.type === TypeBudget.MENSUEL && data.departement) {
-      const periode = toPeriodeMois(data.periodeMois);
-      const doublon = periode
-        ? await budgetMensuelExistant(prisma, { departement: data.departement, periodeMois: periode })
-        : null;
-      if (doublon) {
-        return NextResponse.json(
-          { error: `Un budget mensuel existe déjà pour ce service et ce mois (${doublon}). Complétez-le plutôt que d'en créer un second.` },
-          { status: 409 }
-        );
-      }
+    if (!typeBudgetDisponible(data.type)) {
+      return NextResponse.json({ error: `Les budgets « ${typeBudgetLabel(data.type)} » sont indisponibles pour le moment.` }, { status: 400 });
     }
+
+    // Chaque ligne porte son département (le budget entier n'en a plus, et la règle « un seul budget
+    // mensuel par service et par mois » a été retirée le 2026-11-24) : départements existants et actifs.
+    const erreurDepartements = await erreurDepartementsLignes(prisma, data.lignes.map((l) => l.departementId));
+    if (erreurDepartements) return NextResponse.json({ error: erreurDepartements }, { status: 400 });
+    // Moyens de paiement du budget et des lignes : existants et actifs.
+    const erreurMoyens = await erreurMoyensPaiement(prisma, [data.modePaiement, ...data.lignes.map((l) => l.modePaiement)]);
+    if (erreurMoyens) return NextResponse.json({ error: erreurMoyens }, { status: 400 });
 
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
 
@@ -155,7 +168,8 @@ export async function POST(request: NextRequest) {
         montantTotal,
         modePaiement: data.modePaiement,
         typeDepense: data.typeDepense ?? "",
-        pourLeCompteDe: data.pourLeCompteDe,
+        // Budget mensuel : plus de receveur (chaque ligne porte son département).
+        pourLeCompteDe: data.type === TypeBudget.MENSUEL ? null : data.pourLeCompteDe,
         dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : undefined,
         bonCommandeId: data.bonCommandeId || undefined,
         lignes: { create: lignesAvecMode(data) },
@@ -176,6 +190,11 @@ export async function POST(request: NextRequest) {
     });
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
+    }
+
+    // Historique de la proforma liée (budget de campagne ou de tiers).
+    for (const invoiceId of data.proformaIds) {
+      await journaliserProforma(prisma, invoiceId, "BUDGET_LIE", `Budget ${demande.numero} créé pour cette proforma (${fcfa(montantTotal)}, ${demande.lignes.length} ligne(s))`, { email: caps.email, nom: caps.name }, { demandeBudgetId: demande.id });
     }
 
     await logBudget(prisma, {
@@ -201,4 +220,14 @@ export async function POST(request: NextRequest) {
     const message = fsMessage || (error instanceof Error ? error.message : "Erreur interne du serveur");
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+/** Noms des départements d'un budget (lignes non retirées), triés par montant décroissant. */
+function departementsDuBudget(lignes: { statutValidation: string; montant: Prisma.Decimal; departement: { nom: string } | null }[]): string[] {
+  const totaux = new Map<string, number>();
+  for (const l of lignes) {
+    if (l.statutValidation === "RETIREE" || !l.departement) continue;
+    totaux.set(l.departement.nom, (totaux.get(l.departement.nom) ?? 0) + Number(l.montant));
+  }
+  return [...totaux.entries()].sort((a, b) => b[1] - a[1]).map(([nom]) => nom);
 }

@@ -21,6 +21,7 @@ export const DEFAULT_ENTREPRISE: Omit<EntrepriseConfig, "updatedAt"> = {
     delaiPaiementFournisseur: 30,
     delaiPaiementInterne: 7,
     delaiPaiementExterne: 3,
+    delaiRelanceFactureClient: 30,
 };
 
 /**

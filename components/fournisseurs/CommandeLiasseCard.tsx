@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { PayerFactureDialog, type CiblePaiement } from '@/components/fournisseurs/PayerFactureDialog';
 import { LigneBudgetCommandeField } from '@/components/fournisseurs/LigneBudgetCommandeField';
+import { RattachementCommandeDialog } from '@/components/fournisseurs/RattachementCommandeDialog';
 import { cn } from '@/lib/utils';
 import {
   etatLiasse,
@@ -59,6 +60,8 @@ export interface CommandeSuivi {
   ligneBudget: { id: string; designation: string; demandeBudget: { id: string; numero: string; type: string; statut: string } } | null;
   /** Proforma du bon (une seule) : détermine les lignes de budget proposées. */
   proformas?: { invoice: { id: string } }[];
+  /** DIRECTE = campagne dont la proforma n'a pas de budget : aucune ligne à rattacher (voir modeValidationCommande). */
+  modeValidation?: "DIRECTE" | "A_RATTACHER" | "SIGNATURE";
   documents: { id: string; kind: string; url: string; fileName: string; libelle?: string | null; createdAt: string; createdByEmail: string }[];
   factures: { id: string; reference: string; montant: number | string; date: string; status: string; pieceJointe: string | null }[];
   depenses: {
@@ -105,6 +108,9 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
   const [pieceType, setPieceType] = useState<TypeDocumentCommandeValue | null>(null);
   const [factureOuverte, setFactureOuverte] = useState(false);
   const [ligneOuverte, setLigneOuverte] = useState(false);
+  const [rattachementOuvert, setRattachementOuvert] = useState(false);
+  const brouillon = commande.statut === 'BROUILLON';
+  const lieARien = !commande.ligneBudget && !(commande.proformas?.length);
   const [paiement, setPaiement] = useState<CiblePaiement | null>(null);
   const [proformasBudget, setProformasBudget] = useState<ProformaBudget[]>([]);
   const [reprise, setReprise] = useState<string | null>(null);
@@ -183,10 +189,25 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                 Budget {commande.ligneBudget.demandeBudget.numero} — {commande.ligneBudget.designation}
               </Link>
             ) : (
-              <p className="text-amber-800">Aucune ligne de budget : l&apos;avance et le solde ne pourront pas être payés.</p>
+              commande.modeValidation === 'DIRECTE' ? (
+                <p className="text-slate-700">Campagne sans budget : l&apos;avance et le solde se paient depuis la proforma de la campagne.</p>
+              ) : lieARien && brouillon ? (
+                <p className="text-amber-800">
+                  Rattaché à rien : rattachez ce bon à un budget (ou à la proforma d&apos;une campagne) pour qu&apos;il puisse être validé.
+                </p>
+              ) : (
+                <p className="text-amber-800">Aucune ligne de budget : l&apos;avance et le solde ne pourront pas être payés.</p>
+              )
             )}
           </div>
-          {!paiementsActifs && !annulee && peutLigne && (
+          {/* Brouillon : rattachement complet (campagne ou non, proforma, budget, ligne), comme le formulaire. */}
+          {brouillon && !paiementsActifs && peutLigne && (
+            <Button variant={lieARien ? 'default' : 'outline'} size="sm" className="gap-1" onClick={() => setRattachementOuvert(true)}>
+              <Link2 className="h-3.5 w-3.5" /> {lieARien ? 'Rattacher à un budget' : 'Changer le rattachement'}
+            </Button>
+          )}
+          {/* Bon déjà validé ou livré, sans paiement : seule sa ligne peut encore changer (règle d'avant). */}
+          {!brouillon && !paiementsActifs && !annulee && peutLigne && commande.modeValidation !== 'DIRECTE' && (
             <Button variant="outline" size="sm" className="gap-1" onClick={() => setLigneOuverte(true)}>
               <Link2 className="h-3.5 w-3.5" /> {commande.ligneBudget ? 'Changer de ligne' : 'Rattacher à une ligne de budget'}
             </Button>
@@ -408,6 +429,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
       <PieceDialog commandeId={commande.id} kind={pieceType} onClose={() => setPieceType(null)} onSuccess={onChange} />
       <FactureDialog commande={commande} open={factureOuverte} onClose={() => setFactureOuverte(false)} onSuccess={onChange} />
       <LigneBudgetDialog commande={commande} open={ligneOuverte} onClose={() => setLigneOuverte(false)} onSuccess={onChange} />
+      <RattachementCommandeDialog commande={commande} open={rattachementOuvert} onClose={() => setRattachementOuvert(false)} onSuccess={onChange} />
       <PayerFactureDialog cible={paiement} open={!!paiement} onClose={() => setPaiement(null)} onPaye={onChange} />
     </Card>
   );

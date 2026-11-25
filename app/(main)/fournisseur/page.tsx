@@ -31,6 +31,7 @@ import { PastilleRetardPrestataire } from "@/components/fournisseurs/RetardPaiem
 import type { RetardPrestataire } from "@/lib/retardPaiement";
 import Link from "next/link";
 import { useDroits } from "@/components/DroitsProvider";
+import { libellePoste } from "@/lib/departements";
 
 /** Prestataire avec ses factures en retard de paiement (calculées par /api/fournisseurs). */
 type FournisseurAvecRetard = Fournisseur & { retard?: RetardPrestataire | null };
@@ -76,7 +77,7 @@ export default function FournisseursPage() {
 
       if (searchTerms.length === 0) return true;
 
-      const haystack = [f.entreprise, f.nom, f.prenom, f.email, f.contact, f.domaineActivite]
+      const haystack = [f.entreprise, f.nom, f.prenom, f.email, f.contact, f.domaineActivite, f.departement?.nom, f.departement?.code]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -154,7 +155,7 @@ export default function FournisseursPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher un fournisseur ou prestataire (entreprise, contact, email)..."
+              placeholder="Rechercher un fournisseur ou prestataire (entreprise, contact, email, département)..."
               className="pl-9"
             />
           </div>
@@ -241,6 +242,11 @@ export default function FournisseursPage() {
                           <TypeIcon className="h-3 w-3" />
                           {type}
                         </Badge>
+                        {fournisseur.departement && (
+                          <p className="mt-1 text-xs text-muted-foreground" title={libellePoste(fournisseur.posteDepartement)}>
+                            {fournisseur.departement.nom} · {libellePoste(fournisseur.posteDepartement)}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell className="py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-2">

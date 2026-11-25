@@ -7,8 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS, MODE_PAIEMENT_OPTIONS } from '@/lib/budgetTypes';
+import { CATEGORIE_DEPENSE_VALUES, CATEGORIE_DEPENSE_LABELS } from '@/lib/budgetTypes';
+import { moyensProposes } from '@/lib/moyensPaiement';
+import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
 import { toast } from 'sonner';
+import type { DepartementOption } from '@/lib/departements';
 
 export interface BudgetLigneCorrectionCible {
   id: string;
@@ -16,6 +19,9 @@ export interface BudgetLigneCorrectionCible {
   categorie: string | null;
   modePaiement?: string | null;
   montant: number;
+  detail?: string | null;
+  dateLimite?: string | null;
+  departementId?: string | null;
   motifDecision: string | null;
   mode: 'MODIFIER' | 'RETIRER';
 }
@@ -39,8 +45,13 @@ export function BudgetLigneCorrectionDialog({
   const [categorie, setCategorie] = useState('');
   const [modePaiement, setModePaiement] = useState('');
   const [montant, setMontant] = useState('');
+  const [detail, setDetail] = useState('');
+  const [departementId, setDepartementId] = useState('');
+  const [departements, setDepartements] = useState<DepartementOption[]>([]);
+  const [dateLimite, setDateLimite] = useState('');
   const [reponse, setReponse] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { moyens } = useMoyensPaiement();
 
   useEffect(() => {
     if (!ligne) return;
@@ -48,6 +59,14 @@ export function BudgetLigneCorrectionDialog({
     setCategorie(ligne.categorie ?? '');
     setModePaiement(ligne.modePaiement ?? '');
     setMontant(String(ligne.montant));
+    setDetail(ligne.detail ?? '');
+    setDepartementId(ligne.departementId ?? '');
+    // Départements actifs ; celui de la ligne reste proposé même s'il a été désactivé.
+    fetch('/api/departements')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((liste: DepartementOption[]) => setDepartements(liste.filter((d) => d.actif || d.id === ligne.departementId)))
+      .catch(() => setDepartements([]));
+    setDateLimite(ligne.dateLimite ? ligne.dateLimite.slice(0, 10) : '');
     setReponse('');
   }, [ligne]);
 
@@ -58,14 +77,19 @@ export function BudgetLigneCorrectionDialog({
     if (ligne.mode === 'MODIFIER') {
       const m = Number(montant);
       if (!designation.trim()) return void toast.error('La désignation est requise.');
+      if (!departementId) return void toast.error('Choisissez le département de la ligne.');
       if (!categorie) return void toast.error('Choisissez une catégorie.');
       if (!m || m <= 0) return void toast.error('Indiquez un montant valide.');
       body = {
         action: 'MODIFIER',
         designation: designation.trim(),
         categorie,
+        departementId,
         montant: m,
         modePaiement: modePaiement || undefined,
+        // Toujours envoyés : une chaîne vide efface le détail ou le délai.
+        detail: detail.trim(),
+        dateLimite,
         reponse: reponse.trim() || undefined,
       };
     } else {
@@ -112,6 +136,20 @@ export function BudgetLigneCorrectionDialog({
                   <Label htmlFor="corr-designation">Désignation *</Label>
                   <Input id="corr-designation" value={designation} onChange={(e) => setDesignation(e.target.value)} />
                 </div>
+                <div className="space-y-2">
+                  <Label>Département *</Label>
+                  <Select value={departementId} onValueChange={setDepartementId}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Département de la ligne" /></SelectTrigger>
+                    <SelectContent>
+                      {departements.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.nom}
+                          {!d.actif ? ' (désactivé)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Catégorie *</Label>
@@ -129,16 +167,33 @@ export function BudgetLigneCorrectionDialog({
                     <Input id="corr-montant" type="number" min={0} step="0.01" value={montant} onChange={(e) => setMontant(e.target.value)} />
                   </div>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Moyen de paiement prévu</Label>
+                    <Select value={modePaiement} onValueChange={setModePaiement}>
+                      <SelectTrigger><SelectValue placeholder="Moyen de paiement" /></SelectTrigger>
+                      <SelectContent>
+                        {moyensProposes(moyens, ligne?.modePaiement, modePaiement).map((m) => (
+                          <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="corr-delai">Délai (facultatif)</Label>
+                    <Input id="corr-delai" type="date" value={dateLimite} onChange={(e) => setDateLimite(e.target.value)} />
+                  </div>
+                </div>
                 <div className="space-y-2">
-                  <Label>Moyen de paiement prévu</Label>
-                  <Select value={modePaiement} onValueChange={setModePaiement}>
-                    <SelectTrigger><SelectValue placeholder="Moyen de paiement" /></SelectTrigger>
-                    <SelectContent>
-                      {MODE_PAIEMENT_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="corr-detail">Détail de la ligne (facultatif)</Label>
+                  <Textarea
+                    id="corr-detail"
+                    rows={3}
+                    maxLength={2000}
+                    value={detail}
+                    onChange={(e) => setDetail(e.target.value)}
+                    placeholder="Quantités, prix unitaires, fournisseur pressenti, justification…"
+                  />
                 </div>
               </>
             ) : (

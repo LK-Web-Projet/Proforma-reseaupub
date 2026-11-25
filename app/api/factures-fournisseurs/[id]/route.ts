@@ -1,42 +1,18 @@
 import { getDroits, peut, refusDroit } from "@/lib/authz";
+import { isStatutFacture } from "@/lib/factureStatut";
+import { appliquerStatutFacture, controlerStatutFacture, StatutFactureError } from "@/lib/factureStatutServeur";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma, StatutFactureFournisseur } from "@prisma/client";
 import { saveFactureFournisseurPieceJointe, describeFsError } from "@/lib/uploadFactureFournisseur";
 import { refusMontantFactureCommande } from "@/lib/commandeFournisseurSuivi";
 
-/**
- * Procédure de paiement : une facture rattachée à un bon de commande ou à une ligne de budget passe
- * PAYEE uniquement par son paiement (solde du bon, dépenses sur la ligne) — jamais à la main.
- * Exception — RÉGULARISATION : une facture liée à rien (ni bon, ni ligne, ni paiement enregistré),
- * typiquement une facture antérieure à la procédure déjà réglée hors plateforme, peut être marquée
- * payée à la main par la direction (droit « Valider les budgets mensuels »).
- * On ne l'annule pas tant qu'un paiement actif la règle. Renvoie le motif du refus, ou null.
- */
-async function refusChangementStatut(id: string, actuel: StatutFactureFournisseur, nouveau: StatutFactureFournisseur): Promise<string | null> {
-  if (nouveau === actuel) return null;
-  if (nouveau === StatutFactureFournisseur.PAYEE) {
-    const facture = await prisma.factureFournisseur.findUnique({
-      where: { id },
-      select: { commandeId: true, ligneBudgetId: true, _count: { select: { depenses: true } } },
-    });
-    const liee = !!facture?.commandeId || !!facture?.ligneBudgetId || (facture?._count.depenses ?? 0) > 0;
-    if (liee) {
-      return "Cette facture est rattachée à un bon de commande ou à une ligne de budget : elle passe « payée » par son paiement (dépense sur le budget), pas à la main.";
-    }
-    // Facture liée à rien (cas des factures existantes) : « payée » à la main, comme avant.
-    return null;
-  }
-  if (nouveau === StatutFactureFournisseur.ANNULEE) {
-    const paiements = await prisma.budgetDepense.count({ where: { factureFournisseurId: id, annuleeAt: null } });
-    if (paiements > 0) return "Cette facture a été réglée par une dépense : annulez d'abord la dépense.";
-  }
-  return null;
-}
-
 // PATCH /api/factures-fournisseurs/[id]
-// - Corps JSON { status } : changement rapide du statut (utilisé par le sélecteur inline des listes).
-// - Corps FormData : édition complète (référence, montant, date, fournisseur, statut, pièce jointe).
+// - Corps JSON { status } : changement de statut sans pièce (mêmes règles et même historique que
+//   POST /api/factures-fournisseurs/[id]/statut, qui est utilisé par l'écran ; « payée » sans paiement
+//   exige une preuve et passe donc par cette route-là).
+// - Corps FormData : édition complète (référence, montant, date, fournisseur, pièce jointe) ; le statut
+//   ne s'y change plus (menu de statut, avec historique).
 // Règle métier : une facture au statut "PAYEE" ou "ANNULEE" est verrouillée. La seule action
 // encore possible est d'ajouter une pièce jointe si elle est absente.
 export async function PATCH(
@@ -47,15 +23,6 @@ export async function PATCH(
   if (droits instanceof NextResponse) return droits;
   if (!droits.pages.includes("fournisseurs")) return refusDroit("fournisseurs.factureModifier");
   const { id } = await params;
-
-  // Droit selon le statut demandé : annuler → « Annuler une facture » ; marquer payée à la main
-  // (régularisation d'une facture liée à rien) → la direction ; sinon « Modifier une facture ».
-  const droitPourStatut = (actuel: StatutFactureFournisseur, cible: string | null): string | null => {
-    if (!cible || cible === actuel) return null;
-    if (cible === StatutFactureFournisseur.ANNULEE) return "fournisseurs.factureAnnuler";
-    if (cible === StatutFactureFournisseur.PAYEE) return "canValidateBudgetMensuel";
-    return "fournisseurs.factureModifier";
-  };
 
   try {
     const existing = await prisma.factureFournisseur.findUnique({
@@ -87,27 +54,21 @@ export async function PATCH(
         );
       }
 
-      if (isLocked) {
-        return NextResponse.json(
-          {
-            message: `Cette facture est ${lockedStatusLabel} et ne peut plus être modifiée.`,
-          },
-          { status: 403 },
-        );
+      if (!isStatutFacture(status)) {
+        return NextResponse.json({ message: "Statut inconnu." }, { status: 400 });
       }
-      const droitStatut = droitPourStatut(existing.status, status);
-      if (droitStatut && !peut(droits, droitStatut)) return refusDroit(droitStatut);
-      const refusStatut = await refusChangementStatut(id, existing.status, status);
-      if (refusStatut) {
-        return NextResponse.json({ message: refusStatut }, { status: 400 });
+      const utilisateur = await prisma.user.findUnique({ where: { id: droits.userId }, select: { nom: true } });
+      const auteur = { email: droits.email, nom: utilisateur?.nom ?? null, peut: (cle: string) => peut(droits, cle) };
+      try {
+        const updatedFacture = await prisma.$transaction(async (tx) => {
+          const controle = await controlerStatutFacture(tx, id, { cible: status }, auteur);
+          return appliquerStatutFacture(tx, controle, { cible: status }, auteur, null);
+        });
+        return NextResponse.json(updatedFacture);
+      } catch (e) {
+        if (e instanceof StatutFactureError) return NextResponse.json({ message: e.message }, { status: e.status });
+        throw e;
       }
-
-      const updatedFacture = await prisma.factureFournisseur.update({
-        where: { id },
-        data: { status },
-      });
-
-      return NextResponse.json(updatedFacture);
     }
 
     // Édition complète (FormData) : « Modifier une facture » (ajout de la pièce manquante compris).
@@ -185,11 +146,12 @@ export async function PATCH(
       Object.values(StatutFactureFournisseur).find((s) => s === statusValue)
         ? (statusValue as StatutFactureFournisseur)
         : existing.status;
-    const droitStatutEdition = droitPourStatut(existing.status, status);
-    if (droitStatutEdition && !peut(droits, droitStatutEdition)) return refusDroit(droitStatutEdition);
-    const refusStatut = await refusChangementStatut(id, existing.status, status);
-    if (refusStatut) {
-      return NextResponse.json({ message: refusStatut }, { status: 400 });
+    // Le statut ne se change plus ici : menu de statut (droits, preuve du paiement, historique).
+    if (status !== existing.status) {
+      return NextResponse.json(
+        { message: "Le statut se change depuis le menu de statut de la facture (il garde l'historique)." },
+        { status: 400 },
+      );
     }
 
     if (reference !== existing.reference) {

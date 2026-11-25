@@ -84,14 +84,14 @@ export function FactureFournisseurModal({
     if (!isOpen) return;
     fetch('/api/demandes-budget')
       .then((res) => (res.ok ? res.json() : []))
-      .then((demandes: { numero: string; statut: string; type: string; departement: string | null; lignes: { id: string; designation: string; statutValidation: string }[] }[]) =>
+      .then((demandes: { numero: string; statut: string; type: string; departement: string | null; lignes: { id: string; designation: string; statutValidation: string; departement?: { nom: string } | null }[] }[]) =>
         setLignesBudget(
           demandes
             .filter((d) => ['VALIDATION_PARTIELLE', 'VALIDEE', 'EN_COURS'].includes(d.statut))
             .flatMap((d) =>
               d.lignes
                 .filter((l) => l.statutValidation === 'ACCORDEE')
-                .map((l) => ({ id: l.id, label: `${d.numero}${d.departement ? ` (${d.departement})` : ''} — ${l.designation}` }))
+                .map((l) => ({ id: l.id, label: `${d.numero}${(l.departement?.nom ?? d.departement) ? ` (${l.departement?.nom ?? d.departement})` : ''} — ${l.designation}` }))
             )
         )
       )
@@ -353,10 +353,12 @@ export function FactureFournisseurModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label>Statut</label>
+                {/* En modification, le statut se change depuis le menu de statut de la liste (droits,
+                    preuve du paiement, historique). */}
                 <Select
                   value={formData.status}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, status: value }))}
-                  disabled={isLocked}
+                  disabled={isLocked || isEditing}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -364,10 +366,13 @@ export function FactureFournisseurModal({
                   <SelectContent>
                     <SelectItem value="EN_ATTENTE">En attente</SelectItem>
                     {/* « Payée » : uniquement par le paiement du solde depuis le budget. */}
-                    <SelectItem value="PAYEE" disabled>Payée (par le solde du budget)</SelectItem>
+                    <SelectItem value="PAYEE" disabled>Payée</SelectItem>
                     <SelectItem value="ANNULEE">Annulée</SelectItem>
                   </SelectContent>
                 </Select>
+                {isEditing && !isLocked && (
+                  <p className="text-xs text-muted-foreground">Pour changer le statut, utilisez le menu de statut dans la liste.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <label htmlFor="pieceJointe">Pièce jointe (PDF, Image)</label>

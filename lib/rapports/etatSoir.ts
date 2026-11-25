@@ -5,7 +5,7 @@ import { getBudgetRecipients } from "@/lib/budgetDestinataires"; // sans Clerk (
 import { montantAccordeLigne } from "@/lib/budgetSuivi";
 import { echeanceJustificatif, etatJustificatif } from "@/lib/justificatifs";
 import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
-import { MODE_PAIEMENT_VALUES, modePaiementLabel } from "@/lib/budgetTypes";
+import { libelleMoyen } from "@/lib/moyensPaiement";
 import { notifier } from "@/lib/notifications/notifier";
 
 // État du soir (procédure de paiement, sections 7 et 8) envoyé à la DG, comptables en copie :
@@ -99,6 +99,8 @@ export async function construireEtatSoir(maintenant = new Date()): Promise<EtatS
       proformas: { select: { invoice: { select: { numero: true, objet: true, client: { select: { nom: true } } } } } },
     },
   });
+  // Moyens de paiement (liste gérée) : noms et ordre d'affichage.
+  const moyens = await prisma.moyenPaiement.findMany({ orderBy: [{ ordre: "asc" }, { nom: "asc" }], select: { code: true, nom: true } });
   const campagnes: CampagneEtat[] = budgets.map((b) => {
     const prevu = b.lignes.reduce((s, l) => s + montantAccordeLigne(l), 0) + b.depassements.reduce((s, x) => s + Number(x.montant), 0);
     const parMode = new Map<string, number>();
@@ -108,7 +110,7 @@ export async function construireEtatSoir(maintenant = new Date()): Promise<EtatS
       if (jourBenin(d.createdAt) === jour) payeDuJour += Number(d.montant);
     }
     const paye = Array.from(parMode.values()).reduce((s, v) => s + v, 0);
-    const connus: readonly string[] = MODE_PAIEMENT_VALUES;
+    const connus: readonly string[] = moyens.map((m) => m.code);
     const ordre = [...connus.filter((m) => parMode.has(m)), ...Array.from(parMode.keys()).filter((m) => !connus.includes(m))];
     const clients = Array.from(new Set(b.proformas.map((p) => p.invoice.client.nom)));
     return {
@@ -117,7 +119,7 @@ export async function construireEtatSoir(maintenant = new Date()): Promise<EtatS
       libelle: clients.length > 0 ? `${clients.join(", ")} — ${b.proformas[0].invoice.objet}` : b.pourLeCompteDe ?? b.contexteMotivation.slice(0, 60),
       prevu,
       paye,
-      payeParMode: ordre.map((mode) => ({ mode, label: modePaiementLabel(mode), montant: parMode.get(mode)! })),
+      payeParMode: ordre.map((mode) => ({ mode, label: libelleMoyen(mode, moyens), montant: parMode.get(mode)! })),
       payeDuJour,
       reste: Math.max(prevu - paye, 0),
     };

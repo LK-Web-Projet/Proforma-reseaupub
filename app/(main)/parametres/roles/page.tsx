@@ -91,6 +91,9 @@ export default function RolesPage() {
   // Délais de paiement des factures prestataires, selon le type (jours après la date de la facture).
   const [delais, setDelais] = useState({ fournisseur: "", interne: "", externe: "" });
   const [isSavingDelais, setIsSavingDelais] = useState(false);
+  // Délai de relance proposé pour une facture normalisée envoyée au client.
+  const [delaiRelance, setDelaiRelance] = useState("");
+  const [isSavingRelance, setIsSavingRelance] = useState(false);
 
   useEffect(() => {
     fetch("/api/budget-config")
@@ -101,6 +104,7 @@ export default function RolesPage() {
         setTypesSigne(data.typesBudgetSigneRequis ?? []);
         setPlafondPetite(String(data.plafondPetiteDepense ?? ""));
         setLiasseExigee(data.liasseExigeePourSolde ?? true);
+        if (data.delaiRelanceFactureClient) setDelaiRelance(String(data.delaiRelanceFactureClient));
         if (data.delaisPaiement) {
           setDelais({
             fournisseur: String(data.delaisPaiement.fournisseur),
@@ -139,6 +143,29 @@ export default function RolesPage() {
       toast.error(error instanceof Error ? error.message : "Erreur.");
     } finally {
       setIsSavingDelais(false);
+    }
+  };
+
+  const enregistrerDelaiRelance = async () => {
+    const valeur = Number(delaiRelance);
+    if (!Number.isInteger(valeur) || valeur < 1 || valeur > 365) {
+      return void toast.error("Le délai de relance est un nombre entier de jours, entre 1 et 365.");
+    }
+    setIsSavingRelance(true);
+    try {
+      const res = await fetch("/api/budget-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delaiRelanceFactureClient: valeur }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Erreur lors de l'enregistrement.");
+      setDelaiRelance(String(data.delaiRelanceFactureClient));
+      toast.success("Délai de relance enregistré !");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erreur.");
+    } finally {
+      setIsSavingRelance(false);
     }
   };
 
@@ -456,6 +483,25 @@ export default function RolesPage() {
           <Button onClick={enregistrerDelais} loading={isSavingDelais} disabled={isSavingDelais}>
             {isSavingDelais ? "..." : "Enregistrer les délais"}
           </Button>
+          <div className="border-t pt-4 space-y-2">
+            <div>
+              <p className="text-sm font-medium">Relance des factures clients (jours)</p>
+              <p className="text-xs text-muted-foreground">
+                Délai proposé à l&apos;ajout d&apos;une facture normalisée, compté à partir de sa date d&apos;envoi au client (modifiable pour
+                chaque facture). Échéance atteinte et proforma non soldée : « paiement à réclamer » en rouge, et les comptables et la
+                direction sont notifiés une fois, le matin.
+              </p>
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="space-y-1 w-40">
+                <Label htmlFor="delai-relance" className="text-xs">Délai de relance</Label>
+                <Input id="delai-relance" type="number" min={1} max={365} step={1} value={delaiRelance} onChange={(e) => setDelaiRelance(e.target.value)} />
+              </div>
+              <Button onClick={enregistrerDelaiRelance} loading={isSavingRelance} disabled={isSavingRelance}>
+                {isSavingRelance ? "..." : "Enregistrer"}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

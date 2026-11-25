@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { CategorieDepense, ModePaiementDemande, TypeBudget } from "@prisma/client";
+import { CategorieDepense, TypeBudget } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import { JOURS_GRACE_CLOTURE_MENSUELLE } from "@/lib/budgetSuivi";
 
 /**
@@ -16,16 +17,25 @@ export function moisMensuelAccepte(periode: Date, now = new Date()): boolean {
 
 const ligneSchema = z.object({
   designation: z.string().min(1),
+  // Département de la ligne : obligatoire (vérifié existant et actif par la route).
+  departementId: z.string({ message: "Choisissez le département de chaque ligne." }).min(1, "Choisissez le département de chaque ligne."),
   montant: z.number().min(0),
   categorie: z.nativeEnum(CategorieDepense, { message: "Choisissez une catégorie pour chaque ligne." }),
-  // Moyen de paiement prévu pour la ligne ; absent = celui de la demande (voir lignesAvecMode).
-  modePaiement: z.nativeEnum(ModePaiementDemande).optional(),
+  // Moyen de paiement prévu pour la ligne (code, vérifié existant et actif par la route) ; absent =
+  // celui de la demande (voir lignesAvecMode).
+  modePaiement: codeMoyenSchema.optional(),
+  // Précisions facultatives (texte libre) et délai propre à la ligne ("AAAA-MM-JJ" ou ISO).
+  detail: z.string().trim().max(2000, "Le détail d'une ligne est limité à 2000 caractères.").optional(),
+  dateLimite: z
+    .string()
+    .optional()
+    .refine((v) => !v || toDateJour(v) !== null, "Le délai d'une ligne n'est pas une date valide."),
 });
 
 /**
  * Validation commune à la création (POST /api/demandes-budget) et à la re-soumission
  * (POST /api/demandes-budget/[id]/resoumettre), avec les règles propres à chaque type :
- * - MENSUEL  : mois et service obligatoires ;
+ * - MENSUEL  : mois obligatoire (le département est porté par chaque ligne) ;
  * - CAMPAGNE : sa proforma, une seule (les dépenses lui seront imputées) ;
  * - TIERS    : bénéficiaire ("pour le compte de") obligatoire, proforma facultative (une au plus).
  */
@@ -36,7 +46,7 @@ export const demandeBudgetSchema = z
     departement: z.string().optional(),
     contexteMotivation: z.string().min(1, "Le contexte et la motivation sont requis."),
     // Moyen « principal » : le formulaire l'envoie, déduit des lignes (celui du plus gros montant).
-    modePaiement: z.nativeEnum(ModePaiementDemande),
+    modePaiement: codeMoyenSchema,
     // Type de dépense et bon de commande associé : plus saisis dans le formulaire (facultatifs ;
     // absents à la re-soumission → la valeur déjà enregistrée est conservée).
     typeDepense: z.string().trim().optional(),
@@ -54,7 +64,6 @@ export const demandeBudgetSchema = z
       if (periode && !moisMensuelAccepte(periode)) {
         ctx.addIssue({ code: "custom", path: ["periodeMois"], message: "Ce mois est terminé : un budget mensuel ne peut viser que le mois en cours ou un mois à venir." });
       }
-      if (!d.departement) ctx.addIssue({ code: "custom", path: ["departement"], message: "Le service est requis pour un budget mensuel." });
     }
     if (d.type === TypeBudget.CAMPAGNE && d.proformaIds.length === 0) {
       ctx.addIssue({ code: "custom", path: ["proformaIds"], message: "Un budget de campagne doit être associé à sa proforma." });
@@ -66,9 +75,26 @@ export const demandeBudgetSchema = z
 
 export type DemandeBudgetInput = z.infer<typeof demandeBudgetSchema>;
 
-/** Lignes prêtes à créer : chaque ligne porte son moyen de paiement (celui de la demande par défaut). */
+/**
+ * Lignes prêtes à créer : chaque ligne porte son moyen de paiement (celui de la demande par défaut),
+ * son détail (vide → null) et son délai (date du jour, à midi UTC).
+ */
 export function lignesAvecMode(data: DemandeBudgetInput) {
-  return data.lignes.map((l) => ({ ...l, modePaiement: l.modePaiement ?? data.modePaiement }));
+  return data.lignes.map((l) => ({
+    ...l,
+    modePaiement: l.modePaiement ?? data.modePaiement,
+    detail: l.detail ? l.detail : null,
+    dateLimite: toDateJour(l.dateLimite),
+  }));
+}
+
+/** "2026-12-15" ou ISO → ce jour à midi UTC (pas de glissement de fuseau à l'affichage). */
+export function toDateJour(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
+  return Number.isNaN(date.getTime()) || date.getUTCDate() !== Number(match[3]) ? null : date;
 }
 
 /** Lit les champs du FormData envoyé par components/DemandeBudgetForm.tsx. */

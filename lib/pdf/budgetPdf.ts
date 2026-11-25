@@ -24,6 +24,12 @@ export interface BudgetPdfData {
   proformas: { numero: string; client: string; objet: string }[];
   lignes: {
     designation: string;
+    /** Département de la ligne (imprimé sous la désignation). */
+    departement?: string | null;
+    /** Détail facultatif de la ligne (imprimé sous la désignation). */
+    detail?: string | null;
+    /** Délai de la ligne déjà formaté (jj/mm/aaaa), ou null. */
+    delai?: string | null;
     categorie: string;
     modePaiement: string;
     demande: number;
@@ -31,6 +37,8 @@ export interface BudgetPdfData {
     retiree: boolean;
   }[];
   totauxParMode: { label: string; demande: number; accorde: number }[];
+  /** Total par département (lignes non retirées). */
+  totauxParDepartement?: { nom: string; demande: number; accorde: number }[];
   /** Libellé de la personne qui prépare (« Chef de projet » pour une campagne). */
   preparePar: string;
 }
@@ -155,7 +163,17 @@ export async function generateBudgetPdf(data: BudgetPdfData, entreprise: BudgetP
   enTeteTableau();
   data.lignes.forEach((l, idx) => {
     const lignesDesignation = wrap(l.designation, fontRegular, 9, cols[0].w - 8);
-    const hauteur = Math.max(18, lignesDesignation.length * 11 + 7);
+    // Sous la désignation, en petit : le délai puis le détail (limité à 6 lignes pour la mise en page).
+    const complements: string[] = [];
+    if (l.retiree) complements.push("(retirée)");
+    if (l.departement) complements.push(`Département : ${l.departement}`);
+    if (l.delai) complements.push(`Délai : ${l.delai}`);
+    if (l.detail?.trim()) {
+      const lignesDetail = wrap(l.detail.trim(), fontRegular, 7, cols[0].w - 8).filter(Boolean);
+      complements.push(...lignesDetail.slice(0, 6));
+      if (lignesDetail.length > 6) complements[complements.length - 1] += " …";
+    }
+    const hauteur = Math.max(18, lignesDesignation.length * 11 + complements.length * 9 + 7);
     if (y - hauteur < 230) {
       nouvellePage();
       enTeteTableau();
@@ -163,7 +181,7 @@ export async function generateBudgetPdf(data: BudgetPdfData, entreprise: BudgetP
     page.drawRectangle({ x: M, y: y - hauteur + 12, width: W - 2 * M, height: hauteur, color: idx % 2 === 0 ? white : light });
     const couleur = l.retiree ? gray : black;
     lignesDesignation.forEach((t, i) => text(t, cols[0].x + 4, y - i * 11, 9, fontRegular, couleur));
-    if (l.retiree) text("(retirée)", cols[0].x + 4, y - lignesDesignation.length * 11, 7, fontRegular, gray);
+    complements.forEach((t, i) => text(t, cols[0].x + 4, y - lignesDesignation.length * 11 - i * 9 + 2, 7, fontRegular, gray));
     text(l.categorie, cols[1].x + 4, y, 8, fontRegular, couleur);
     text(l.modePaiement, cols[2].x + 4, y, 8, fontRegular, couleur);
     textRight(montant(l.demande), cols[3].x + cols[3].w - 4, y, 9, fontRegular, couleur);
@@ -188,6 +206,22 @@ export async function generateBudgetPdf(data: BudgetPdfData, entreprise: BudgetP
     y -= 16;
     for (const t of data.totauxParMode) {
       text(t.label, M + 4, y, 9);
+      textRight(montant(t.demande), cols[3].x + cols[3].w - 4, y, 9);
+      textRight(t.accorde > 0 ? montant(t.accorde) : "—", cols[4].x + cols[4].w - 4, y, 9);
+      y -= 14;
+    }
+    y -= 10;
+  }
+
+  // Total par département (chaque ligne porte son département).
+  const parDepartement = data.totauxParDepartement ?? [];
+  if (parDepartement.length > 0) {
+    if (y < 260) nouvellePage();
+    text("Total par département", M, y, 10, fontBold, primary);
+    y -= 16;
+    for (const t of parDepartement) {
+      if (y < 200) nouvellePage();
+      text(t.nom, M + 4, y, 9);
       textRight(montant(t.demande), cols[3].x + cols[3].w - 4, y, 9);
       textRight(t.accorde > 0 ? montant(t.accorde) : "—", cols[4].x + cols[4].w - 4, y, 9);
       y -= 14;

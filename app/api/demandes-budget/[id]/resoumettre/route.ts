@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionBudget, TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { logBudget, budgetMensuelExistant } from "@/lib/budgetSuivi";
+import { logBudget } from "@/lib/budgetSuivi";
+import { erreurDepartementsLignes } from "@/lib/departementsServeur";
+import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
+import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
+import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
@@ -39,19 +44,28 @@ export async function POST(
     const data = validation.data;
     assertTypedAttachmentsAllowed(formData);
 
-    // Un seul budget mensuel par service et par mois (hors demandes rejetées).
-    if (data.type === TypeBudget.MENSUEL && data.departement) {
-      const periode = toPeriodeMois(data.periodeMois);
-      const doublon = periode
-        ? await budgetMensuelExistant(prisma, { departement: data.departement, periodeMois: periode, excludeId: id })
-        : null;
-      if (doublon) {
-        return NextResponse.json(
-          { error: `Un budget mensuel existe déjà pour ce service et ce mois (${doublon}). Complétez-le plutôt que d'en créer un second.` },
-          { status: 409 }
-        );
-      }
+    // Type indisponible (Tiers) : seulement si le budget était déjà de ce type.
+    if (!typeBudgetDisponible(data.type) && existing.type !== data.type) {
+      return NextResponse.json({ error: `Les budgets « ${typeBudgetLabel(data.type)} » sont indisponibles pour le moment.` }, { status: 400 });
     }
+
+    // Départements des lignes : existants et actifs — un département désactivé depuis reste accepté
+    // s'il était déjà sur ce budget.
+    const anciennesLignes = await prisma.demandeBudgetLigne.findMany({ where: { demandeBudgetId: id }, select: { departementId: true, modePaiement: true } });
+    const erreurDepartements = await erreurDepartementsLignes(
+      prisma,
+      data.lignes.map((l) => l.departementId),
+      new Set(anciennesLignes.map((l) => l.departementId).filter((d): d is string => !!d))
+    );
+    if (erreurDepartements) return NextResponse.json({ error: erreurDepartements }, { status: 400 });
+    // Moyens de paiement : existants et actifs — un moyen désactivé depuis reste accepté s'il était
+    // déjà sur ce budget.
+    const erreurMoyens = await erreurMoyensPaiement(
+      prisma,
+      [data.modePaiement, ...data.lignes.map((l) => l.modePaiement)],
+      new Set([existing.modePaiement, ...anciennesLignes.map((l) => l.modePaiement)].filter((m): m is string => !!m))
+    );
+    if (erreurMoyens) return NextResponse.json({ error: erreurMoyens }, { status: 400 });
     const montantTotal = data.lignes.reduce((sum, l) => sum + l.montant, 0);
 
     // Une demande rejetée n'a jamais eu de dépense ni de dépassement (ils n'existent qu'à partir
@@ -82,7 +96,8 @@ export async function POST(
           modePaiement: data.modePaiement,
           // Plus saisis dans le formulaire : absents (undefined) → valeur enregistrée conservée.
           typeDepense: data.typeDepense,
-          pourLeCompteDe: data.pourLeCompteDe,
+          // Budget mensuel : plus de receveur (chaque ligne porte son département).
+          pourLeCompteDe: data.type === TypeBudget.MENSUEL ? null : data.pourLeCompteDe,
           dateLimiteSouhaitee: data.dateLimiteSouhaitee ? new Date(data.dateLimiteSouhaitee) : null,
           bonCommandeId: data.bonCommandeId || undefined,
           lignes: { create: lignesAvecMode(data) },
@@ -95,6 +110,10 @@ export async function POST(
     const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData, { date: new Date(), montant: montantTotal });
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
+    }
+
+    for (const invoiceId of data.proformaIds) {
+      await journaliserProforma(prisma, invoiceId, "BUDGET_LIE", `Budget ${existing.numero} soumis à nouveau pour cette proforma (${fcfa(montantTotal)})`, { email: caps.email, nom: caps.name }, { demandeBudgetId: id });
     }
 
     await logBudget(prisma, {

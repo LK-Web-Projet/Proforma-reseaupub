@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ActionBudget, ModePaiementDemande, PaiementType, SourceDepense } from "@prisma/client";
+import { ActionBudget, PaiementType, SourceDepense } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
+import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
 import prisma from "@/lib/prisma";
 import { requireBudgetUser } from "@/lib/budgetAuth";
 import { logBudget, recalculerStatutBudget } from "@/lib/budgetSuivi";
 import { controlerLigneBudget, DepenseError } from "@/lib/depenses/enregistrerDepense";
+import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
 
 const schema = z.object({
   paiementId: z.string().min(1),
   ligneId: z.string().min(1, "Choisissez la ligne de budget."),
-  modePaiement: z.nativeEnum(ModePaiementDemande).default(ModePaiementDemande.MOBILE_MONEY),
+  modePaiement: codeMoyenSchema.default("MOBILE_MONEY"),
   nomReceveur: z.string().trim().optional(),
 });
 
@@ -47,6 +51,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         throw new DepenseError("Cette dépense est déjà rattachée à un budget.");
       }
       const camptrack = paiement.aRattacherBudget;
+      // Moyen choisi : existant et actif (pas de caisse à choisir, l'écriture existe déjà).
+      const erreurMoyen = await erreurMoyensPaiement(tx, [data.modePaiement]);
+      if (erreurMoyen) throw new DepenseError(erreurMoyen);
 
       const { ligne, demande } = await controlerLigneBudget(tx, {
         ligneBudgetId: data.ligneId,
@@ -82,6 +89,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       });
       await tx.paiement.update({ where: { id: paiement.id }, data: { aRattacherBudget: false } });
+      await journaliserProforma(
+        tx,
+        paiement.invoiceId,
+        "DEPENSE_RATTACHEE",
+        `Dépense de ${fcfa(Number(paiement.montant))} rattachée au budget ${demande.numero} — ligne « ${ligne.designation} »`,
+        { email: caps.email, nom: caps.name },
+        { depenseId: created.id, paiementId: paiement.id }
+      );
       // Lot CampTrack reçu sans ligne de budget : il est désormais lié à cette dépense de budget.
       await tx.lotPaiement.updateMany({
         where: { cashJournalEntryId: paiement.cashJournalEntry.id, budgetDepenseId: null },

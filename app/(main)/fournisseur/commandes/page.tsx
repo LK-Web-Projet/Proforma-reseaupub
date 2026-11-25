@@ -37,7 +37,12 @@ interface CommandeFournisseur {
   lignes: LigneCommande[];
   /** Scans du BC signé (seuls ceux-là sont renvoyés par la liste). */
   documents?: { id: string }[];
+  ligneBudgetId?: string | null;
+  proformas?: unknown[];
 }
+
+// Ancien brouillon lié à rien (ni proforma, ni ligne de budget) : à rattacher depuis sa fiche avant validation.
+const aRattacher = (c: CommandeFournisseur) => c.statut === 'BROUILLON' && !c.ligneBudgetId && (c.proformas?.length ?? 0) === 0;
 
 // Bon émis (validé, livré) dont le scan signé n'est pas joint : aucun paiement possible avant.
 const scanSigneManquant = (c: CommandeFournisseur) =>
@@ -305,6 +310,14 @@ export default function CommandesFournisseursListPage() {
                             title="Le scan du bon de commande signé n'est pas joint : aucun paiement possible."
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Scan signé manquant
+                          </span>
+                        )}
+                        {aRattacher(commande) && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-sans text-[10px] font-semibold text-amber-800"
+                            title="Ce bon n'est rattaché ni à une proforma ni à un budget : ouvrez-le et cliquez sur « Rattacher à un budget »."
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> À rattacher
                           </span>
                         )}
                       </div>

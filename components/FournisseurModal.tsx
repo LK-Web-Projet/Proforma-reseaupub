@@ -24,6 +24,9 @@ export type Fournisseur = {
   actif: boolean;
   dateDebutContrat: string | null;
   dateFinContrat: string | null;
+  /** Département de rattachement (prestataires internes / externes), renvoyé par la liste. */
+  departement?: { id: string; nom: string; code: string | null } | null;
+  posteDepartement?: string | null;
 };
 
 interface FournisseurModalProps {

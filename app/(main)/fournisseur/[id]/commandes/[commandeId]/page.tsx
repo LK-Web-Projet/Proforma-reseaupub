@@ -106,6 +106,8 @@ interface CommandeDetail {
     // Lot C : ligne de budget, liasse, factures et paiements (voir CommandeLiasseCard).
     fournisseurId: string;
     ligneBudget: CommandeSuivi["ligneBudget"];
+    /** Validation à la main de ce brouillon (calculée par le serveur, voir modeValidationCommande). */
+    modeValidation?: "DIRECTE" | "A_RATTACHER" | "SIGNATURE";
     documents: CommandeSuivi["documents"];
     factures: CommandeSuivi["factures"];
     depenses: CommandeSuivi["depenses"];
@@ -340,6 +342,7 @@ export default function CommandeDetailPage() {
                                     statut={commande.statut}
                                     isAdmin={isAdmin}
                                     bcSigne={etatLiasse(commande.documents ?? []).bcSigne}
+                                    modeValidation={commande.modeValidation}
                                     onChange={handleStatutChange}
                                     badgeClassName="text-sm px-3 py-1 bg-white/20 text-white hover:bg-white/30 border-0"
                                     triggerClassName="border-none bg-transparent! p-0 h-auto cursor-pointer w-auto"

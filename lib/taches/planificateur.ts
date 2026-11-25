@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { cloturerBudgetsMensuelsEchus } from "@/lib/budgetSuivi";
 import { construireEtatSoir, envoyerEtatSoir } from "@/lib/rapports/etatSoir";
 import { notifierRetardsPaiement } from "@/lib/retardPaiementServeur";
+import { notifierRelancesProforma } from "@/lib/relanceProformaServeur";
 
 /**
  * Minuterie interne : l'application déclenche elle-même ses tâches à heure fixe, sans crontab.
@@ -43,6 +44,13 @@ const TACHES: Tache[] = [
     heure: 8,
     joursOuvresSeulement: true,
     executer: () => notifierRetardsPaiement(),
+  },
+  {
+    // Factures normalisées dont l'échéance est atteinte : paiement client à réclamer.
+    nom: "relances-clients",
+    heure: 8,
+    joursOuvresSeulement: true,
+    executer: () => notifierRelancesProforma(),
   },
   {
     nom: "etat-soir",

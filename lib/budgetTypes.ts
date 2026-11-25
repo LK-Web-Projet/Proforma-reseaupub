@@ -1,7 +1,18 @@
 // Types de budget — libellés et couleurs partagés par les écrans budget (aucune dépendance
 // serveur : importable côté client). Voir l'enum TypeBudget dans prisma/schema.prisma.
-export const TYPE_BUDGET_VALUES = ['MENSUEL', 'PONCTUEL', 'CAMPAGNE', 'TIERS'] as const;
+// Ordre d'affichage (cartes du formulaire, filtres, rapports) : Mensuel, Campagne, Ponctuel, Tiers.
+export const TYPE_BUDGET_VALUES = ['MENSUEL', 'CAMPAGNE', 'PONCTUEL', 'TIERS'] as const;
 export type TypeBudgetValue = (typeof TYPE_BUDGET_VALUES)[number];
+
+/**
+ * Types qu'on ne peut pas choisir pour un NOUVEAU budget pour le moment (carte grisée, refus du
+ * serveur). Les budgets déjà enregistrés de ce type restent consultables et peuvent être resoumis.
+ */
+export const TYPES_BUDGET_INDISPONIBLES: readonly TypeBudgetValue[] = ['TIERS'];
+
+export function typeBudgetDisponible(type: string): boolean {
+  return !(TYPES_BUDGET_INDISPONIBLES as readonly string[]).includes(type);
+}
 
 export const TYPE_BUDGET_META: Record<TypeBudgetValue, { label: string; description: string; className: string }> = {
   MENSUEL: {
@@ -61,6 +72,7 @@ export const CATEGORIE_DEPENSE_VALUES = [
   'TRANSPORT',
   'LOYER_CHARGES',
   'COMMUNICATION',
+  'ABONNEMENT',
   'FOURNITURES',
   'EQUIPEMENT',
   'MAINTENANCE',
@@ -77,6 +89,7 @@ export const CATEGORIE_DEPENSE_LABELS: Record<CategorieDepenseValue, string> = {
   TRANSPORT: 'Transport / déplacements',
   LOYER_CHARGES: 'Loyer & charges (eau, électricité)',
   COMMUNICATION: 'Téléphone & internet',
+  ABONNEMENT: 'Abonnements (IA, logiciels, outils en ligne…)',
   FOURNITURES: 'Fournitures de bureau',
   EQUIPEMENT: 'Équipement / matériel',
   MAINTENANCE: 'Entretien & réparations',
@@ -91,8 +104,10 @@ export function categorieLabel(value: string | null | undefined): string {
   return value ? CATEGORIE_DEPENSE_LABELS[value as CategorieDepenseValue] ?? value : 'Non catégorisé';
 }
 
-// Moyens de paiement (enum ModePaiementDemande). L'ordre suit la procédure de paiement :
-// espèces (petite caisse), MoMo (personnes), chèque / virement (entreprises), carte (achats en ligne).
+// Les 6 moyens de paiement d'origine. Depuis le 2026-11-24 la liste est gérée en base (Finance →
+// Moyens de paiement, lib/moyensPaiement.ts) : ces libellés ne servent plus que de repli quand la
+// liste n'est pas chargée. L'ordre suit la procédure de paiement : espèces (petite caisse), MoMo
+// (personnes), chèque / virement (entreprises), carte (achats en ligne).
 export const MODE_PAIEMENT_VALUES = ['ESPECES', 'MOBILE_MONEY', 'CHEQUE', 'VIREMENT', 'CARTE', 'AUTRE'] as const;
 export type ModePaiementValue = (typeof MODE_PAIEMENT_VALUES)[number];
 
@@ -116,10 +131,13 @@ export function modePaiementLabel(value: string | null | undefined): string {
  * Total prévu par moyen de paiement (procédure, section 4 : « le total prévu par moyen de
  * paiement est connu dès le départ »). Une ligne sans moyen prend celui de la demande ; les
  * lignes retirées ne comptent pas. `accorde` = montant accordé (0 tant que la ligne ne l'est pas).
+ * `moyens` (liste gérée, dans l'ordre d'affichage) donne les noms et l'ordre ; à défaut, les libellés
+ * d'origine.
  */
 export function totauxParModePaiement(
   lignes: { montant: number | string; modePaiement?: string | null; statutValidation?: string; montantAccorde?: number | string | null }[],
-  modeParDefaut: string
+  modeParDefaut: string,
+  moyens?: readonly { code: string; nom: string }[]
 ): { mode: string; label: string; demande: number; accorde: number }[] {
   const totaux = new Map<string, { demande: number; accorde: number }>();
   for (const l of lignes) {
@@ -130,10 +148,11 @@ export function totauxParModePaiement(
     if (l.statutValidation === 'ACCORDEE') t.accorde += Number(l.montantAccorde ?? l.montant);
     totaux.set(mode, t);
   }
-  const connus: readonly string[] = MODE_PAIEMENT_VALUES;
+  const connus: readonly string[] = moyens && moyens.length > 0 ? moyens.map((m) => m.code) : MODE_PAIEMENT_VALUES;
   const ordre = [
     ...connus.filter((m) => totaux.has(m)),
     ...Array.from(totaux.keys()).filter((m) => !connus.includes(m)),
   ];
-  return ordre.map((mode) => ({ mode, label: modePaiementLabel(mode), ...totaux.get(mode)! }));
+  const libelle = (mode: string) => moyens?.find((m) => m.code === mode)?.nom ?? modePaiementLabel(mode);
+  return ordre.map((mode) => ({ mode, label: libelle(mode), ...totaux.get(mode)! }));
 }

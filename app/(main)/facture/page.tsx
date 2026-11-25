@@ -16,12 +16,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff, Download, Copy } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
 import { FactureStatusBadge, FACTURE_STATUS_META } from '@/components/FactureStatusBadge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useDroits } from '@/components/DroitsProvider';
+import { etatPiecesProforma, type EtatPiecesProforma } from '@/lib/proformaPieces';
+import { ActionsProformaMenu } from '@/components/proforma/ActionsProformaMenu';
+import { useRouter } from 'next-nprogress-bar';
+import { AlertTriangle, BellRing } from 'lucide-react';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -49,6 +52,7 @@ const CONVERSION_RATES: Record<string, number> = {
 
 export default function Home() {
   const { peut } = useDroits();
+  const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [allFactures, setAllFactures] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,6 +65,12 @@ export default function Home() {
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [loading, setLoading] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
+  // Alertes des pièces : facture normalisée manquante, paiement à réclamer (lien des notifications : ?alerte=reclamer).
+  const [alerte, setAlerte] = useState<'' | 'manquante' | 'reclamer'>('');
+  useEffect(() => {
+    const a = new URLSearchParams(window.location.search).get('alerte');
+    if (a === 'manquante' || a === 'reclamer') setAlerte(a);
+  }, []);
   const [visibleCardLabels, setVisibleCardLabels] = useState<string[]>([
     "Valider & payer", "Brouillon", "Envoyée", "Validée", "Paiement en cours", "Soldée"
   ]);
@@ -126,12 +136,28 @@ export default function Home() {
     return initialStats;
   }, [allFactures]);
 
+  const alertes = useMemo(() => {
+    const m = new Map<string, EtatPiecesProforma>();
+    for (const f of allFactures) {
+      m.set(f.id, etatPiecesProforma({ statut: f.statut, resteAPayer: Number(f.resteAPayer), aRecette: !!f.aRecette, documents: f.documents ?? [] }));
+    }
+    return m;
+  }, [allFactures]);
+  // Validée depuis le menu « … » : la ligne est mise à jour sans recharger la liste.
+  const marquerValidee = (id: string) =>
+    setAllFactures((prev) => prev.map((f) => (f.id === id ? { ...f, statut: 'Valider', dateValidation: new Date().toISOString() } : f)));
+  const nbManquantes = Array.from(alertes.values()).filter((a) => a.factureManquante).length;
+  const nbAReclamer = Array.from(alertes.values()).filter((a) => a.aReclamer).length;
+
   // Filtrage final pour le tableau (Objet + Statut sélectionné via les cartes)
   const filteredFactures = useMemo(() => {
     const searchTerms = objet.toLowerCase().trim().split(/\s+/).filter(t => t !== '');
     
     return allFactures.filter(f => {
-      const matchStatut = statut === '' 
+      // Filtre d'alerte : tous statuts confondus (les alertes ignorent déjà brouillons, annulées, archivées).
+      if (alerte === 'manquante' && !alertes.get(f.id)?.factureManquante) return false;
+      if (alerte === 'reclamer' && !alertes.get(f.id)?.aReclamer) return false;
+      const matchStatut = alerte !== '' || statut === '' 
         ? (f.statut !== 'Brouillon' && f.statut !== 'Annuler' && f.statut !== 'Archiver') 
         : f.statut === statut;
       
@@ -150,7 +176,7 @@ export default function Home() {
         invoiceObjet.includes(term)
       );
     });
-  }, [allFactures, statut, objet]);
+  }, [allFactures, statut, objet, alerte, alertes]);
 
   const cards = [
     { label: "Valider & payer", value: "", stats: stats["Total"], icon: Wallet },
@@ -162,6 +188,22 @@ export default function Home() {
     { label: "Annulée", value: "Annuler", stats: stats["Annuler"], icon: XCircle },
     { label: "Archivée", value: "Archiver", stats: stats["Archiver"], icon: Archive },
   ];
+
+  /**
+   * Clic sur une ligne : ouvre la proforma (Ctrl / Cmd / clic molette : dans un nouvel onglet). Ignoré
+   * si l'utilisateur vient de sélectionner du texte. Le numéro (copie), le client (lien) et le menu
+   * « … » arrêtent le clic avant la ligne.
+   */
+  const ouvrirProforma = (e: React.MouseEvent | React.KeyboardEvent, id: string) => {
+    if ('button' in e && e.button === 2) return;
+    if (window.getSelection()?.toString()) return;
+    const url = `/facture/${id}`;
+    if (e.ctrlKey || e.metaKey || ('button' in e && e.button === 1)) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    router.push(url);
+  };
 
   const copyToClipboard = (e: React.MouseEvent, value: string, label: string) => {
     e.stopPropagation();
@@ -287,6 +329,31 @@ export default function Home() {
           </Popover>
         </div>
       </div>
+
+      {/* Alertes : facture normalisée manquante, paiement à réclamer */}
+      {(nbManquantes > 0 || nbAReclamer > 0 || alerte !== '') && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant={alerte === 'manquante' ? 'destructive' : 'outline'}
+            className={cn('h-8 gap-1.5', alerte !== 'manquante' && nbManquantes > 0 && 'border-red-300 text-red-700')}
+            onClick={() => setAlerte(alerte === 'manquante' ? '' : 'manquante')}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" /> Facture normalisée manquante ({nbManquantes})
+          </Button>
+          <Button
+            size="sm"
+            variant={alerte === 'reclamer' ? 'destructive' : 'outline'}
+            className={cn('h-8 gap-1.5', alerte !== 'reclamer' && nbAReclamer > 0 && 'border-red-300 text-red-700')}
+            onClick={() => setAlerte(alerte === 'reclamer' ? '' : 'reclamer')}
+          >
+            <BellRing className={cn('h-3.5 w-3.5', nbAReclamer > 0 && 'animate-pulse')} /> Paiement à réclamer ({nbAReclamer})
+          </Button>
+          {alerte !== '' && (
+            <Button size="sm" variant="ghost" className="h-8" onClick={() => setAlerte('')}>Retirer le filtre</Button>
+          )}
+        </div>
+      )}
 
       {/* Cartes de sélection / Filtres de statut */}
       <div className="grid gap-2.5 mb-8 grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
@@ -425,19 +492,20 @@ export default function Home() {
         )}
       </div>
 
+      {/* Tableau sans défilement horizontal : colonnes à largeur fixe, textes tronqués (info-bulle) ou
+          renvoyés à la ligne ; gestionnaire et total TTC masqués sur les écrans étroits. */}
       <div className="rounded-md bg-white border">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Numéro</TableHead>
-              <TableHead>Client</TableHead>
+              <TableHead className="w-[9.5rem]">Numéro / date</TableHead>
+              <TableHead className="w-[18%]">Client</TableHead>
               <TableHead>Objet</TableHead>
-              <TableHead className="text-center">Gestionnaire</TableHead>
-              <TableHead className="text-right">Total TTC</TableHead>
-              <TableHead className="text-right">Reste à Payer</TableHead>
-              <TableHead className="text-center">Statut</TableHead>
-              <TableHead className="text-center">Voir</TableHead>
+              <TableHead className="hidden xl:table-cell w-[13%]">Gestionnaire</TableHead>
+              <TableHead className="hidden lg:table-cell w-[8.5rem] text-right">Total TTC</TableHead>
+              <TableHead className="w-[8.5rem] text-right">Reste à payer</TableHead>
+              <TableHead className="w-[9.5rem] text-center">Statut</TableHead>
+              <TableHead className="w-12 text-center"><span className="sr-only">Actions</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -445,79 +513,73 @@ export default function Home() {
               <FactureTableSkeleton />
             ) : filteredFactures.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center h-24 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
                   Aucune facture trouvée.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredFactures.map((facture) => (
-                <TableRow key={facture.id} className="hover:bg-muted/50 transition-colors">
-                  <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
-                  <TableCell className="font-mono text-sm">
+              filteredFactures.map((facture) => {
+                const etat = alertes.get(facture.id);
+                const gestionnaires = facture.gestionnaires?.length > 0
+                  ? facture.gestionnaires
+                      .map((g: { gestionnaire: { prenom: string; nom: string } }) => `${g.gestionnaire.prenom} ${g.gestionnaire.nom}`)
+                      .join(", ")
+                  : "-";
+                return (
+                <TableRow
+                  key={facture.id}
+                  role="link"
+                  tabIndex={0}
+                  aria-label={`Ouvrir la proforma ${facture.numero}`}
+                  title="Cliquer pour ouvrir la proforma"
+                  onClick={(e) => ouvrirProforma(e, facture.id)}
+                  onAuxClick={(e) => e.button === 1 && ouvrirProforma(e, facture.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && ouvrirProforma(e, facture.id)}
+                  className={cn(
+                    "group/ligne cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
+                    etat?.alerteRouge ? "bg-red-50/70 hover:bg-red-100" : "hover:bg-blue-50"
+                  )}
+                >
+                  <TableCell>
                     <button
                       type="button"
                       onClick={(e) => copyToClipboard(e, facture.numero, "Numéro")}
                       title="Cliquer pour copier le numéro"
-                      className="group inline-flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-muted"
+                      className="group inline-flex max-w-full items-center gap-1 rounded px-1 -mx-1 font-mono text-sm group-hover/ligne:text-primary hover:bg-white hover:shadow-sm"
                     >
-                      {facture.numero}
+                      <span className="truncate">{facture.numero}</span>
                       <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100" />
                     </button>
+                    <span className="block text-[11px] text-muted-foreground">{formatDateFR(facture.dateCreation)}</span>
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  <TableCell onAuxClick={(e) => e.stopPropagation()}>
                     {facture.client?.id ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Link
-                              href={`/client/${facture.client.id}`}
-                              className="truncate max-w-[150px] inline-block text-primary hover:underline"
-                            >
-                              {facture.client?.nom || "-"}
-                            </Link>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Voir la fiche de {facture.client?.nom || "-"}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Link
+                        href={`/client/${facture.client.id}`}
+                        title={`Voir la fiche de ${facture.client?.nom || "-"}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-block max-w-full truncate align-bottom text-primary hover:underline"
+                      >
+                        {facture.client?.nom || "-"}
+                      </Link>
                     ) : (
-                      <span className="truncate max-w-[150px] inline-block cursor-default">-</span>
+                      <span className="block truncate">-</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="truncate max-w-[150px] inline-block cursor-default">
-                            {facture.objet}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{facture.objet}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <span className="block truncate" title={facture.objet}>{facture.objet}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground xl:hidden" title={gestionnaires}>{gestionnaires}</span>
                   </TableCell>
-                  <TableCell className="text-center text-sm">
-                    {facture.gestionnaires?.length > 0
-                      ? facture.gestionnaires
-                          .map(
-                            (g: {
-                              gestionnaire: { prenom: string; nom: string };
-                            }) =>
-                              `${g.gestionnaire.prenom} ${g.gestionnaire.nom}`
-                          )
-                          .join(", ")
-                      : "-"}
+                  <TableCell className="hidden xl:table-cell text-sm">
+                    <span className="block truncate" title={gestionnaires}>{gestionnaires}</span>
                   </TableCell>
-                  <TableCell className="text-right font-semibold">
+                  <TableCell className="hidden lg:table-cell text-right font-semibold">
                     {formatMoney(facture.totalTTC, facture.devise)}
                   </TableCell>
                   <TableCell className="text-right font-semibold text-red-600">
                     {formatMoney(facture.resteAPayer, facture.devise)}
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-center whitespace-normal">
                     <FactureStatusBadge
                       status={facture.statut}
                       animate={!["Solde", "Annuler", "Archiver"].includes(facture.statut)}
@@ -527,19 +589,24 @@ export default function Home() {
                           : undefined
                       }
                     />
+                    {etat?.aReclamer ? (
+                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold leading-tight text-red-700">
+                        <BellRing className="h-3 w-3 shrink-0 animate-pulse" /> À réclamer
+                      </span>
+                    ) : etat?.factureManquante ? (
+                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold leading-tight text-red-700" title="Facture normalisée manquante">
+                        <AlertTriangle className="h-3 w-3 shrink-0 animate-pulse" /> Facture manquante
+                      </span>
+                    ) : etat?.relanceProche ? (
+                      <span className="mt-1 block text-[10px] font-semibold leading-tight text-amber-700">Échéance proche</span>
+                    ) : null}
                   </TableCell>
-                  <TableCell className="text-center">
-                    <Link
-                      href={`/facture/${facture.id}`}
-                      className="text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <Button variant="ghost" size="icon">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                  <TableCell className="text-center px-1" onClick={(e) => e.stopPropagation()} onAuxClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <ActionsProformaMenu facture={facture} onValidee={marquerValidee} />
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>

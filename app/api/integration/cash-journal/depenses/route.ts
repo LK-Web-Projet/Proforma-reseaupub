@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
           libelle: enrichedLibelle,
           reference: enrichedLibelle,
           date_operation: dateOperation,
+          auteur: { nom: "CampTrack" },
         });
         if ((await budgetsDeLaProforma(tx, proformaId!)).length > 0) {
           await tx.paiement.update({ where: { id: r.paiement.id }, data: { aRattacherBudget: true } });

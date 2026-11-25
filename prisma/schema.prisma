@@ -9,21 +9,21 @@ datasource db {
 }
 
 model Role {
-  id                       String     @id @default(uuid())
-  nom                      String     @unique
-  canManageUsers           Boolean    @default(false)
+  id                       String           @id @default(uuid())
+  nom                      String           @unique
+  canManageUsers           Boolean          @default(false)
   // Droits du circuit budget — cochés par rôle dans Paramètres > Rôles (aucun nom de rôle codé en dur).
-  canValidateBudgetMensuel Boolean    @default(false) // budgets mensuels + budgets au-dessus du plafond délégué
-  canValidateBudget        Boolean    @default(false) // budgets hors mensuels, jusqu'au plafond délégué
-  canPayBudget             Boolean    @default(false) // enregistrer les dépenses (comptable)
+  canValidateBudgetMensuel Boolean          @default(false) // budgets mensuels + budgets au-dessus du plafond délégué
+  canValidateBudget        Boolean          @default(false) // budgets hors mensuels, jusqu'au plafond délégué
+  canPayBudget             Boolean          @default(false) // enregistrer les dépenses (comptable)
   // Saisie directe au journal de caisse (hors budget) : opérations manuelles, transferts,
   // création de caisses, dépenses imputées à une proforma. Sans ce droit, aucun argent ne sort
   // autrement que par le circuit budget (procédure de paiement, règle d'or n° 2).
-  canSaisirCaisse          Boolean    @default(false)
+  canSaisirCaisse          Boolean          @default(false)
   // Petites dépenses hors bon (accueil) : sur une ligne de budget, en espèces seulement, jusqu'à
   // EntrepriseConfig.plafondPetiteDepense. Ne permet ni de payer un BC ni une facture.
-  canSaisirPetiteDepense   Boolean    @default(false)
-  createdAt                DateTime   @default(now())
+  canSaisirPetiteDepense   Boolean          @default(false)
+  createdAt                DateTime         @default(now())
   pages                    RolePage[]
   permissions              RolePermission[]
   users                    User[]
@@ -92,6 +92,9 @@ model EntrepriseConfig {
   delaiPaiementFournisseur  Int          @default(30)
   delaiPaiementInterne      Int          @default(7)
   delaiPaiementExterne      Int          @default(3)
+  // Délai de relance d'une facture normalisée envoyée au client (jours, proposé à l'ajout de la
+  // facture et modifiable pour chacune) : au-delà, le paiement est « à réclamer ».
+  delaiRelanceFactureClient Int          @default(30)
   updatedAt                 DateTime     @updatedAt
 }
 
@@ -147,8 +150,13 @@ model Invoice {
   demandesBudget             DemandeBudgetProforma[]
   commandesFournisseur       CommandeFournisseurProforma[]
   budgetDepenses             BudgetDepense[]
+  documents                  DocumentProforma[]
+  historique                 InvoiceHistorique[]
 }
 
+// Anciennes tables des pièces de la proforma (une seule pièce par sorte) : reprises dans
+// DocumentProforma par la mise à jour 20261125100000_pieces_historique_proforma. Plus écrites ni
+// lues par l'application ; à supprimer par une mise à jour suivante, après vérification en ligne.
 model BonCommande {
   id        String   @id @default(uuid())
   invoiceId String   @unique
@@ -163,6 +171,61 @@ model FactureNormaliser {
   url       String
   createdAt DateTime @default(now())
   invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+}
+
+// Sortes de pièces jointes à une proforma (liste extensible).
+enum TypeDocumentProforma {
+  BON_COMMANDE // bon de commande du client
+  FACTURE_NORMALISEE // facture normalisée émise au client (dates d'émission, d'envoi, délai de relance)
+  ATTESTATION_BONNE_FIN // attestation de bonne fin d'exécution (clôt le dossier)
+  AUTRE
+}
+
+// Pièces d'une proforma (remplace BonCommande et FactureNormaliser) : plusieurs pièces de la même
+// sorte possibles (ex. facture d'acompte puis de solde). Les fichiers restent rangés par sorte dans
+// public/Upload/Bon|Facture|Attestation|Autre/<numéro de proforma>/ ; `url` est l'adresse publique.
+model DocumentProforma {
+  id                String               @id @default(uuid())
+  invoiceId         String
+  type              TypeDocumentProforma
+  url               String
+  fileName          String?
+  fileType          String?
+  // Précision libre (ex. « Acompte 50 % », « Solde »).
+  precision         String?
+  // Facture normalisée : numéro, montant facturé, date d'émission, date d'envoi au client et délai
+  // de relance (jours). Échéance = date d'envoi + délai ; au-delà, s'il reste à encaisser : « à
+  // réclamer » (rouge, notification une seule fois : relanceNotifieeAt).
+  numeroFacture     String?
+  montant           Decimal?             @db.Decimal(14, 2)
+  dateEmission      DateTime?
+  dateEnvoiClient   DateTime?
+  delaiRelanceJours Int?
+  relanceNotifieeAt DateTime?
+  ajouteParEmail    String?
+  ajouteParNom      String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  invoice           Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, type])
+}
+
+// Historique d'une proforma : toutes les actions la concernant (création, modifications, statuts,
+// encaissements, dépenses, pièces, e-mails…), avec leur auteur. Codes et libellés des actions :
+// lib/proformaHistorique.ts.
+model InvoiceHistorique {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  action      String
+  details     String?
+  donnees     Json?
+  auteurEmail String?
+  auteurNom   String?
+  createdAt   DateTime @default(now())
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, createdAt])
 }
 
 model InvoiceProduit {
@@ -222,13 +285,14 @@ model Paiement {
 }
 
 model CashRegister {
-  id             Int             @id @default(autoincrement())
-  name           String          @unique
-  balance        Float           @default(0)
-  createdAt      DateTime        @default(now())
-  view           Boolean         @default(true)
+  id             Int                   @id @default(autoincrement())
+  name           String                @unique
+  balance        Float                 @default(0)
+  createdAt      DateTime              @default(now())
+  view           Boolean               @default(true)
   journals       CashJournal[]
   budgetDepenses BudgetDepense[]
+  moyensPaiement MoyenPaiementCaisse[]
 }
 
 model CashJournal {
@@ -264,25 +328,78 @@ model CashJournalAttachment {
 }
 
 model Fournisseur {
-  id               String                        @id @default(cuid())
-  nom              String?
-  prenom           String?
-  entreprise       String                        @unique
-  contact          String
-  domaineActivite  String
-  adresse          String
-  email            String?                       @unique
-  typeFournisseur  String?
-  actif            Boolean                       @default(true)
-  dateDebutContrat DateTime?
-  dateFinContrat   DateTime?
-  createdAt        DateTime                      @default(now())
-  updatedAt        DateTime                      @updatedAt
-  commandes        CommandeFournisseur[]
-  factures         FactureFournisseur[]
-  produits         ProduitFournisseur[]
-  statutHistorique FournisseurStatutHistorique[]
-  documents        FournisseurDocument[]
+  id                    String                             @id @default(cuid())
+  nom                   String?
+  prenom                String?
+  entreprise            String                             @unique
+  contact               String
+  domaineActivite       String
+  adresse               String
+  email                 String?                            @unique
+  typeFournisseur       String?
+  actif                 Boolean                            @default(true)
+  dateDebutContrat      DateTime?
+  dateFinContrat        DateTime?
+  createdAt             DateTime                           @default(now())
+  updatedAt             DateTime                           @updatedAt
+  commandes             CommandeFournisseur[]
+  factures              FactureFournisseur[]
+  produits              ProduitFournisseur[]
+  statutHistorique      FournisseurStatutHistorique[]
+  documents             FournisseurDocument[]
+  // Département de rattachement (prestataires internes et certains externes ; jamais un « Fournisseur »)
+  // et poste occupé (lib/departements.ts : RESPONSABLE, EQUIPE, STAGIAIRE_PRO…). Chaque changement
+  // est tracé dans FournisseurDepartementHistorique.
+  departementId         String?
+  departement           Departement?                       @relation(fields: [departementId], references: [id])
+  posteDepartement      String?
+  departementHistorique FournisseurDepartementHistorique[]
+
+  @@index([departementId])
+}
+
+// Départements (services) de l'entreprise : chaque ligne de budget est rattachée à un département,
+// ce qui permet de suivre les dépenses par département et par mois. Le nom est toujours en
+// majuscules (normalisé par le serveur). Un département utilisé ne se supprime pas : on le désactive.
+model Departement {
+  id                 String   @id @default(uuid())
+  nom                String   @unique
+  code               String?  @unique // code court : INFO, RH, DG…
+  description        String?
+  emailContact       String?
+  telephone          String?
+  codeAnalytique     String? // centre de coût utilisé en comptabilité
+  couleur            String? // couleur des graphiques (#RRGGBB)
+  enveloppeMensuelle Decimal? @db.Decimal(12, 2) // montant mensuel indicatif, pour comparer au dépensé
+  actif              Boolean  @default(true)
+  createdByEmail     String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  lignesBudget DemandeBudgetLigne[]
+  prestataires Fournisseur[]
+  arrivees     FournisseurDepartementHistorique[] @relation("HistoriqueNouveauDepartement")
+  departs      FournisseurDepartementHistorique[] @relation("HistoriqueAncienDepartement")
+}
+
+// Historique des rattachements d'un prestataire : changement de département et/ou de poste.
+model FournisseurDepartementHistorique {
+  id                   String       @id @default(uuid())
+  fournisseurId        String
+  ancienDepartementId  String?
+  nouveauDepartementId String?
+  ancienPoste          String?
+  nouveauPoste         String?
+  dateEffet            DateTime
+  motif                String?
+  auteurEmail          String?
+  auteurNom            String?
+  createdAt            DateTime     @default(now())
+  fournisseur          Fournisseur  @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  ancienDepartement    Departement? @relation("HistoriqueAncienDepartement", fields: [ancienDepartementId], references: [id])
+  nouveauDepartement   Departement? @relation("HistoriqueNouveauDepartement", fields: [nouveauDepartementId], references: [id])
+
+  @@index([fournisseurId, dateEffet])
 }
 
 model FournisseurStatutHistorique {
@@ -311,30 +428,63 @@ model FournisseurDocument {
 }
 
 model FactureFournisseur {
-  id              String                   @id @default(cuid())
-  reference       String                   @unique
-  montant         Decimal                  @db.Decimal(10, 2)
-  date            DateTime
-  pieceJointe     String?
-  status          StatutFactureFournisseur @default(EN_ATTENTE)
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
-  fournisseurId   String
-  createdById     String?
-  fournisseur     Fournisseur              @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
-  createdBy       User?                    @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
+  id                      String                               @id @default(cuid())
+  reference               String                               @unique
+  montant                 Decimal                              @db.Decimal(10, 2)
+  date                    DateTime
+  pieceJointe             String?
+  status                  StatutFactureFournisseur             @default(EN_ATTENTE)
+  createdAt               DateTime                             @default(now())
+  updatedAt               DateTime                             @updatedAt
+  fournisseurId           String
+  createdById             String?
+  fournisseur             Fournisseur                          @relation(fields: [fournisseurId], references: [id], onDelete: Cascade)
+  createdBy               User?                                @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
   // Bon de commande réglé par cette facture (Lot C) ; la facture passe PAYEE quand une dépense de
   // budget de nature SOLDE la règle — jamais à la main.
-  commandeId      String?
-  commande        CommandeFournisseur?     @relation(fields: [commandeId], references: [id])
-  depenses        BudgetDepense[]
+  commandeId              String?
+  commande                CommandeFournisseur?                 @relation(fields: [commandeId], references: [id])
+  depenses                BudgetDepense[]
   // Prestataire interne / externe (pas de bon de commande obligatoire) : la facture peut être
   // rattachée directement à une ligne de budget (ex. budget mensuel de la comptabilité pour la paie)
   // et réglée par des dépenses sur cette ligne ; elle passe PAYEE quand elle est entièrement réglée.
-  ligneBudgetId   String?
-  ligneBudget     DemandeBudgetLigne?      @relation(fields: [ligneBudgetId], references: [id])
+  ligneBudgetId           String?
+  ligneBudget             DemandeBudgetLigne?                  @relation(fields: [ligneBudgetId], references: [id])
   // Retard de paiement déjà notifié (une seule fois par facture ; remis à zéro si la date change).
-  retardNotifieAt DateTime?
+  retardNotifieAt         DateTime?
+  // Paiement fait hors plateforme (facture liée à aucun bon ni ligne de budget, marquée « payée » à la
+  // main, sans sortie de caisse) : moyen de paiement, date, preuve (obligatoires) et référence.
+  // Remis à vide quand la facture quitte le statut « payée ».
+  paiementManuelDate      DateTime?
+  paiementManuelMode      String?
+  paiementManuelMoyen     MoyenPaiement?                       @relation("FacturePaiementManuel", fields: [paiementManuelMode], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  paiementManuelPreuve    String?
+  paiementManuelReference String?
+  paiementManuelParEmail  String?
+  historiqueStatut        FactureFournisseurStatutHistorique[]
+}
+
+// Changements de statut faits à la main sur une facture de prestataire (marquée payée hors
+// plateforme, annulée, remise en attente, réactivée…), avec leur auteur. Les changements automatiques
+// (paiement appliqué depuis le budget) n'y figurent pas : ils ont leur propre trace (dépenses).
+model FactureFournisseurStatutHistorique {
+  id                   String                   @id @default(uuid())
+  factureFournisseurId String
+  ancienStatut         StatutFactureFournisseur
+  nouveauStatut        StatutFactureFournisseur
+  // Paiement hors plateforme (nouveau statut « payée ») : moyen, date, preuve et référence.
+  modePaiement         String?
+  moyenPaiement        MoyenPaiement?           @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  datePaiement         DateTime?
+  preuve               String?
+  reference            String?
+  motif                String?
+  auteurEmail          String
+  auteurNom            String?
+  createdAt            DateTime                 @default(now())
+  factureFournisseur   FactureFournisseur       @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
+
+  @@index([factureFournisseurId])
 }
 
 model ProduitFournisseur {
@@ -545,6 +695,7 @@ enum CategorieDepense {
   TRANSPORT
   LOYER_CHARGES // loyer, électricité, eau
   COMMUNICATION // téléphone, internet
+  ABONNEMENT // abonnements : IA, logiciels, outils en ligne, hébergement, licences…
   FOURNITURES
   EQUIPEMENT
   MAINTENANCE
@@ -571,13 +722,42 @@ enum TypeBudget {
   TIERS // pour le compte d'une entreprise / d'un client, proforma facultative
 }
 
-enum ModePaiementDemande {
-  VIREMENT
-  CHEQUE
-  ESPECES
-  MOBILE_MONEY
-  CARTE
-  AUTRE
+// Moyens de paiement (Finance → Moyens de paiement) : liste gérée, qui remplace la liste figée
+// d'avant le 2026-11-24. `code` est l'identifiant stable enregistré sur les budgets, les lignes, les
+// dépenses et les encaissements (ESPECES, VIREMENT… pour les 6 moyens d'origine, aussi envoyés par
+// CampTrack) : il n'est jamais modifié. Un moyen se désactive, il ne se supprime pas.
+model MoyenPaiement {
+  id                         String                               @id @default(uuid())
+  code                       String                               @unique
+  nom                        String                               @unique
+  description                String?
+  // Ordre d'affichage dans les listes (croissant).
+  ordre                      Int                                  @default(0)
+  actif                      Boolean                              @default(true)
+  createdByEmail             String?
+  createdAt                  DateTime                             @default(now())
+  updatedAt                  DateTime                             @updatedAt
+  // Caisses dans lesquelles ce moyen peut être encaissé ou payé. Aucune caisse liée = aucun
+  // paiement possible avec ce moyen (sauf CampTrack, qui choisit lui-même sa caisse).
+  caisses                    MoyenPaiementCaisse[]
+  demandesBudget             DemandeBudget[]
+  lignesBudget               DemandeBudgetLigne[]
+  depensesBudget             BudgetDepense[]
+  facturesPayeesManuellement FactureFournisseur[]                 @relation("FacturePaiementManuel")
+  historiquesFacture         FactureFournisseurStatutHistorique[]
+}
+
+// Lien moyen de paiement ↔ caisse (un moyen peut être lié à plusieurs caisses, une caisse à
+// plusieurs moyens). Seules les caisses visibles sont proposées au paiement.
+model MoyenPaiementCaisse {
+  moyenPaiementId String
+  cashRegisterId  Int
+  createdAt       DateTime      @default(now())
+  moyenPaiement   MoyenPaiement @relation(fields: [moyenPaiementId], references: [id], onDelete: Cascade)
+  cashRegister    CashRegister  @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+
+  @@id([moyenPaiementId, cashRegisterId])
+  @@index([cashRegisterId])
 }
 
 enum TypeAttachmentDemande {
@@ -600,10 +780,14 @@ model DemandeBudget {
   requesterEmail String
   requesterName  String?
 
+  // Ancien département du budget entier (texte libre) : plus saisi depuis le 2026-11-24, chaque ligne
+  // porte son propre département (DemandeBudgetLigne.departementId). Conservé pour l'historique.
   departement         String?
   contexteMotivation  String
-  montantTotal        Decimal             @db.Decimal(12, 2)
-  modePaiement        ModePaiementDemande
+  montantTotal        Decimal       @db.Decimal(12, 2)
+  // Moyen de paiement principal (code d'un MoyenPaiement) : celui qui pèse le plus sur les lignes.
+  modePaiement        String
+  moyenPaiement       MoyenPaiement @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
   typeDepense         String
   pourLeCompteDe      String?
   dateLimiteSouhaitee DateTime?
@@ -648,15 +832,28 @@ model DemandeBudgetLigne {
   // Catégorie normalisée, pour comparer les budgets d'un mois à l'autre (null = non catégorisé,
   // lignes antérieures au Lot 3). Libellés dans lib/budgetTypes.ts.
   categorie            CategorieDepense?
-  // Moyen de paiement prévu pour la ligne (espèces, MoMo, chèque, virement, carte) — sert au
-  // total prévu par moyen de paiement. Null = lignes antérieures (reprises du mode de la demande).
-  modePaiement         ModePaiementDemande?
+  // Moyen de paiement prévu pour la ligne (code d'un MoyenPaiement) — sert au total prévu par
+  // moyen de paiement. Null = lignes antérieures (reprises du mode de la demande).
+  modePaiement         String?
+  moyenPaiement        MoyenPaiement?        @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  // Précisions libres sur la ligne (quantités, fournisseur pressenti, contexte…) — facultatif,
+  // lisible par tous ceux qui voient le budget (fenêtre « Détail » de la ligne).
+  detail               String?
+  // Délai propre à la ligne (date limite de décaissement) : chaque service a ses échéances,
+  // notamment pour les budgets mensuels et de campagne. Null = pas de délai particulier.
+  dateLimite           DateTime?
+  // Département de la ligne (obligatoire pour toute nouvelle ligne, contrôlé par le serveur ; null =
+  // ancienne ligne sans département reconnu). Sert au total par département et aux rapports.
+  departementId        String?
+  departement          Departement?          @relation(fields: [departementId], references: [id])
   demandeBudget        DemandeBudget         @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   depenses             BudgetDepense[]
   commentaires         BudgetCommentaire[]
   depassements         BudgetDepassement[]
   commandes            CommandeFournisseur[]
   facturesPrestataires FactureFournisseur[]
+
+  @@index([departementId])
 }
 
 // Une dépense réelle imputée à une ligne de budget. Toujours adossée à UNE écriture
@@ -664,25 +861,27 @@ model DemandeBudgetLigne {
 // est calculé par somme de ses dépenses NON annulées, jamais stocké. Une dépense n'est
 // jamais supprimée : son annulation crée une contre-écriture RECETTE (contreEcritureId).
 model BudgetDepense {
-  id                    String              @id @default(uuid())
+  id                    String        @id @default(uuid())
   demandeBudgetId       String
   ligneId               String
-  montant               Decimal             @db.Decimal(12, 2)
+  montant               Decimal       @db.Decimal(12, 2)
   dateDepense           DateTime
   nomReceveur           String
-  modePaiement          ModePaiementDemande
+  // Code du MoyenPaiement utilisé.
+  modePaiement          String
+  moyenPaiement         MoyenPaiement @relation(fields: [modePaiement], references: [code], onDelete: Restrict, onUpdate: Cascade)
   notes                 String?
   cashRegisterId        Int
-  cashJournalEntryId    Int                 @unique
+  cashJournalEntryId    Int           @unique
   invoiceId             String?
-  sansJustificatif      Boolean             @default(false)
+  sansJustificatif      Boolean       @default(false)
   motifSansJustificatif String?
   createdByEmail        String
-  createdAt             DateTime            @default(now())
+  createdAt             DateTime      @default(now())
   annuleeAt             DateTime?
   annuleeParEmail       String?
   motifAnnulation       String?
-  contreEcritureId      Int?                @unique
+  contreEcritureId      Int?          @unique
 
   demandeBudget        DemandeBudget             @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
   ligne                DemandeBudgetLigne        @relation(fields: [ligneId], references: [id], onDelete: Cascade)

@@ -50,6 +50,12 @@ import { ChoixLigneBudgetDialog, type BudgetDepenseOption } from "@/components/d
 import { RentabiliteCampagneCard } from "@/components/proforma/RentabiliteCampagneCard";
 import { LotPaiementDetail, type LotPaiementResume } from "@/components/depenses/LotPaiementDetail";
 import { etatLiasse, partsLignesCommande, payeSurCommande } from "@/lib/commandeFournisseurLiasse";
+import { moyensProposes } from "@/lib/moyensPaiement";
+import { useMoyensPaiement } from "@/lib/useMoyensPaiement";
+import { PiecesProformaCard, type DocumentProforma } from "@/components/proforma/PiecesProformaCard";
+import { HistoriqueProformaCard } from "@/components/proforma/HistoriqueProformaCard";
+import { ProformaFicheSkeleton } from "@/components/proforma/ProformaFicheSkeleton";
+import type { TypeDocumentProformaValue } from "@/lib/proformaPieces";
 
 type Campagne = {
   id: string;
@@ -166,8 +172,7 @@ type Facture = {
     gestionnaireId: string;
     gestionnaire: { prenom: string; nom: string };
   }>;
-  bonCommande: { url: string } | null;
-  factureNormaliser: { url: string } | null;
+  documents: DocumentProforma[];
   paymentConditionPercentage?: number | null;
 };
 
@@ -211,18 +216,13 @@ export default function FactureDetailPage() {
   const [isProduitModalOpen, setIsProduitModalOpen] = useState(false);
   const [activeProductRowIndex, setActiveProductRowIndex] = useState<number | null>(null);
 
-  const [bonCommandeFile, setBonCommandeFile] = useState<File | undefined>();
-  const [factureNormaliseeFile, setFactureNormaliseeFile] = useState<File | undefined>();
-  const [isUploadingBon, setIsUploadingBon] = useState(false);
-  const [isUploadingFacture, setIsUploadingFacture] = useState(false);
-  const [isDeletingBon, setIsDeletingBon] = useState(false);
-  const [isDeletingFacture, setIsDeletingFacture] = useState(false);
-
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [fileToDeleteType, setFileToDeleteType] = useState<'bon' | 'facture' | null>(null);
+  // Pièces : fenêtre d'ajout ouverte d'office (ex. facture normalisée juste après un encaissement) ;
+  // historique rechargé après chaque action.
+  const [ajoutPiece, setAjoutPiece] = useState<TypeDocumentProformaValue | null>(null);
+  const [versionHistorique, setVersionHistorique] = useState(0);
 
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
-  const [newPayment, setNewPayment] = useState({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+  const [newPayment, setNewPayment] = useState({ montant: 0, methode: 'VIREMENT', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [operationType, setOperationType] = useState<'PAIEMENT' | 'DEPENSE'>('PAIEMENT');
@@ -232,9 +232,16 @@ export default function FactureDetailPage() {
   const [proofFiles, setProofFiles] = useState<FileList | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
 
-  const [cashRegisters, setCashRegisters] = useState<{id: number, name: string, view?: boolean}[]>([]);
   const [campagnes, setCampagnes] = useState<Campagne[]>([]);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
+  // Moyens de paiement : seules les caisses visibles liées au moyen choisi sont proposées.
+  const { moyens, charge: moyensCharges, caisses: caissesDuMoyen, libelle: libelleMoyenPaiement } = useMoyensPaiement();
+  const caissesOperation = useMemo(() => caissesDuMoyen(newPayment.methode), [caissesDuMoyen, newPayment.methode]);
+  useEffect(() => {
+    setSelectedCashRegisterId((actuelle) =>
+      caissesOperation.some((c) => String(c.id) === actuelle) ? actuelle : caissesOperation.length > 0 ? String(caissesOperation[0].id) : ''
+    );
+  }, [caissesOperation]);
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
   // Droits : « Saisir au journal de caisse » (dépense d'une campagne sans budget) et « Enregistrer
   // les dépenses de budget » (dépense d'une campagne avec budget, sur une de ses lignes).
@@ -331,9 +338,8 @@ export default function FactureDetailPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const [factureRes, cashRes, gestionnairesRes, produitsRes, campagnesRes] = await Promise.all([
+      const [factureRes, gestionnairesRes, produitsRes, campagnesRes] = await Promise.all([
         fetch(`/api/factures/${id}`),
-        fetch('/api/cash-journal'),
         fetch('/api/gestionnaires'),
         fetch('/api/produits'),
         fetch(`/api/factures/${id}/campagnes`),
@@ -345,15 +351,6 @@ export default function FactureDetailPage() {
         setFormData({ ...data, gestionnaireId: data.gestionnaires?.[0]?.gestionnaireId });
       } else {
         setFacture(null);
-      }
-
-      const cashData = await cashRes.json();
-      const registers = cashData.cashRegisters || [];
-      setCashRegisters(registers);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const visibleRegisters = registers.filter((r: any) => r.view !== false);
-      if (visibleRegisters.length > 0) {
-        setSelectedCashRegisterId(visibleRegisters[0].id.toString());
       }
 
       const gestionnairesData = await gestionnairesRes.json();
@@ -370,12 +367,30 @@ export default function FactureDetailPage() {
       toast.error("Erreur lors du chargement des données.");
     } finally {
       setLoading(false);
+      setVersionHistorique((v) => v + 1);
     }
   }, [id]);
 
   useEffect(() => {
     fetchFacture();
   }, [fetchFacture]);
+
+  // Arrivée depuis le menu « … » de la liste (« Modifier ») : la fiche s'ouvre directement en mode
+  // modification, si la proforma est modifiable (mêmes règles que le bouton « Modifier »).
+  const modificationDemandee = useRef(false);
+  useEffect(() => {
+    if (!facture || modificationDemandee.current) return;
+    if (new URLSearchParams(window.location.search).get("modifier") !== "1") return;
+    modificationDemandee.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    const verrouillee =
+      facture.documents?.some((d) => d.type === "BON_COMMANDE" || d.type === "FACTURE_NORMALISEE") || ["Payer", "Solde"].includes(facture.statut);
+    if (verrouillee || !(peutModifierContenu || peutChangerUnStatut)) {
+      toast.info("Cette proforma ne peut plus être modifiée (paiement en cours, ou bon de commande / facture normalisée joint).");
+      return;
+    }
+    setIsEditing(true);
+  }, [facture, peutModifierContenu, peutChangerUnStatut]);
 
   const handleSendEmail = async () => {
     setIsSending(true);
@@ -438,51 +453,6 @@ export default function FactureDetailPage() {
       toast.error("Erreur réseau.");
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  const handleFileUpload = async (type: 'bon' | 'facture') => {
-    const file = type === 'bon' ? bonCommandeFile : factureNormaliseeFile;
-    if (!file) return;
-    if (type === 'bon') setIsUploadingBon(true); else setIsUploadingFacture(true);
-    const data = new FormData();
-    data.append('file', file);
-    data.append('type', type);
-
-    try {
-      const res = await fetch(`/api/factures/${id}/upload`, { method: 'POST', body: data });
-      if (res.ok) {
-        toast.success(`${type === 'bon' ? 'Bon de commande' : 'Facture'} uploadé !`);
-        await fetchFacture();
-      } else toast.error("Échec de l'upload.");
-    } catch (error) {
-      toast.error("Erreur réseau.");
-    } finally {
-      if (type === 'bon') setIsUploadingBon(false); else setIsUploadingFacture(false);
-    }
-  };
-
-  const handleFileDelete = (type: 'bon' | 'facture') => {
-    setFileToDeleteType(type);
-    setIsDialogOpen(true);
-  };
-
-  const confirmDeleteFile = async () => {
-    if (!fileToDeleteType) return;
-    const type = fileToDeleteType;
-    if (type === 'bon') setIsDeletingBon(true); else setIsDeletingFacture(true);
-    setIsDialogOpen(false);
-    try {
-      const res = await fetch(`/api/factures/${id}/upload?type=${type}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success("Fichier supprimé !");
-        await fetchFacture();
-      } else toast.error("Échec de la suppression.");
-    } catch (error) {
-      toast.error("Erreur réseau.");
-    } finally {
-      if (type === 'bon') setIsDeletingBon(false); else setIsDeletingFacture(false);
-      setFileToDeleteType(null);
     }
   };
 
@@ -559,6 +529,10 @@ export default function FactureDetailPage() {
     if (operationType === 'PAIEMENT' && facture && newPayment.montant > facture.resteAPayer) {
       setPaymentError(`Le montant dépasse le reste à payer.`); return;
     }
+    if (!selectedCashRegisterId) {
+      setPaymentError("Choisissez la caisse : seules les caisses liées au moyen de paiement sont proposées (Finance → Moyens de paiement).");
+      return;
+    }
     setIsAddingPayment(true);
     const data = new FormData();
     const paymentData = { 
@@ -567,7 +541,7 @@ export default function FactureDetailPage() {
         reference: newPayment.reference, 
         notes: newPayment.notes, 
         datePaiement: new Date(newPayment.datePaiement), 
-        cashRegisterId: newPayment.methode === 'Espèces' && operationType === 'PAIEMENT' ? 1 : parseInt(selectedCashRegisterId, 10),
+        cashRegisterId: parseInt(selectedCashRegisterId, 10),
         type: operationType,
         // Campagne sans budget : avance / solde d'un bon de commande lié à la proforma (facultatif).
         ...(operationType === 'DEPENSE' && paiementBc !== 'NORMALE'
@@ -586,9 +560,14 @@ export default function FactureDetailPage() {
       const res = await fetch(`/api/factures/${id}/paiements`, { method: 'POST', body: data });
       if (res.ok) {
         setIsPaymentDialogOpen(false);
-        setNewPayment({ montant: 0, methode: 'Virement', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+        setNewPayment({ montant: 0, methode: 'VIREMENT', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
         setPaymentFiles(null);
         toast.success("Opération enregistrée !");
+        // Recette encaissée sans facture normalisée : on demande de la joindre tout de suite.
+        if (operationType === 'PAIEMENT' && !facture?.documents?.some((d) => d.type === 'FACTURE_NORMALISEE')) {
+          toast.info("Joignez maintenant la facture normalisée de cette recette.");
+          setAjoutPiece('FACTURE_NORMALISEE');
+        }
         await fetchFacture();
       } else {
         const err = await res.json();
@@ -598,12 +577,7 @@ export default function FactureDetailPage() {
     finally { setIsAddingPayment(false); }
   };
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center min-h-[600px] space-y-4">
-        <TrendingUp className="w-12 h-12 text-primary animate-pulse" />
-        <p className="text-muted-foreground animate-pulse font-medium">Chargement de la mission...</p>
-    </div>
-  );
+  if (loading) return <ProformaFicheSkeleton />;
   if (!facture) return <div className="text-center p-20 font-bold text-red-500">Facture introuvable.</div>;
 
   const displayDevise = editionContenu ? formData.devise : facture.devise;
@@ -669,7 +643,7 @@ export default function FactureDetailPage() {
             </div>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            {!facture.bonCommande && !facture.factureNormaliser && (peutModifierContenu || peutChangerUnStatut) && (
+            {!facture.documents?.some((d) => d.type === "BON_COMMANDE" || d.type === "FACTURE_NORMALISEE") && (peutModifierContenu || peutChangerUnStatut) && (
                 <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "destructive" : "outline"} size="sm" disabled={["Payer", "Solde"].includes(facture.statut)}>
                     {isEditing ? <><X className="w-4 h-4 mr-2" /> Annuler</> : <><Edit3 className="w-4 h-4 mr-2" /> Modifier</>}
                 </Button>
@@ -917,7 +891,7 @@ export default function FactureDetailPage() {
                                                         </TooltipContent>
                                                     </Tooltip>
                                                 </TooltipProvider>
-                                                <span className="text-[10px] text-muted-foreground uppercase">{p.methode || "-"}</span>
+                                                <span className="text-[10px] text-muted-foreground uppercase">{p.methode ? libelleMoyenPaiement(p.methode) : "-"}</span>
                                                 <OrigineDepense p={p} />
                                             </div>
                                         </TableCell>
@@ -955,62 +929,19 @@ export default function FactureDetailPage() {
                 </CardContent>
             </Card>
 
-            {/* Documents Section moved here */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
-                    <CardHeader className="pb-3 border-b">
-                        <CardTitle className="text-xs font-bold uppercase flex items-center gap-2 text-slate-500">
-                            <FileText className="w-4 h-4 text-blue-500" /> Bon de Commande
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        {facture.bonCommande ? (
-                            <div className="flex items-center justify-between p-3 bg-slate-900 rounded-xl group">
-                                <a href={`/Upload/Bon/${facture.numero}/${facture.bonCommande.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-blue-400">
-                                    <ExternalLink className="w-3 h-3" /> Visualiser le document
-                                </a>
-                                {peut("proforma.pieces") && <Button variant="ghost" size="icon" onClick={() => handleFileDelete("bon")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>}
-                            </div>
-                        ) : !peut("proforma.pieces") ? (
-                            <p className="text-xs text-muted-foreground italic">Aucun bon de commande joint.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                <Input type="file" onChange={(e) => setBonCommandeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("bon")} loading={isUploadingBon} disabled={!bonCommandeFile || isUploadingBon} size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
-                                    {isUploadingBon ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader le bon</>}
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
-                    <CardHeader className="pb-3 border-b">
-                        <CardTitle className="text-xs font-bold uppercase flex items-center gap-2 text-slate-500">
-                            <Receipt className="w-4 h-4 text-green-500" /> Facture Normalisée
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        {facture.factureNormaliser ? (
-                            <div className="flex items-center justify-between p-3 bg-slate-900 rounded-xl group">
-                                <a href={`/Upload/Facture/${facture.numero}/${facture.factureNormaliser.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-green-400">
-                                    <ExternalLink className="w-3 h-3" /> Visualiser la facture
-                                </a>
-                                {peut("proforma.pieces") && <Button variant="ghost" size="icon" onClick={() => handleFileDelete("facture")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>}
-                            </div>
-                        ) : !peut("proforma.pieces") ? (
-                            <p className="text-xs text-muted-foreground italic">Aucune facture normalisée jointe.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                <Input type="file" onChange={(e) => setFactureNormaliseeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("facture")} loading={isUploadingFacture} disabled={!factureNormaliseeFile || isUploadingFacture} size="sm" className="w-full bg-green-600 hover:bg-green-700">
-                                    {isUploadingFacture ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader la facture</>}
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+            {/* Pièces de la proforma (bon de commande du client, factures normalisées, attestation…) et historique */}
+            <PiecesProformaCard
+                invoiceId={facture.id}
+                statut={facture.statut}
+                resteAPayer={Number(facture.resteAPayer)}
+                aRecette={(facture.paiements ?? []).some((p) => p.type === 'PAIEMENT')}
+                documents={facture.documents ?? []}
+                peutJoindre={peut("proforma.pieces")}
+                demandeAjout={ajoutPiece}
+                onDemandeAjoutTraitee={() => setAjoutPiece(null)}
+                onChange={fetchFacture}
+            />
+            <HistoriqueProformaCard invoiceId={facture.id} version={versionHistorique} />
         </div>
 
         <div className="space-y-8">
@@ -1190,20 +1121,22 @@ export default function FactureDetailPage() {
                     <Select value={newPayment.methode} onValueChange={(v) => setNewPayment({ ...newPayment, methode: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="Virement">Virement</SelectItem>
-                            <SelectItem value="Espèces">Espèces</SelectItem>
-                            <SelectItem value="Chèque">Chèque</SelectItem>
-                            <SelectItem value="MobileMoney">Mobile Money</SelectItem>
+                            {moyensProposes(moyens, newPayment.methode).map((m) => (
+                                <SelectItem key={m.code} value={m.code}>{m.nom}{!m.actif ? ' (désactivé)' : ''}</SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
             </div>
             <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Caisse de destination</label>
-                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
-                    <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
-                    <SelectContent>{cashRegisters.filter(r => r.view !== false).map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
+                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId} disabled={caissesOperation.length === 0}>
+                    <SelectTrigger className="bg-slate-50"><SelectValue placeholder={caissesOperation.length === 0 ? 'Aucune caisse' : 'Choisir la caisse'} /></SelectTrigger>
+                    <SelectContent>{caissesOperation.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
                 </Select>
+                {moyensCharges && caissesOperation.length === 0 && (
+                    <p className="text-xs text-amber-700">Aucune caisse n&apos;est liée à ce moyen de paiement : voyez Finance → Moyens de paiement.</p>
+                )}
             </div>
             <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Référence / Objet</label>
@@ -1324,19 +1257,6 @@ export default function FactureDetailPage() {
         onClose={() => setDepenseBudget(null)}
         onSuccess={fetchFacture}
       />
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-sm border-none shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600"><AlertCircle className="w-5 h-5" /> Confirmation</DialogTitle>
-            <DialogDescription>Cette suppression est définitive. Souhaitez-vous continuer ?</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-            <Button variant="destructive" onClick={confirmDeleteFile}>Supprimer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <div className="text-[10px] text-slate-400 text-center font-bold tracking-widest uppercase py-8 opacity-50">
         Propulsé par Proforma Générateur &mdash; Réseaupub © {new Date().getFullYear()}

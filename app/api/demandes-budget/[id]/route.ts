@@ -20,6 +20,7 @@ export async function GET(
           orderBy: { designation: "asc" },
           // Bons de commande financés par la ligne (avances / solde, liasse) — Lot C.
           include: {
+            departement: { select: { id: true, nom: true, code: true, couleur: true } },
             commandes: {
               where: { statut: { not: "ANNULEE" } },
               orderBy: { dateCommande: "asc" },

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { RECEVEUR_NON_PRECISE, receveurObligatoire } from "@/lib/budgetTypes";
-import { ModePaiementDemande, NatureDepense, Prisma, SourceDepense } from "@prisma/client";
+import { NatureDepense, Prisma, SourceDepense } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import prisma from "@/lib/prisma";
 import { refusPetiteDepense, requireBudgetUser } from "@/lib/budgetAuth";
 import { saveDemandeBudgetFiles, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
@@ -18,7 +19,7 @@ const depenseSchema = z
     dateDepense: z.string().min(1, "La date de la dépense est requise."),
     // Obligatoire sauf pour les budgets mensuels et de campagne (contrôlé plus bas selon le type).
     nomReceveur: z.string().trim().default(""),
-    modePaiement: z.nativeEnum(ModePaiementDemande),
+    modePaiement: codeMoyenSchema,
     cashRegisterId: z.number().int().positive("Choisissez la caisse concernée."),
     invoiceId: z.string().optional(),
     notes: z.string().optional(),

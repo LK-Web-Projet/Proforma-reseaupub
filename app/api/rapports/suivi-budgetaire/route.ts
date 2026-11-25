@@ -64,13 +64,12 @@ export async function GET(request: NextRequest) {
       ],
     };
     if (type && Object.values(TypeBudget).includes(type as TypeBudget)) where.type = type as TypeBudget;
-    if (departement) where.departement = departement === "__aucun__" ? null : departement;
 
     const demandes = await prisma.demandeBudget.findMany({
       where,
       orderBy: { createdAt: "asc" },
       include: {
-        lignes: true,
+        lignes: { include: { departement: { select: { nom: true } } } },
         depenses: { where: { annuleeAt: null }, select: { ligneId: true, montant: true } },
         depassements: { where: { statut: StatutDepassement.APPROUVE }, select: { ligneId: true, montant: true } },
       },
@@ -84,6 +83,10 @@ export async function GET(request: NextRequest) {
         // Seules les lignes accordées font partie du budget (en attente, à corriger ou retirées : hors rapport).
         if (l.statutValidation !== StatutLigneBudget.ACCORDEE) continue;
         if (categorie && (categorie === "__aucune__" ? l.categorie !== null : l.categorie !== categorie)) continue;
+        // Département de la LIGNE (depuis le 2026-11-24) ; anciennes lignes sans département : celui
+        // du budget entier, sinon « Sans département ».
+        const departementLigne = l.departement?.nom ?? (d.departement?.trim() ? d.departement.trim().toLocaleUpperCase("fr-FR") : "Sans département");
+        if (departement && (departement === "__aucun__" ? departementLigne !== "Sans département" : departementLigne !== departement.toLocaleUpperCase("fr-FR"))) continue;
         const prevu = montantAccordeLigne(l);
         const depassements = d.depassements.filter((x) => x.ligneId === l.id).reduce((s, x) => s + Number(x.montant), 0);
         const realise = ancienCircuit
@@ -95,7 +98,7 @@ export async function GET(request: NextRequest) {
           numero: d.numero,
           type: d.type,
           statut: d.statut,
-          departement: d.departement || "Sans service",
+          departement: departementLigne,
           designation: l.designation,
           categorie: l.categorie,
           modePaiement: l.modePaiement ?? d.modePaiement,

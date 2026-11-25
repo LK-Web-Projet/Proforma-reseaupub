@@ -35,6 +35,7 @@ export const EVENEMENTS_NOTIFICATION = {
   ETAT_DU_SOIR: { groupe: "Pilotage", libelle: "État du soir (campagnes, justificatifs, avances)", destinataires: "Direction, comptables en copie" },
   PROFORMA_VALIDEE: { groupe: "Proformas", libelle: "Proforma validée", destinataires: "Liste de diffusion commerciale et finance" },
   PROFORMA_ENCAISSEMENT: { groupe: "Proformas", libelle: "Encaissement sur une proforma", destinataires: "Administrateurs" },
+  PROFORMA_RELANCE_PAIEMENT: { groupe: "Proformas", libelle: "Paiement client à réclamer (échéance de la facture normalisée atteinte)", destinataires: "Comptables et direction" },
   BC_CREE: { groupe: "Fournisseurs", libelle: "Bon de commande créé (à signer)", destinataires: "Direction (valide les budgets mensuels)" },
   BC_VALIDE: { groupe: "Fournisseurs", libelle: "Bon de commande signé et validé", destinataires: "Comptables" },
   BC_EMIS: { groupe: "Fournisseurs", libelle: "Bon de commande émis sur une ligne de budget (validé d'office)", destinataires: "Demandeur du budget, comptables et direction" },

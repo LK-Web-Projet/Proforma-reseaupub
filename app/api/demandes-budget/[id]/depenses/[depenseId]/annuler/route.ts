@@ -8,6 +8,8 @@ import { safeCreatedById } from "@/lib/authz";
 import { logBudget, recalculerStatutBudget } from "@/lib/budgetSuivi";
 import { sendDepenseAnnuleeNotification } from "@/lib/email/demandeBudget";
 import { annulerImputations, recalculerStatutFacture } from "@/lib/commandeFournisseurSuivi";
+import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
 
 class AnnulationError extends Error {}
 
@@ -81,6 +83,14 @@ export async function POST(
               createdById: await safeCreatedById(tx, caps.userId),
             },
           });
+          await journaliserProforma(
+            tx,
+            depense.invoiceId,
+            "DEPENSE_ANNULEE",
+            `Dépense de ${fcfa(montant)} annulée (contre-écriture) — budget ${depense.demandeBudget.numero}, ${depense.ligne.designation} — ${motif}`,
+            { email: caps.email, nom: caps.name },
+            { montant, depenseId: depense.id, contreEcriture: contreEcriture.id }
+          );
         }
 
         await tx.budgetDepense.update({

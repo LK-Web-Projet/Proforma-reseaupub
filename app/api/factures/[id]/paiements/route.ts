@@ -6,7 +6,9 @@ import { mkdirSync, existsSync } from "fs";
 import { writeFile } from "fs/promises";
 import { assertAllowedUpload, safeUploadFileName } from "@/lib/uploadSecurity";
 import { auth } from "@clerk/nextjs/server";
-import { ModePaiementDemande, NatureDepense, SourceDepense } from "@prisma/client";
+import { NatureDepense, SourceDepense } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
+import { erreurMoyenEtCaisse } from "@/lib/moyensPaiementServeur";
 import { DepenseError, enregistrerDepense } from "@/lib/depenses/enregistrerDepense";
 import { PaiementCommandeError } from "@/lib/commandeFournisseurSuivi";
 import { isSoldeInsuffisantError } from "@/lib/cashJournal";
@@ -16,11 +18,14 @@ import { sendProformaPaiementNotification } from "@/lib/email/proformaPaiement";
 import { requireCaisseUser } from "@/lib/budgetAuth";
 import { requirePermission } from "@/lib/authz";
 import { proformaDansPortee } from "@/lib/proformaPortee";
+import { auteurDepuisUtilisateur, journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa, libelleStatutProforma } from "@/lib/proformaHistorique";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
   montant: z.number().positive("Le montant doit être un nombre positif."),
-  methode: z.string().optional(),
+  // Code du moyen de paiement (Finance → Moyens de paiement) : la caisse doit lui être liée.
+  methode: codeMoyenSchema,
   reference: z.string().optional(),
   notes: z.string().optional(),
   datePaiement: z.preprocess(
@@ -40,14 +45,6 @@ const paiementSchema = z.object({
   factureFournisseurId: z.string().optional(),
   nomReceveur: z.string().optional(),
 });
-
-// Méthode saisie sur la fiche proforma → moyen de paiement normalisé.
-const MODE_DEPUIS_METHODE: Record<string, ModePaiementDemande> = {
-  "Espèces": ModePaiementDemande.ESPECES,
-  "Virement": ModePaiementDemande.VIREMENT,
-  "Chèque": ModePaiementDemande.CHEQUE,
-  "MobileMoney": ModePaiementDemande.MOBILE_MONEY,
-};
 
 export async function POST(
   request: NextRequest,
@@ -106,13 +103,20 @@ export async function POST(
       auteur = { email: caisseCaps.email, name: caisseCaps.name };
     }
 
-    const finalCashRegisterId =
-      methode === "Espèces" && type === "PAIEMENT" ? 1 : cashRegisterId;
+    // La caisse est celle choisie (plus de caisse imposée pour les espèces depuis le 2026-11-24 :
+    // la caisse doit être liée au moyen choisi, voir Finance → Moyens de paiement).
+    const finalCashRegisterId = cashRegisterId;
     if (!finalCashRegisterId) {
       return NextResponse.json(
-        { error: "L'ID de la caisse est requis pour cette opération." },
+        { error: "Choisissez la caisse de cette opération." },
         { status: 400 },
       );
+    }
+    // Encaissement : moyen actif, caisse visible et liée à ce moyen (pour une dépense, le même
+    // contrôle est fait par enregistrerDepense).
+    if (type === "PAIEMENT") {
+      const erreurMoyen = await erreurMoyenEtCaisse(prisma, methode, finalCashRegisterId);
+      if (erreurMoyen) return NextResponse.json({ error: erreurMoyen }, { status: 400 });
     }
 
     const invoice = await prisma.invoice.findUnique({
@@ -188,7 +192,7 @@ export async function POST(
           dateDepense: dateOperation,
           cashRegisterId: finalCashRegisterId,
           nomReceveur: nomReceveur?.trim() || rest.reference || "—",
-          modePaiement: MODE_DEPUIS_METHODE[methode ?? ""] ?? ModePaiementDemande.AUTRE,
+          modePaiement: methode,
           notes: rest.notes,
           invoiceId,
           commandeId,
@@ -251,6 +255,7 @@ export async function POST(
         newResteAPayer = 0;
       }
 
+      const statutAvant = (await tx.invoice.findUnique({ where: { id: invoiceId }, select: { statut: true } }))!.statut;
       const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
@@ -258,6 +263,29 @@ export async function POST(
           statut: newResteAPayer <= 0 ? "Solde" : "Payer",
         },
       });
+
+      // Historique : l'encaissement, et le statut s'il a changé (posé par l'encaissement).
+      const auteurHisto = (await auteurDepuisUtilisateur(tx, createdById)) ?? { email: auteur.email };
+      const caisse = await tx.cashRegister.findUnique({ where: { id: finalCashRegisterId }, select: { name: true } });
+      const moyen = await tx.moyenPaiement.findUnique({ where: { code: methode }, select: { nom: true } });
+      await journaliserProforma(
+        tx,
+        invoiceId,
+        "ENCAISSEMENT",
+        `Encaissement de ${fcfa(montantDecimal)} par ${moyen?.nom ?? methode} (caisse ${caisse?.name ?? finalCashRegisterId})${rest.reference ? ` — ${rest.reference}` : ""} — reste à payer ${fcfa(newResteAPayer)}`,
+        auteurHisto,
+        { montant: montantDecimal, methode, cashRegisterId: finalCashRegisterId, resteAPayer: newResteAPayer }
+      );
+      if (updatedInvoice.statut !== statutAvant) {
+        await journaliserProforma(
+          tx,
+          invoiceId,
+          "STATUT",
+          `Statut : ${libelleStatutProforma(statutAvant)} → ${libelleStatutProforma(updatedInvoice.statut)} (encaissement)`,
+          auteurHisto,
+          { ancien: statutAvant, nouveau: updatedInvoice.statut, automatique: true }
+        );
+      }
 
       return { updatedInvoice, newCashJournalEntryId: newCashJournalEntry.id };
     }, {

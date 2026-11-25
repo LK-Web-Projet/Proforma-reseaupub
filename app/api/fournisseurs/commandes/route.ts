@@ -9,7 +9,7 @@ import {
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import { requirePermission } from "@/lib/authz";
 import { Prisma } from "@prisma/client";
-import { prochainNumeroCommande, refusCoherenceLigneProforma, refusLigneBudgetCommande, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
+import { prochainNumeroCommande, refusRattachementCommande, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
 
 const UNE_SEULE_PROFORMA = "Un bon de commande n'est associé qu'à une seule proforma.";
 
@@ -30,7 +30,8 @@ const commandeSchema = z.object({
     appliquerAib: z.boolean().optional().default(false),
     // Une seule proforma par bon (tableau conservé pour la compatibilité : 0 ou 1 élément).
     proformaIds: z.array(z.string()).optional().default([]),
-    // Ligne de budget qui finance le bon (procédure : « les bons de commande sont émis à partir du budget »).
+    // Ligne de budget qui finance le bon : obligatoire hors campagne, et pour une campagne dont la
+    // proforma a un budget (refusRattachementCommande).
     ligneBudgetId: z.string().optional(),
 });
 
@@ -81,10 +82,12 @@ export async function POST(request: Request) {
         if (validatedData.proformaIds.length > 1) {
             return NextResponse.json({ error: UNE_SEULE_PROFORMA }, { status: 400 });
         }
-        const refusLigne =
-            (await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId)) ??
-            // Ligne facultative, mais d'un budget cohérent avec la proforma du bon.
-            (await refusCoherenceLigneProforma(prisma, { ligneBudgetId: validatedData.ligneBudgetId, proformaId: validatedData.proformaIds[0] }));
+        // Plus aucun bon lié à rien : campagne → sa proforma (et la ligne de son budget s'il existe) ;
+        // hors campagne → une ligne d'un budget validé qui n'est pas un budget de campagne.
+        const refusLigne = await refusRattachementCommande(prisma, {
+            proformaId: validatedData.proformaIds[0],
+            ligneBudgetId: validatedData.ligneBudgetId,
+        });
         if (refusLigne) {
             return NextResponse.json({ error: refusLigne }, { status: 400 });
         }

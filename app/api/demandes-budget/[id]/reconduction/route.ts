@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const source = await prisma.demandeBudget.findUnique({
       where: { id },
       include: {
-        lignes: { orderBy: { designation: "asc" } },
+        lignes: { orderBy: { designation: "asc" }, include: { departement: { select: { id: true, actif: true } } } },
         proformas: { select: { invoiceId: true } },
         depenses: { where: { annuleeAt: null }, select: { ligneId: true, montant: true } },
         depassements: { where: { statut: StatutDepassement.APPROUVE }, select: { ligneId: true, montant: true } },
@@ -36,11 +36,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
     // Budget mensuel : mois suivant celui de la source (ou le mois courant s'il est déjà passé).
     let periodeMois: string | null = null;
+    // Décalage (en mois) appliqué aux délais des lignes : un délai au 10 du mois reste au 10.
+    let decalageMois: number | null = null;
     if (source.type === "MENSUEL" && source.periodeMois) {
       const suivant = new Date(Date.UTC(source.periodeMois.getUTCFullYear(), source.periodeMois.getUTCMonth() + 1, 1));
       const now = new Date();
       const courant = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
       const cible = suivant < courant ? courant : suivant;
+      decalageMois =
+        (cible.getUTCFullYear() - source.periodeMois.getUTCFullYear()) * 12 + cible.getUTCMonth() - source.periodeMois.getUTCMonth();
       periodeMois = `${cible.getUTCFullYear()}-${String(cible.getUTCMonth() + 1).padStart(2, "0")}`;
     }
 
@@ -66,6 +70,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           montant: accorde,
           categorie: l.categorie,
           modePaiement: l.modePaiement ?? source.modePaiement,
+          detail: l.detail,
+          // Département repris s'il est toujours actif (sinon à choisir à nouveau).
+          departementId: l.departement?.actif ? l.departement.id : null,
+          // Mensuel : délai décalé d'autant de mois que le budget ; autres types : à redéfinir.
+          dateLimite: l.dateLimite && decalageMois !== null ? decalerMois(l.dateLimite, decalageMois).toISOString() : null,
           precedent: { prevu: accorde, plafond: accorde + depassement, realise },
         };
       }),
@@ -74,4 +83,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     console.error(`Erreur lors de la préparation de la reconduction de ${id}:`, error);
     return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 });
   }
+}
+
+/** Même jour, `n` mois plus tard (ramené au dernier jour du mois si besoin : 31 → 30). */
+function decalerMois(date: Date, n: number): Date {
+  const annee = date.getUTCFullYear();
+  const mois = date.getUTCMonth() + n;
+  const dernierJour = new Date(Date.UTC(annee, mois + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(annee, mois, Math.min(date.getUTCDate(), dernierJour), 12));
 }

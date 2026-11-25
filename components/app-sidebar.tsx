@@ -22,6 +22,7 @@ import {
   Landmark,
   Wallet,
   FileDown,
+  CreditCard,
   Settings,
   Loader2,
   ClipboardList,
@@ -117,6 +118,11 @@ const fournisseur = [
     url: "/fournisseur/commandes",
     icon: ClipboardList,
   },
+  {
+    title: "Départements",
+    url: "/fournisseur/departements",
+    icon: Building2,
+  },
 ];
 
 const produitsNav = [
@@ -143,6 +149,11 @@ const finance = [
     url: "/journal-caisse/export",
     icon: FileDown,
     droit: "finance.exporter",
+  },
+  {
+    title: "Moyens de paiement",
+    url: "/journal-caisse/moyens-paiement",
+    icon: CreditCard,
   },
 ];
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ModePaiementDemande, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import prisma from "@/lib/prisma";
 import { verifyIntegrationKey } from "@/lib/integrationAuth";
 import { isSoldeInsuffisantError } from "@/lib/cashJournal";
@@ -37,7 +38,7 @@ const lotSchema = z.object({
   cashRegisterId: z.number().int().positive("La caisse est requise."),
   ligneBudgetId: z.string().trim().min(1).optional(),
   comptableEmail: z.string().email("comptableEmail invalide."),
-  modePaiement: z.nativeEnum(ModePaiementDemande).default(ModePaiementDemande.MOBILE_MONEY),
+  modePaiement: codeMoyenSchema.default("MOBILE_MONEY"),
   datePaiement: z.string().optional(),
   montantTotal: z.number().positive("Le montant total doit être supérieur à 0."),
   lignes: z.array(ligneSchema).min(1, "Le lot doit contenir au moins une ligne.").max(1000, "1 000 lignes au maximum par lot."),

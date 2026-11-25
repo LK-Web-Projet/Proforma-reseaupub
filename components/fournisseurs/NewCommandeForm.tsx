@@ -23,8 +23,8 @@ import { Plus, Trash2 } from "lucide-react";
 import { ProduitFournisseur } from "@prisma/client";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { InvoiceCombobox, InvoiceOption } from "@/components/InvoiceCombobox";
-import { LigneBudgetCommandeField } from "@/components/fournisseurs/LigneBudgetCommandeField";
+import type { InvoiceOption } from "@/components/InvoiceCombobox";
+import { RattachementCommandeField, rattachementInitial, type RattachementCommande } from "@/components/fournisseurs/RattachementCommandeField";
 
 const TAUX_TVA = 0.18;
 const TAUX_AIB = 0.03;
@@ -56,9 +56,11 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
     const [appliquerTva, setAppliquerTva] = useState(false);
     const [appliquerAib, setAppliquerAib] = useState(false);
     const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-    // Une seule proforma par bon ; si elle a un budget, la ligne de ce budget est obligatoire.
-    const [proformaId, setProformaId] = useState('');
-    const [ligneBudgetId, setLigneBudgetId] = useState('');
+    // Rattachement obligatoire : campagne (proforma, et ligne de son budget s'il existe) ou hors campagne
+    // (budget mensuel, ponctuel… et sa ligne). Voir RattachementCommandeField.
+    const [rattachement, setRattachement] = useState<RattachementCommande>(rattachementInitial());
+    const [erreurRattachement, setErreurRattachement] = useState<string | null>(null);
+    const { proformaId, ligneBudgetId } = rattachement;
 
     // Charger le catalogue
     useEffect(() => {
@@ -159,6 +161,10 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (erreurRattachement) {
+          toast.error(erreurRattachement);
+          return;
+        }
         setSubmitting(true);
 
         try {
@@ -219,15 +225,13 @@ export default function NewCommandeForm({ fournisseurId, onSuccess, onCancel }: 
                 />
             </div>
 
-            <div className="space-y-2">
-                <label className="text-sm font-medium">Proforma associée</label>
-                <InvoiceCombobox invoices={invoices} value={proformaId} onChange={setProformaId} />
-                <p className="text-[11px] text-muted-foreground">
-                    Une seule proforma par bon de commande : validée, payée ou soldée.
-                </p>
-            </div>
-
-            <LigneBudgetCommandeField proformaId={proformaId} montantNet={montantNet} value={ligneBudgetId} onChange={setLigneBudgetId} />
+            <RattachementCommandeField
+                valeur={rattachement}
+                onChange={setRattachement}
+                invoices={invoices}
+                montantNet={montantNet}
+                onEtat={setErreurRattachement}
+            />
 
             <div className="rounded-md border">
                 <Table>

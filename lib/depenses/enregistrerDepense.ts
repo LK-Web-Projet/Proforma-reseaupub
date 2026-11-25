@@ -1,6 +1,5 @@
 import {
   ActionBudget,
-  ModePaiementDemande,
   NatureDepense,
   Prisma,
   SourceDepense,
@@ -8,6 +7,7 @@ import {
   StatutLigneBudget,
 } from "@prisma/client";
 import { isSameEmail } from "@/lib/budgetAuth";
+import { erreurMoyenEtCaisse } from "@/lib/moyensPaiementServeur";
 import { recordCashDepense, recordDepensePaiement } from "@/lib/paiements";
 import { BUDGET_EPSILON, etatDepensable, getLigneDisponible, logBudget, recalculerStatutBudget } from "@/lib/budgetSuivi";
 import {
@@ -35,7 +35,11 @@ export interface EntreeDepense {
   dateDepense: Date;
   cashRegisterId: number;
   nomReceveur: string;
-  modePaiement: ModePaiementDemande;
+  /**
+   * Code du moyen de paiement. Hors CampTrack : moyen actif, caisse visible et liée à ce moyen
+   * (lib/moyensPaiementServeur.ts, erreurMoyenEtCaisse).
+   */
+  modePaiement: string;
   notes?: string | null;
   /** Ligne de budget payée (obligatoire si la proforma a un budget). */
   ligneBudgetId?: string | null;
@@ -138,6 +142,12 @@ export async function enregistrerDepense(tx: Db, e: EntreeDepense) {
   if (nature !== NatureDepense.NORMALE && !e.commandeId) {
     throw new DepenseError("Choisissez le bon de commande concerné par cette avance ou ce solde.");
   }
+  // Moyen de paiement et caisse : la caisse doit être visible et liée au moyen choisi. CampTrack
+  // choisit lui-même sa caisse : il n'est pas soumis à cette règle.
+  if (e.source !== SourceDepense.CAMPTRACK) {
+    const erreur = await erreurMoyenEtCaisse(tx, e.modePaiement, e.cashRegisterId);
+    if (erreur) throw new DepenseError(erreur);
+  }
 
   // ── 1. Ligne de budget (ou campagne sans budget) ───────────────────────────────────────────
   let ligne: Prisma.DemandeBudgetLigneGetPayload<{ include: { demandeBudget: { include: { proformas: true } } } }> | null = null;
@@ -214,6 +224,7 @@ export async function enregistrerDepense(tx: Db, e: EntreeDepense) {
       reference: e.reference ?? demande?.numero ?? undefined,
       notes: e.notes ?? undefined,
       createdById: e.auteur.userId,
+      auteur: { email: e.auteur.email, nom: e.source === SourceDepense.CAMPTRACK ? "CampTrack" : e.auteur.name },
     });
     paiement = r.paiement;
     cashJournalEntry = r.cashJournalEntry;

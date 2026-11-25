@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ModePaiementDemande, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import prisma from "@/lib/prisma";
 import { verifyIntegrationKey } from "@/lib/integrationAuth";
 import { isSoldeInsuffisantError } from "@/lib/cashJournal";
@@ -38,7 +39,7 @@ const lotSchema = z.object({
   // Ajouts Proforma (budget) — facultatifs pendant la transition.
   ligneBudgetId: z.string().optional(),
   comptableEmail: z.string().email("comptableEmail invalide.").optional(),
-  modePaiement: z.nativeEnum(ModePaiementDemande).default(ModePaiementDemande.MOBILE_MONEY),
+  modePaiement: codeMoyenSchema.default("MOBILE_MONEY"),
   datePaiement: z.string().optional(),
 });
 

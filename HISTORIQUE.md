@@ -25,6 +25,469 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 8) — Fiche du bon : « Rattacher à un budget » avec la question campagne / hors campagne
+
+**Demande / Contexte**
+Pour les bons existants rattachés ni à un budget ni à une proforma : un bouton « Rattacher à un budget ». La fenêtre demande toujours « campagne ou hors campagne » : campagne → même circuit que le formulaire (proforma, puis ligne de son budget) ; hors campagne → choisir un budget validé disponible (sauf campagne), puis sa ligne. Plus de rattachement direct à une ligne pour un brouillon.
+
+**Modifications apportées**
+- `components/fournisseurs/RattachementCommandeDialog.tsx` (nouveau) : fenêtre qui reprend `RattachementCommandeField` (campagne / hors campagne, proforma, budget, ligne), proformas associables chargées à l'ouverture ; enregistre proforma + ligne ; « rattaché et validé » si la ligne est accordée.
+- `components/fournisseurs/CommandeLiasseCard.tsx` : brouillon sans paiement → bouton **« Rattacher à un budget »** (lié à rien, mis en avant) ou **« Changer le rattachement »** ; texte « Rattaché à rien : rattachez ce bon… ». Bon déjà validé ou livré sans paiement : « Changer de ligne » inchangé (bons existants non repris).
+- `app/api/fournisseurs/commandes/[commandeId]/route.ts` (PATCH) : accepte `proformaId` (ou null = hors campagne) en plus de la ligne ; changement de proforma seulement pour un brouillon sans paiement, proforma validée / payée / soldée ; la règle `refusRattachementCommande` s'applique au rattachement visé (proforma + ligne) ; ligne accordée → validé d'office ; le mode de validation à la main suit le rattachement visé.
+- `app/(main)/fournisseur/commandes/page.tsx` : pastille **« À rattacher »** sur les brouillons liés à rien.
+- Guide : section « Le bon de commande », points 1 et 4.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test, dans une transaction annulée : **9 / 9** — ancien brouillon lié à rien « à rattacher », rattachement campagne sans budget (proforma enregistrée, validation directe), correction en hors campagne (proforma retirée, ligne posée, validé d'office), refus proforma sans budget + ligne ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : liste des bons → BCF-2026-0004 « À rattacher » → fiche → « Rattacher à un budget » → « Hors campagne » → budget → ligne → le bon passe « Validée » ; autre essai en « Campagne » ; « Changer le rattachement » sur un brouillon déjà rattaché.
+
+## 2026-11-25 (suite 7) — Bon de commande : rattachement obligatoire (campagne ou hors campagne)
+
+**Demande / Contexte**
+Mieux guider le formulaire du bon de commande. D'abord « campagne ou non ». Campagne : proforma obligatoire ; si cette proforma a un budget, la ligne de ce budget est obligatoire (ligne accordée → bon validé d'office) ; si elle n'a pas de budget, validation directe par la direction. Hors campagne : un budget validé existant qui n'est pas un budget de campagne et n'est lié à aucune proforma (mensuel, ponctuel…), puis sa ligne. **Plus aucun bon lié à rien.** Erreur de rattachement : corrigeable tant que le bon est en brouillon.
+Décisions : **1a** budget de la proforma pas encore validé → le bon ne peut pas être émis ; **2a** campagne sans budget → la direction valide depuis la fiche, sans attendre le scan (exigé avant tout paiement) ; **3a** un brouillon lié à rien doit d'abord être rattaché (la validation directe d'un bon lié à rien, entrée « suite 6 », est retirée) ; **4a** on ne touche pas aux bons existants.
+
+**Modifications apportées**
+- `lib/commandeFournisseurSuivi.ts` :
+  - `refusRattachementCommande` (nouveau, règle unique) : rien → refus ; campagne avec budget → ligne accordée de ce budget obligatoire, budget pas ouvert → refus (1a) ; campagne sans budget → aucune ligne ; hors campagne → ligne accordée d'un budget validé, ni « Campagne », ni lié à une proforma.
+  - `modeValidationCommande` (nouveau) : validation à la main d'un brouillon — `DIRECTE` (campagne sans budget), `A_RATTACHER` (lié à rien), `SIGNATURE` (anciens cas : scan signé exigé).
+  - `lignesBudgetPourCommande` : proforma sans budget → aucune ligne ; hors campagne → budgets non « Campagne » sans proforma ; renvoie le mois d'un budget mensuel.
+  - `refusCoherenceLigneProforma` (ligne facultative) supprimée, remplacée par la nouvelle règle.
+- `lib/commandeFournisseurLiasse.ts` : `commandeSansLiaison` (suite 6) supprimée.
+- `app/api/fournisseurs/commandes/route.ts` (création), `[commandeId]/route.ts` (modification d'un brouillon, changement de ligne, statut) : nouvelle règle partout ; « Validée » à la main selon `modeValidationCommande` (lié à rien : « associez-le d'abord… ») ; le GET renvoie `modeValidation`.
+- `components/fournisseurs/RattachementCommandeField.tsx` (nouveau) : choix « Campagne / Hors campagne », proforma, budget puis ligne, messages (budget pas validé, validation directe, dépassement du reste) ; signale ce qui manque — l'enregistrement est bloqué tant que le rattachement n'est pas complet. Utilisé par les trois formulaires : `components/CommandeFournisseurModal.tsx`, `components/fournisseurs/NewCommandeForm.tsx`, `components/fournisseurs/EditCommandeFournisseurModal.tsx` (un ancien brouillon lié à rien demande de choisir).
+- `components/fournisseurs/CommandeStatutControl.tsx` (prop `modeValidation` : « Validée (rattacher d'abord le bon) »), fiche du bon (`app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx`), `components/fournisseurs/CommandeLiasseCard.tsx` (campagne sans budget : « l'avance et le solde se paient depuis la proforma », pas de bouton de rattachement à une ligne).
+- Guide : section « Le bon de commande », points 1 et 4.
+
+**Erreurs rencontrées & solutions**
+- Jeu d'essai mal construit (un budget ponctuel lié à la même proforma que le budget « pas validé ») : 2 vérifications fausses, corrigées dans le test ; le code était juste.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test, dans une transaction annulée : **27 / 27** — lié à rien refusé ; campagne avec budget (ligne obligatoire, ligne du budget acceptée, ligne en attente ou d'un autre budget refusée, validation d'office, dépassement refusé) ; 1a (budget pas validé → impossible) ; 2a (sans ligne accepté, avec ligne refusé, mode DIRECTE) ; hors campagne (mensuel accepté ; budget de campagne, budget lié à une proforma, ligne en attente refusés) ; modes A_RATTACHER / SIGNATURE ; lignes proposées dans chaque cas ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : créer un bon « Campagne » avec une proforma qui a un budget validé (ligne obligatoire → validé), avec une proforma dont le budget n'est pas validé (bloqué), avec une proforma sans budget (brouillon → la direction le valide sur la fiche) ; un bon « Hors campagne » (budget, puis ligne → validé) ; enregistrer sans choix → refusé.
+- Anciens bons (4a) : BCF-2026-0004 et BCF-2026-0006 (liés à rien) restent en brouillon ; les rattacher par *Modifier* pour les valider.
+- Les anciens tests en base qui créaient des bons sans rattachement ne correspondent plus à la règle (normal).
+
+## 2026-11-25 (suite 6) — Bon de commande lié à rien : validation directe par la direction
+
+**Demande / Contexte**
+Rappel du circuit : un bon de commande est associé à une proforma (seules les lignes du budget de cette proforma sont proposées) ou, sinon, à une ligne d'un budget validé sans proforma ; rattaché à une ligne accordée, il est validé d'office (déjà en place). Problème : un bon lié **à rien** (ni proforma, ni ligne de budget) ne pouvait être validé qu'une fois le scan signé joint (« Validée (joindre le BC signé) » grisé sur la fiche). Il faut que l'administrateur puisse le valider directement depuis la fiche du bon.
+
+**Modifications apportées**
+- `lib/commandeFournisseurLiasse.ts` : `commandeSansLiaison` (ni ligne de budget, ni proforma, ni ancien rattachement d'un budget entier).
+- `app/api/fournisseurs/commandes/[commandeId]/route.ts` (PATCH statut) : un bon lié à rien passe « Validée » sans scan signé, toujours réservé au droit « Valider les budgets mensuels » (direction) ; rappel « scan à joindre » envoyé s'il manque. Bon lié (proforma sans ligne, ligne non accordée…) : règle inchangée (scan exigé). Le GET renvoie l'ancien rattachement d'un budget (`demandesBudget`, identifiants seulement).
+- `components/fournisseurs/CommandeStatutControl.tsx` (prop `sansLiaison`) et `app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx` : « Validée » n'est plus grisé pour un bon lié à rien.
+- `components/fournisseurs/LigneBudgetCommandeField.tsx` : choix « Aucune (validation directe par la direction) ».
+- Guide : section « Le bon de commande », point 4.
+- **Inchangé** : aucun paiement (avance ou solde) tant que le scan signé n'est pas joint.
+
+**Erreurs rencontrées & solutions**
+- Coupure réseau vers la base de test pendant le contrôle en lecture.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Test de la règle : **6 / 6** (lié à rien, ligne de budget, proforma, ancien budget rattaché). Sur la base de test (lecture seule) : 4 bons en brouillon, dont **2 liés à rien** (BCF-2026-0004, BCF-2026-0006, sans scan signé) désormais validables directement.
+
+**À tester / points d'attention**
+- À l'écran, avec un rôle de direction : bon sans proforma ni ligne → fiche → statut « Validée » ; bon lié à une proforma sans ligne → « Validée (joindre le BC signé) » toujours grisé ; essayer une avance sur le bon validé sans scan → refusée.
+- Constat (non modifié) : un bon rattaché à une ligne **pas encore accordée** reste en brouillon quand le budget est validé ensuite (la DG le valide alors une fois le scan joint). Une validation automatique à la validation du budget peut être ajoutée.
+
+## 2026-11-25 (suite 5) — Rapport « Dépenses par département »
+
+**Demande / Contexte**
+Suite des départements (2026-11-24) : savoir chaque mois quel département dépense le plus. Question 4 tranchée par l'utilisateur : une dépense compte dans le **mois où l'argent est réellement sorti** (4a), pas dans le mois du budget.
+
+**Modifications apportées**
+- `lib/depensesDepartement.ts` (nouveau, partagé, sans base) : règles et calculs — mois (`moisCle`, `decalerMois`, `listeMois`), `classementMois` (rang, part, mois précédent et évolution, prévu, enveloppe, hors budget), `evolutionParMois`, `repartitionCategories`, `seriesGraphique` (7 couleurs fixes attribuées par ordre alphabétique, le reste dans « Autres départements »).
+- `lib/depensesDepartementServeur.ts` (nouveau) : `chargerRapportDepensesDepartement(db, from, to)` — dépenses non annulées à leur date, département de la ligne (anciennes lignes : celui du budget, en majuscules ; sinon « Sans département ») ; budgets payés avant le suivi des dépenses : accordé compté à la date de paiement ; prévu = accordé + dépassements approuvés des budgets du mois (même règle que le suivi budgétaire) ; sorties de caisse hors budget (ni dépense de budget, ni annulation, ni transfert entre caisses, ni apport) ; mois précédant la période chargé pour la comparaison. `periodeRapport` : 6 derniers mois par défaut, ordre rétabli, 24 mois au plus.
+- `app/api/rapports/depenses-departement/route.ts` (nouveau) : GET, réservé aux rôles du circuit budget (comme le suivi budgétaire).
+- `app/(main)/dashboard/rapports/depenses-departement/page.tsx` (nouveau) : période et mois du classement ; 4 chiffres (dépensé du mois et évolution, département qui dépense le plus, nombre de départements et de dépenses, sorties hors budget) ; classement (lien vers la fiche du département, part, mois précédent, prévu, enveloppe et « dépassée ») ; graphique empilé mois par mois + tableau ; répartition par catégorie (tous ou un département) ; export Excel (droit « Exporter les rapports ») : classement, par mois, par catégorie, détail des dépenses. Sans défilement horizontal de la page (colonnes masquées sur petit écran).
+- `components/rapports/VariationMontant.tsx` (nouveau) : flèche + pourcentage par rapport au mois précédent (« nouveau » sans comparaison).
+- `components/dashboard/DepensesDepartementCard.tsx` (nouveau) + `app/(main)/dashboard/page.tsx` : résumé dans l'onglet « Ce mois » du tableau de bord (5 premiers départements, total et évolution), masqué pour les rôles hors circuit budget.
+- `app/(main)/dashboard/rapports/page.tsx` : carte « Dépenses par département ».
+- Guide `public/docs/procedure-paiement-plateforme.md` : rapport décrit dans « Départements ».
+
+**Erreurs rencontrées & solutions**
+- Coupures réseau vers la base de test pendant les essais : test relancé une fois la connexion revenue.
+- Une attente erronée dans le test (6 dépenses au lieu de 5) corrigée dans le test ; le rapport était juste.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test, dans une transaction annulée (données de janvier à mars 2019 créées pour l'essai) : **33 / 33** — mois et comparaisons, période par défaut / inversée / limitée, couleurs stables, dépense annulée exclue, dépense comptée au mois de sortie de l'argent (budget de janvier payé en février → février), ancienne ligne sans département, ancien budget payé, classement et parts, prévu avec dépassement (ligne en attente exclue), enveloppe, hors budget (transfert exclu), évolution −67 %, « nouveau », catégories, mois de comparaison chargé mais non affiché ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : *Dashboard → Rapports → Dépenses par département* (changer de période et de mois, export Excel), résumé du tableau de bord (onglet « Ce mois »), rôle hors circuit budget : rapport fermé et résumé absent.
+- Sur la base de test, une seule dépense de budget existe (novembre 2026) : le rapport sera peu rempli tant que les dépenses ne passent pas par les lignes de budget.
+
+## 2026-11-25 (suite 4) — Liste des proformas : toute la ligne ouvre la proforma
+
+**Demande / Contexte**
+Pouvoir cliquer n'importe où sur une ligne pour ouvrir la proforma, avec un changement de couleur au survol ; garder la copie du numéro et le lien vers le client.
+
+**Modifications apportées**
+- `app/(main)/facture/page.tsx` :
+  - clic sur la ligne → la proforma s'ouvre (avec la barre de progression et l'écran d'attente) ; Ctrl / Cmd + clic ou clic molette → nouvel onglet ; rien si l'utilisateur vient de sélectionner du texte ; clavier : Tab jusqu'à la ligne puis Entrée ;
+  - survol : la ligne passe en bleu clair (rouge plus soutenu pour une ligne en alerte), le curseur devient une main, le numéro prend la couleur principale ;
+  - le numéro copie toujours au clic (sans ouvrir), le nom du client mène toujours à sa fiche (seul le nom est cliquable, le reste de la case ouvre la proforma), le menu « … » et ses fenêtres n'ouvrent pas la ligne.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+
+**À tester / points d'attention**
+- À l'écran : survol (couleur), clic sur la ligne, clic sur le numéro (copie seulement), clic sur le client (fiche client), menu « … » (pas d'ouverture parasite), Ctrl + clic (nouvel onglet).
+
+## 2026-11-25 (suite 3) — Facture normalisée d'une proforma déjà soldée : sans délai ni relance
+
+**Demande / Contexte**
+Quand la proforma est déjà soldée, joindre la facture normalisée ne doit demander que l'essentiel (la date d'émission), sans date d'envoi au client ni délai de relance : il n'y a plus rien à réclamer.
+
+**Modifications apportées**
+- `lib/proformaPieces.ts` : règle partagée `proformaSoldee` (statut « Soldée », ou plus rien à encaisser après une recette), aussi utilisée par `etatPiecesProforma`.
+- `lib/documentProformaServeur.ts` : `validerChampsDocument(..., { soldee })` — proforma soldée : date d'émission obligatoire (pas dans le futur), précision, numéro et montant gardés, date d'envoi et délai à vide ; `chargerProforma` (numéro, statut, reste à payer, présence d'une recette) ; le texte de l'historique ne dit plus « pas encore envoyée » ni « relance à … j » pour une facture sans délai.
+- `app/api/factures/[id]/documents/route.ts` (ajout) et `[documentId]/route.ts` (modification) : le serveur détermine lui-même si la proforma est soldée ; en modification, la date d'envoi et le délai déjà enregistrés restent tels quels.
+- `components/proforma/PiecesProformaCard.tsx` : proforma soldée → la fenêtre n'affiche que précision, n° de facture, montant et « Émise le », avec le message « Proforma déjà soldée : il suffit de joindre la facture et sa date d'émission. Pas de délai ni de relance. » ; dans la liste des pièces, plus de mention d'envoi ni de relance.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Test des règles (lecture seule sur la base de test) : **17 / 17** — soldée selon le statut ou le reste à payer, date d'envoi et délai ignorés, date d'émission toujours obligatoire et jamais dans le futur, proforma non soldée inchangée (délai par défaut 30, délai 0 refusé), texte de l'historique, aucune alerte, reconnaissance sur de vraies proformas.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+
+**À tester / points d'attention**
+- À l'écran : sur une proforma soldée, « Ajouter une pièce » → Facture normalisée : seuls précision, numéro, montant et date d'émission. Sur une proforma en cours de paiement : date d'envoi et délai toujours demandés.
+
+## 2026-11-25 (suite 2) — Écran d'attente à l'ouverture d'une proforma
+
+**Demande / Contexte**
+Au clic sur une proforma, rien ne bougeait pendant le chargement : on avait l'impression que le site était bloqué. Il faut un effet visuel de chargement.
+
+**Modifications apportées**
+- `components/proforma/ProformaFicheSkeleton.tsx` (nouveau) : silhouette grisée animée de la fiche (barre du haut, contenu, encadrés de droite) avec une roue qui tourne et « Ouverture de la proforma… ».
+- `app/(main)/facture/[id]/loading.tsx` (nouveau) : cet écran s'affiche **immédiatement** au clic (ligne de la liste, menu « … » Ouvrir ou Modifier, lien depuis une autre page), pendant l'ouverture de la page.
+- `app/(main)/facture/[id]/page.tsx` : le même écran remplace « Chargement de la mission… » pendant la lecture des données, pour un passage sans saut.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 45 / 45 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : cliquer sur une proforma de la liste → la silhouette grisée doit apparaître tout de suite, puis la fiche.
+
+## 2026-11-25 (suite) — Liste des proformas : menu « … » (ouvrir, valider, modifier) et plus de défilement horizontal
+
+**Demande / Contexte**
+Rendre l'ouverture d'une proforma plus simple : à la place de l'œil, un menu « … » avec « Ouvrir la proforma », « Valider la proforma » (seulement pour qui a le droit de valider) et « Modifier » (ouvre directement la fiche en mode modification). Et plus aucun défilement horizontal de la page, surtout depuis la mention « facture normalisée manquante » qui élargissait le tableau. La mise à jour de la base des pièces et de l'historique est appliquée (utilisateur).
+
+**Modifications apportées**
+- `components/proforma/ActionsProformaMenu.tsx` (nouveau) : menu « … » d'une ligne. « Ouvrir la proforma » ; « Valider la proforma » si le rôle a le droit « Valider » et la proforma est en brouillon ou envoyée (fenêtre de confirmation, puis `PATCH /api/factures/[id]` `{ statut: "Valider" }` : mêmes contrôles côté serveur, date de validation, notification et historique comme depuis la fiche) ; « Modifier » ouvre `/facture/<id>?modifier=1`, grisé avec la raison si la proforma ne se modifie plus (`raisonNonModifiable` : droit manquant, paiement en cours, bon de commande ou facture normalisée joint — mêmes règles que le bouton de la fiche).
+- `app/(main)/facture/[id]/page.tsx` : `?modifier=1` ouvre la fiche directement en mode modification (si modifiable ; sinon message), puis l'adresse est nettoyée.
+- `app/(main)/facture/page.tsx` : tableau à largeurs fixes (`table-fixed`), sans défilement horizontal : numéro et date réunis dans une colonne, client et objet tronqués (texte complet au survol), gestionnaire affiché sous l'objet sur les écrans étroits (colonne à partir des grands écrans), total TTC masqué sur les écrans moyens, mention d'alerte raccourcie (« Facture manquante », « À réclamer », « Échéance proche ») et renvoyée à la ligne, colonne « … » à la place de « Voir » ; une proforma validée depuis le menu est mise à jour dans la liste sans rechargement.
+- `components/FactureTableSkeleton.tsx` : lignes d'attente alignées sur les nouvelles colonnes, largeurs relatives.
+- `app/(main)/layout.tsx` : la zone de contenu peut rétrécir à côté du menu (`min-w-0`) et n'a plus `w-full`, qui s'ajoutait à la marge gauche et faisait déborder **toutes** les pages horizontalement.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement.
+- Construction complète de l'application (`next build`, dans `.next-verif`) : **réussie**, 45 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : menu « … » d'une ligne (ouvrir, valider avec un rôle qui a le droit, modifier → fiche en mode modification) ; « Valider » absent pour un rôle sans le droit ; plus de barre de défilement horizontale sur la liste, en grand écran comme en écran étroit, et sur les autres pages (cadre commun corrigé).
+
+## 2026-11-25 — Pièces de la proforma en une seule table, relances des factures clients, historique de la proforma
+
+**Demande / Contexte**
+Toute recette passe par une proforma ou par le journal de caisse (déjà le cas). Sur la proforma : la recette peut être encaissée avant l'émission de la facture normalisée (il faut alors demander de la joindre), et la facture normalisée envoyée au client doit avoir un délai de relance (date d'émission, date d'envoi au client, délai ; calcul à partir de la date d'envoi). Unifier les deux tables de fichiers de la proforma (bon de commande, facture normalisée) en une seule, avec une sorte de pièce, sans changer le rangement des fichiers ; reprise automatique au premier lancement ; suppression des anciennes tables plus tard. Ajouter l'attestation de bonne fin d'exécution et un indicateur « dossier complet ». Alertes rouges comme pour les retards des prestataires. Et désormais un **historique de la proforma** avec toutes les actions la concernant.
+Décisions : **1a** dates et délai sur chaque facture normalisée (acompte, solde…) ; **2a** dossier complet = facture normalisée + attestation de bonne fin + soldée ; **3a** pas d'archivage automatique ; **4a** ajouter un fichier ne change plus le statut ; **5a** alertes rouges pour toutes les proformas ouvertes, sans notification en masse ; **6b** notification aux comptables et à la direction ; **7** délai par défaut 30 jours ; **8a** anciennes tables supprimées par une mise à jour suivante.
+Constat avant : 6 bons de commande et 11 factures normalisées (une seule pièce par sorte) ; ajouter une facture normalisée passait la proforma en « Payée » et un bon de commande en « Validée » (en conflit avec les encaissements).
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261125100000_pieces_historique_proforma/migration.sql` (ajouts seulement) : type `TypeDocumentProforma` (BON_COMMANDE, FACTURE_NORMALISEE, ATTESTATION_BONNE_FIN, AUTRE) ; table `DocumentProforma` (sorte, adresse, nom du fichier, précision, et pour une facture : numéro, montant, date d'émission, date d'envoi au client, délai de relance, relance notifiée, auteur) ; table `InvoiceHistorique` (action, détail, données, auteur, date) ; `EntrepriseConfig.delaiRelanceFactureClient` (30). Reprise : les 6 + 11 pièces copiées (adresse publique `/Upload/…` ; factures : dates = date d'ajout, délai 30 j, relance marquée faite) ; historique reconstitué (création, validation, encaissements, dépenses et annulations, pièces — marqué « reprise »). `BonCommande` et `FactureNormaliser` conservées, plus utilisées.
+- `lib/proformaPieces.ts` (partagé) : sortes, libellés, dossiers de rangement, `etatPiecesProforma` (facture manquante, relances, à réclamer, proche, envoi non renseigné, dossier complet et ce qui manque), `echeanceRelance`.
+- `lib/proformaHistorique.ts` (partagé : actions, libellés, couleurs, statuts) et `lib/proformaHistoriqueServeur.ts` (`journaliserProforma`, `auteurDepuisUtilisateur`).
+- `lib/uploadDocumentProforma.ts` : rangement inchangé `public/Upload/Bon|Facture|Attestation|Autre/<numéro>/`, sans écraser un fichier du même nom. `lib/documentProformaServeur.ts` : contrôle des champs (date d'émission et délai obligatoires pour une facture, envoi après émission, rien dans le futur, délai 1–365) et texte de l'historique.
+- Routes : `app/api/factures/[id]/documents` (GET, POST) et `[documentId]` (PATCH dates/délai — relance recalculée, DELETE — fichier conservé), `app/api/factures/[id]/historique` (GET). L'ancienne `app/api/factures/[id]/upload` (qui changeait le statut) est supprimée.
+- Historique écrit partout : création (`app/api/factures`), modification du contenu et statut (`app/api/factures/[id]`), encaissement et statut posé par l'encaissement (`paiements`), toute dépense sur la proforma (`lib/paiements.ts` : proforma, budget, bon de commande, CampTrack), annulation de dépense, rattachement au budget, justificatif ajouté (`upload-proof`), e-mail envoyé, budget lié (création et re-soumission), pièces, relance notifiée.
+- `lib/relanceProformaServeur.ts` (`relancesEchues`, `notifierRelancesProforma`) + tâche « relances-clients » (8 h, jours ouvrés, `lib/taches/planificateur.ts`) + événement `PROFORMA_RELANCE_PAIEMENT` (Comptables et direction).
+- Écrans : `components/proforma/PiecesProformaCard.tsx` (alertes, « Dossier complet » ou ce qui manque, liste des pièces, ajout / modification des dates / retrait) et `components/proforma/HistoriqueProformaCard.tsx` sur la fiche proforma (remplacent les deux anciens encadrés ; après un encaissement sans facture normalisée, la fenêtre d'ajout s'ouvre) ; liste des proformas : lignes rouges, mentions « À réclamer » / « Facture normalisée manquante » / « Échéance proche », filtres (lien `?alerte=reclamer` des notifications) ; Paramètres → Rôles : délai de relance par défaut. `app/api/factures` renvoie les pièces et la présence d'une recette ; `app/api/budget-config` : `delaiRelanceFactureClient`.
+- Guide `public/docs/procedure-paiement-plateforme.md` : « Pièces de la proforma, relances clients et historique ».
+
+**Erreurs rencontrées & solutions**
+- Coupure réseau pendant un test : une session de test est restée ouverte sur le serveur (« idle in transaction ») et bloquait des tables ; fermée par l'utilisateur (`pg_terminate_backend`), aucune donnée enregistrée. Précisé par l'utilisateur : la base locale est une base de **test**, pas la production (le commentaire du planificateur est faux). Test relancé avec un délai d'instruction allongé : réussi.
+- Types de la construction précédente (`.next-verif/types`) citant l'adresse supprimée → dossier vidé, régénéré par la construction.
+- Anciens tests écrits avant des mises à jour depuis appliquées (moyens de paiement, statut des factures) : quelques vérifications « base avant mise à jour » ne s'appliquent plus (normal). Test des paiements centralisés : nouvelle mise à jour jouée dans sa transaction → 31 / 31.
+
+**Vérifications (2026-11-25)**
+- Tests sur la vraie base, mise à jour jouée puis annulée : **43 / 43** — règles des alertes (validée sans facture, recette avant facture, pas d'alerte sur brouillon / annulée / archivée, à réclamer dès l'échéance, orange la veille, rien si soldée, sans date d'envoi, acompte + solde avec chacun sa relance, dossier complet), saisie d'une facture, rangement des fichiers dans les mêmes dossiers qu'avant (essai dans un dossier temporaire), reprise des 17 pièces (fichiers tous retrouvés sur le disque), anciennes tables et statuts inchangés, historique reconstitué (création, validations, encaissements, dépenses, pièces), aucune notification en masse, nouvelle facture échue trouvée une seule fois, plus rien si soldée, dépense notée dans l'historique ; base contrôlée intacte.
+- Sur la base de test : **88** proformas « facture normalisée manquante », **8** « paiement à réclamer », 0 dossier complet.
+- Non-régression : paiements centralisés **31 / 31**, statut des factures de prestataires 30 / 31, moyens de paiement 44 / 47, détail et délai des lignes **23 / 23** (les seuls écarts viennent de mises à jour déjà appliquées sur la base de test).
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement. Construction complète (`next build`, dans `.next-verif`) : **réussie**, avec les nouvelles adresses des pièces et de l'historique ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base (`pnpm prisma migrate deploy` ; jamais de `reset`), puis redémarrer.
+- À l'écran : joindre une facture normalisée (dates, délai), vérifier l'échéance, l'alerte rouge, les filtres de la liste et l'historique ; encaisser une recette sans facture : la fenêtre d'ajout doit s'ouvrir.
+- Plus tard (8a) : une mise à jour supprimera `BonCommande` et `FactureNormaliser`, après vérification en ligne.
+
+## 2026-11-24 (suite 8) — Factures de prestataires : « payée » hors plateforme ouverte par un droit, statut libre pour l'administrateur, historique
+
+**Demande / Contexte**
+Faciliter le paiement des prestataires. Jusqu'ici, seul l'administrateur (case « Valider au niveau direction ») pouvait marquer payée, à la main, une facture liée à rien ; et une facture « payée » ou « annulée » était verrouillée pour tout le monde. L'utilisateur veut un droit pour ouvrir ce pouvoir à d'autres rôles, et que l'administrateur puisse changer le statut librement (payée → annulée, annulée → payée).
+Décisions : **1a** le nouveau droit est donné au départ aux rôles qui avaient déjà ce pouvoir (ensuite cochable pour d'autres rôles) ; **2a** une facture liée à un bon de commande ou à une ligne de budget reste payée uniquement par « Appliquer le paiement » ; **3b modifié** : pour « payée » à la main, **moyen de paiement + date + preuve obligatoires** (au lieu d'un motif) ; **4a** une facture réglée par une dépense de budget ne change pas de statut à la main (annuler d'abord la dépense) ; **5a** statut libre réservé à l'administrateur (rôle qui gère les utilisateurs), avec une case dans la grille.
+État constaté : base locale avec 136 factures en attente liées à rien, 47 payées, 7 annulées, 1 en attente liée à un bon. La mise à jour « moyens de paiement » est appliquée en local (Espèces lié à Caisse Comptable).
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261124140000_statut_factures_prestataires/migration.sql` (ajouts seulement) : sur `FactureFournisseur`, `paiementManuelDate`, `paiementManuelMode` (code d'un `MoyenPaiement`), `paiementManuelPreuve`, `paiementManuelReference`, `paiementManuelParEmail` ; nouveau modèle `FactureFournisseurStatutHistorique` (ancien / nouveau statut, moyen, date, preuve, référence, motif, auteur) ; droits `fournisseurs.facturePayeeHorsPlateforme` (rôles avec `canValidateBudgetMensuel` et la page Prestataires) et `fournisseurs.factureStatutLibre` (rôles avec `canManageUsers` et la page Prestataires) — en local : Admin seulement.
+- `lib/permissions.ts` : les 2 droits (groupe « Factures prestataires ») et leur repli tant que la mise à jour n'est pas appliquée.
+- `lib/factureStatut.ts` (partagé) : droits de chaque passage (`droitsTransitionFacture`), `transitionsFacture` (menu de l'écran), `factureLieeAuBudget`, libellés.
+- `lib/factureStatutServeur.ts` : `controlerStatutFacture` (droits ; refus si une dépense active règle la facture ; « payée » interdit si liée à un bon ou une ligne ; moyen existant et actif, date non future, preuve obligatoire et de type autorisé ; réactivation d'une facture de bon : une seule facture active au montant du bon) et `appliquerStatutFacture` (statut, infos du paiement hors plateforme remplies ou effacées, retard réévalué si retour en attente, ligne d'historique).
+- Route `app/api/factures-fournisseurs/[id]/statut` : GET (historique), POST (FormData avec preuve). `app/api/factures-fournisseurs/[id]/route.ts` : l'ancienne règle (`refusChangementStatut`, case direction) est remplacée ; le changement rapide JSON passe par les mêmes contrôles et le même historique ; l'édition complète ne change plus le statut.
+- `components/fournisseurs/FactureStatutControl.tsx` : étiquette du statut (avec « hors plateforme · moyen »), menu des changements permis (choix grisés avec la raison), fenêtre « Marquer la facture payée » (moyen, date, référence, preuve), fenêtre de confirmation avec motif facultatif pour les autres changements, fenêtre « Historique ». Utilisé dans `app/(main)/fournisseur/factures/page.tsx` et `app/(main)/fournisseur/[id]/page.tsx` (anciens sélecteurs retirés). `components/FactureFournisseurModal.tsx` : statut non modifiable en modification (message).
+- Guide `public/docs/procedure-paiement-plateforme.md` : « Facture réglée hors plateforme, et changer le statut d'une facture ».
+
+**Erreurs rencontrées & solutions**
+- Base de données injoignable un moment (coupure réseau) → contrôles relancés au retour.
+- Ancien test des paiements centralisés : 2 échecs sans défaut de l'application — sa caisse de test était masquée et liée à aucun moyen (refusée depuis les règles des moyens de paiement), et la base n'avait pas encore la nouvelle mise à jour. Copie adaptée (caisse visible liée à Virement et Espèces, mise à jour jouée dans la transaction) : 31 / 31.
+- Ancien test des départements : 1 vérification supposait « Abonnements » non appliquée ; elle l'est désormais (normal).
+
+**Vérifications (2026-11-24)**
+- Tests sur la vraie base, mise à jour jouée puis annulée : **31 / 31** (droits de chaque passage, menu de l'écran, repli sans grille, droits donnés au seul Admin, aucune facture modifiée par la mise à jour ; refus : comptable sans droit, sans moyen, sans preuve, date future, moyen inconnu, fichier interdit ; payée hors plateforme sans dépense ni écriture de caisse ; direction bloquée sur une facture payée, admin : payée → annulée → payée → en attente ; historique complet et ordonné ; facture liée à une ligne refusée même pour l'admin ; facture réglée par une dépense protégée ; bon de commande avec déjà une facture : réactivation refusée) ; base contrôlée intacte.
+- Non-régression : paiements centralisés **31 / 31** (copie adaptée), détail et délai des lignes **23 / 23**, départements 24 / 25 (le seul écart vient de « Abonnements » désormais appliquée).
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement.
+- Construction complète de l'application (`next build`, dans `.next-verif`) : **réussie** — 45 pages, nouvelle adresse du statut des factures comprise ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base (`pnpm prisma migrate deploy`, en local puis en ligne ; jamais de `reset`), puis redémarrer.
+- Paramètres → Rôles : cocher « Marquer une facture payée sans paiement » pour les rôles voulus (ex. Comptable).
+- À l'écran : marquer payée une facture en attente (moyen, date, preuve), vérifier l'étiquette « hors plateforme » et l'historique ; en admin, passer une facture payée en annulée puis la remettre payée.
+- Les 47 factures déjà « payées » avant ce changement n'ont pas d'informations de paiement (ni moyen ni preuve) : elles s'affichent payées, sans la mention « hors plateforme ».
+
+## 2026-11-24 (suite 7) — Moyens de paiement : liste gérée, caisses liées à chaque moyen
+
+**Demande / Contexte**
+Comme pour les départements, gérer les moyens de paiement dans une table plutôt qu'une liste figée, et relier chaque moyen à une ou plusieurs caisses (ex. : virement avec les caisses de plusieurs banques). À chaque paiement, on choisit le moyen et seules les caisses visibles liées à ce moyen sont proposées : proforma (encaissement et dépense), élaboration du budget (moyen de chaque ligne), dépense sur une ligne, facture de prestataire, avance sur un bon de commande. À la mise en place, les moyens existants sont créés sans caisse liée.
+Décisions de l'utilisateur : **1b** un moyen sans caisse liée ne permet aucun paiement ; **2a** les caisses masquées ne sont proposées nulle part (avant : seulement masquées sur la proforma) ; **3a** la règle « Espèces → Caisse Comptable » imposée sur la proforma est remplacée par les liens ; **4a** CampTrack n'est pas soumis à la règle des caisses ; **5a** seulement les 6 moyens d'origine au départ.
+
+**Modifications apportées**
+- `prisma/schema.prisma` : modèles `MoyenPaiement` (code unique et stable, nom unique, description, ordre, actif) et `MoyenPaiementCaisse` (lien moyen ↔ caisse) ; le type figé `ModePaiementDemande` est supprimé : `DemandeBudget.modePaiement`, `DemandeBudgetLigne.modePaiement` et `BudgetDepense.modePaiement` deviennent du texte relié au `code` du moyen (clé étrangère, `ON UPDATE CASCADE`, suppression interdite).
+- `prisma/migrations/20261124130000_moyens_paiement/migration.sql` (écrite à la main : Prisma proposait de supprimer puis recréer les colonnes, avec perte des données) : tables, 6 moyens d'origine (codes ESPECES, MOBILE_MONEY, CHEQUE, VIREMENT, CARTE, AUTRE, sans caisse), colonnes converties sur place (`ALTER COLUMN … TYPE TEXT USING …::text`), clés étrangères, méthode des opérations de proforma convertie en codes (« Espèces » → ESPECES, « MobileMoney » → MOBILE_MONEY, « Virement », « Chèque », « Autre »), droits `finance.moyenCreer`, `finance.moyenModifier`, `finance.moyenActiver` donnés aux rôles qui ont la page Finance.
+- `lib/moyensPaiement.ts` (partagé) : `libelleMoyen`, `caissesProposees` (liées ET visibles), `moyensProposes` (actifs + celui déjà choisi), `codeMoyenDepuisNom`, `moyenPaiementSchema`, `codeMoyenSchema`, `CODE_ESPECES`.
+- `lib/moyensPaiementServeur.ts` : `erreurMoyenEtCaisse` (moyen actif, caisse visible et liée ; aucun lien = refus), `erreurMoyensPaiement` (budgets et lignes : existants et actifs, sauf déjà présents), `codeMoyenLibre`, `erreurCaisses`, `reponseDoublonMoyen`.
+- `lib/useMoyensPaiement.ts` : chargement partagé par les écrans (30 s de cache, vidé après une modification), noms et caisses proposées.
+- Routes : `app/api/moyens-paiement` (GET pour tout compte connecté, caisses liées renvoyées seulement à ceux qui encaissent ou paient ; POST) et `[id]` (PUT nom/description/ordre/caisses, PATCH actif, DELETE → 405).
+- `lib/depenses/enregistrerDepense.ts` : contrôle moyen + caisse pour toute dépense saisie sur la plateforme (budget, facture de prestataire, avance, dépense sur proforma), pas pour CampTrack. `app/api/factures/[id]/paiements/route.ts` : même contrôle pour l'encaissement ; plus de caisse n° 1 imposée pour les espèces ; la méthode est le code du moyen.
+- Codes de moyen validés en texte (au lieu du type figé) : `lib/budgetSchema.ts`, routes budget (création, re-soumission, correction de ligne, dépenses, rattachement), `factures-fournisseurs/[id]/payer`, `commandes/[commandeId]/avance`, CampTrack (`lots-paiement`, `depenses-groupees` : mêmes codes qu'avant, toujours acceptés ; `enregistrerLotPaiement` vérifie seulement que le code existe).
+- `app/api/cash-registers` : renvoie aussi `view` (caisse visible ou masquée).
+- Écrans : nouvelle page **Finance → Moyens de paiement** (`app/(main)/journal-caisse/moyens-paiement/page.tsx`, `components/moyensPaiement/MoyenPaiementDialog.tsx` : cases à cocher des caisses, caisses masquées signalées, alerte « aucune caisse liée ») ; entrée dans le menu ; `BudgetDepenseDialog`, `PayerFactureDialog` et fiche proforma : le moyen d'abord, puis seulement les caisses liées et visibles (une seule → choisie d'office ; aucune → message) ; formulaire de budget, correction de ligne, rattachement : liste gérée ; fiche budget, PDF, rapport de suivi budgétaire, état du soir : noms de la liste gérée. La fiche proforma ne charge plus tout le journal de caisse pour obtenir la liste des caisses.
+- `lib/budgetTypes.ts` : `totauxParModePaiement` accepte la liste gérée (noms et ordre) ; les 6 libellés d'origine restent en repli.
+- `lib/permissions.ts` : 3 droits (groupe « Moyens de paiement », page Finance).
+- Guide `public/docs/procedure-paiement-plateforme.md` : section « Moyens de paiement ».
+
+**Erreurs rencontrées & solutions**
+- La version de zod du projet (v4) refuse `required_error` → remplacé par `{ error: … }`.
+- L'ancien test des départements échouait sur la base locale : il enregistre un budget alors que la base n'a pas encore la mise à jour des moyens (colonne encore du type figé). En jouant cette mise à jour dans sa transaction : plus d'échec lié aux moyens. Deux de ses vérifications supposaient INFORMATIQUE sans responsable ; un vrai responsable y a été rattaché depuis → test adapté aux données réelles (ce n'était pas un défaut de l'application).
+
+**Vérifications (2026-11-24)**
+- Tests sur la vraie base, mise à jour jouée puis annulée : **47 / 47** (6 moyens créés dans l'ordre et sans caisse, moyens des budgets, lignes et dépenses conservés à l'identique, méthodes des proformas converties, droits donnés aux 2 rôles ayant Finance, code inconnu refusé par la base, code et nom en double, règle moyen + caisse : sans lien, non liée, masquée, désactivé, inconnu ; vraie dépense acceptée avec un nouveau moyen « Wave » et refusée dans les autres cas ; CampTrack non soumis à la règle mais code inconnu refusé) ; base contrôlée intacte après coup.
+- Non-régression : départements **25 / 25** (avec la mise à jour des moyens jouée dans la transaction), détail et délai des lignes et PDF **23 / 23**.
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement.
+- Construction complète de l'application (`next build`, dans `.next-verif` pour ne pas gêner le serveur de développement) : **réussie** — compilation en 2,5 min, 45 pages générées, dont la nouvelle page Moyens de paiement ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- ⚠️ **La mise à jour de la base est obligatoire avant d'utiliser cette version** (`pnpm prisma migrate deploy`, en local puis en ligne, avec « Abonnements » si elle n'est pas encore passée ; jamais de `reset`) : sans elle, l'enregistrement d'un budget ou d'une dépense échoue.
+- ⚠️ **Choix 1b : juste après la mise à jour, aucun moyen n'a de caisse** → aucun paiement possible tant que les caisses ne sont pas liées dans Finance → Moyens de paiement (ex. : Espèces → Caisse Comptable ; Virement et Chèque → BIIC BANQUE, BIIC BANQUE 2026 ; Mobile Money → caisse MoMo à rendre visible si besoin). CampTrack continue de fonctionner.
+- Contrôle à l'écran : lier une caisse, faire un encaissement sur une proforma, une dépense sur une ligne de budget et un paiement de facture de prestataire ; vérifier que seules les caisses liées apparaissent.
+- Une nouvelle ligne de budget prend « Virement bancaire » par défaut : si ce moyen est désactivé un jour, il faudra choisir un autre moyen sur chaque ligne (le serveur l'indique).
+
+## 2026-11-24 (suite 6) — Catégorie de ligne de budget « Abonnements »
+
+**Demande / Contexte**
+Ajouter une catégorie pour les abonnements (outils d'IA, logiciels, outils en ligne…) aux lignes de budget.
+
+**Modifications apportées**
+- `prisma/schema.prisma` : valeur `ABONNEMENT` dans `CategorieDepense` (après `COMMUNICATION`).
+- `prisma/migrations/20261124120000_categorie_abonnement/migration.sql` : `ALTER TYPE "CategorieDepense" ADD VALUE IF NOT EXISTS 'ABONNEMENT' AFTER 'COMMUNICATION'` (ajout seulement).
+- `lib/budgetTypes.ts` : libellé « Abonnements (IA, logiciels, outils en ligne…) », placé après « Téléphone & internet » — proposé automatiquement dans le formulaire, la correction d'une ligne, les rapports et le PDF.
+
+**Erreurs rencontrées & solutions**
+- Premier essai du test en base impossible (serveur de base de données injoignable, coupure réseau) → relancé dès le retour de la connexion : réussi.
+- Le script de test du détail et du délai (écrit avant les départements) n'avait pas de département sur ses lignes d'exemple → 2 faux échecs ; données du test complétées, plus aucun échec. Ce n'était pas un défaut de l'application.
+
+**Vérifications complètes (2026-11-24)**
+- Base locale : les mises à jour droits par action, détail et délai, départements sont **appliquées sans erreur** (8 départements, 15 lignes sur 15 rattachées, 12 droits = 4 × 3 rôles). Seule « Abonnements » reste à appliquer.
+- Tests sur la vraie base, dans une transaction annulée : **25 / 25** (départements, total par département, département désactivé, rattachement et responsable unique, filtre, requêtes de la fiche, ordre des types, Tiers indisponible, catégorie Abonnements placée après Téléphone & internet) ; base contrôlée intacte après coup.
+- Tests du détail et du délai des lignes et du PDF : **23 / 23**.
+- Vérification des types et lint sur **tout le projet** : aucune erreur, aucun avertissement. Fins de ligne cohérentes.
+- Construction complète de l'application (`next build`, dans `.next-verif` pour ne pas gêner le serveur de développement) : **réussie** — compilation en 3 min, 44 pages générées, dont les nouvelles pages Départements ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base (`pnpm prisma migrate deploy`), avec les trois précédentes ; puis choisir « Abonnements » sur une ligne de budget.
+- Le détail de la ligne peut préciser l'outil (ex. : ChatGPT, Canva, Adobe, hébergement…).
+
+## 2026-11-24 (suite 5) — Types de budget : ordre Mensuel, Campagne, Ponctuel ; Tiers indisponible
+
+**Demande / Contexte**
+Réorganiser les cartes de type de budget : Mensuel, puis Campagne, puis Ponctuel ; le type Tiers est rendu indisponible (grisé) pour le moment.
+
+**Modifications apportées**
+- `lib/budgetTypes.ts` : ordre `TYPE_BUDGET_VALUES` = Mensuel, Campagne, Ponctuel, Tiers (cartes du formulaire, mini-cartes de la liste des budgets, filtre du rapport) ; `TYPES_BUDGET_INDISPONIBLES` (Tiers) et `typeBudgetDisponible()`.
+- `components/DemandeBudgetForm.tsx` : carte Tiers grisée, non cliquable, mention « Bientôt » / « Indisponible pour le moment » ; type proposé par défaut : **Mensuel** (première carte) ; un budget Tiers déjà enregistré qu'on modifie garde son type ; une reconduction d'un budget Tiers doit choisir un autre type (message).
+- `app/api/demandes-budget/route.ts` : création d'un budget Tiers refusée (« indisponibles pour le moment ») ; `[id]/resoumettre/route.ts` : refus seulement si le budget n'était pas déjà Tiers.
+- Les budgets Tiers existants restent visibles, filtrables et consultables.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- Formulaire : ordre des cartes, carte Tiers grisée, Mensuel sélectionné d'office. Pour rouvrir Tiers plus tard : retirer 'TIERS' de `TYPES_BUDGET_INDISPONIBLES`.
+
+## 2026-11-24 (suite 4) — Budget mensuel : plus de receveur
+
+**Demande / Contexte**
+Chaque ligne de budget porte maintenant son département : pour un budget mensuel (et de campagne), le receveur « Pour le compte de RESEAUPUB » n'est plus utile. Le budget de campagne n'en avait déjà plus (nom de la campagne + proforma).
+
+**Modifications apportées**
+- `components/DemandeBudgetForm.tsx` : pour un budget **mensuel**, le champ receveur est masqué et n'est plus demandé (`sansReceveur`) ; rien n'est envoyé. Le budget **ponctuel** garde son receveur, le budget **tiers** son bénéficiaire.
+- `app/api/demandes-budget/route.ts` et `[id]/resoumettre/route.ts` : un budget mensuel est enregistré sans « Pour le compte de » (vidé aussi à la re-soumission d'un ancien budget).
+- `app/(main)/budget/demandes/[id]/page.tsx` : la ligne « Pour le compte de » n'apparaît plus sur un budget mensuel qui n'en a pas.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- Créer un budget mensuel : plus de champ receveur, enregistrement accepté. Le receveur des **dépenses** reste facultatif pour les budgets mensuels et de campagne (inchangé).
+
+## 2026-11-24 (suite 3) — Départements : table gérée, département par ligne de budget, prestataires rattachés avec poste et historique
+
+**Demande / Contexte**
+Le département se choisissait une fois pour tout le budget, dans une liste figée (avec « Autre » en texte libre : doublons du type « Informatique » / « informatique  » / « COMMERCIAL »). Objectif : savoir chaque mois quel département dépense le plus. Décisions de l'utilisateur : un département **par ligne** ; plus de département sur le budget entier (1b) ; règle « un seul budget mensuel par département et par mois » supprimée (2b) ; nouveaux départements créés seulement depuis leur page (3b) ; noms en MAJUSCULES ; le **responsable** est un prestataire rattaché au département avec un **poste** (responsable, équipe, stagiaire pro, stagiaire académique, prestataire ponctuel) ; les **fournisseurs** ne sont jamais rattachés, seulement des prestataires internes et (certains) externes ; changements suivis dans un historique ; **total par département** affiché sur le budget.
+
+**Modifications apportées**
+- Base (`prisma/schema.prisma`, migration `20261124110000_departements`, ajouts seulement) :
+  - `Departement` : nom (unique, majuscules), code court (unique), description, e-mail, téléphone, code analytique, couleur, montant mensuel indicatif, actif, auteur ;
+  - `DemandeBudgetLigne.departementId` (+ index) ; `Fournisseur.departementId` et `posteDepartement` ;
+  - `FournisseurDepartementHistorique` : ancien/nouveau département, ancien/nouveau poste, date d'effet, motif, auteur ;
+  - reprise : les 7 départements de l'ancienne liste (avec code et description), plus ceux saisis à la main dans les anciens budgets (« Autre » exclu, espaces et casse normalisés) ; chaque ligne existante reçoit le département de son budget ; les rôles ayant la page Prestataires reçoivent les 4 nouveaux droits.
+- `lib/departements.ts` : `normaliserNomDepartement` (majuscules), postes (`POSTES_DEPARTEMENT`), `peutAvoirDepartement` (jamais un « Fournisseur »), `totauxParDepartement`. `lib/departementSchema.ts` (validation), `lib/departementsServeur.ts` (`erreurDepartementsLignes` : département existant et actif, sauf s'il était déjà sur le budget ; `nomPrestataire` ; 409 sur doublon).
+- `lib/permissions.ts` : `fournisseurs.departementCreer`, `fournisseurs.departementModifier`, `fournisseurs.departementActiver`, `fournisseurs.affecterDepartement`.
+- API :
+  - `/api/departements` (GET pour tout compte connecté — le formulaire de budget en a besoin ; POST) et `/api/departements/[id]` (GET fiche : prestataires, historique, dépenses des 6 derniers mois par date de dépense, lignes accordées des budgets ouverts ; PUT ; PATCH actif ; DELETE → 405) ;
+  - `POST /api/fournisseurs/[id]/departement` : rattacher / changer de poste / retirer, avec historique ; refus pour un « Fournisseur », poste obligatoire, **un seul responsable actif** par département, département désactivé refusé ;
+  - prestataires : département renvoyé par la liste et la fiche ; un prestataire passé en type « Fournisseur » est retiré de son département (ligne d'historique).
+- Budget :
+  - `lib/budgetSchema.ts` : `departementId` obligatoire sur chaque ligne ; plus de département obligatoire pour un mensuel ;
+  - création et re-soumission : contrôle des départements ; règle « un mensuel par service et par mois » retirée (`budgetMensuelExistant` n'est plus appelée) ;
+  - correction d'une ligne et reconduction : département modifiable / repris (s'il est encore actif) ;
+  - liste : filtre `departement` = budgets ayant une ligne dans ce département ; colonne = départements des lignes ;
+  - fiche : badge du département sur chaque ligne, dans la fenêtre Détail, en-tête « Département(s) », bloc **Total par département** (demandé, accordé, consommé) ; PDF : département sous la désignation + « Total par département » ;
+  - rapport de suivi budgétaire, recherche et choix de ligne dans la fenêtre facture prestataire : département de la **ligne** (anciennes lignes sans département : celui du budget, sinon « Sans département »).
+- `components/DemandeBudgetForm.tsx` : champ Département du budget et liste figée supprimés ; colonne **Département *** sur chaque ligne (départements actifs, plus ceux déjà présents en modification) ; une nouvelle ligne reprend le département de la précédente ; totaux par département sous le total ; la rangée du haut ne contient plus que le nom de la campagne (ou le receveur) et la proforma.
+- Écrans prestataires :
+  - **Prestataires → Départements** (`app/(main)/fournisseur/departements`) : liste (responsable, nombre de prestataires et de lignes, montant indicatif, interrupteur actif), création / modification (`components/departements/DepartementDialog.tsx`, nom affiché en majuscules) ;
+  - **fiche département** (`…/departements/[id]`) : responsable et contact, dépensé du mois (comparé au montant indicatif), reste à dépenser, barres des 6 derniers mois, prestataires par poste, « Rattacher un prestataire », lignes en cours, historique des mouvements ;
+  - **fiche prestataire** : carte Département (poste, bouton « Changer de département ou de poste », historique) — `components/fournisseurs/PrestataireDepartementCard.tsx`, `components/departements/RattachementDepartementDialog.tsx` ;
+  - liste des prestataires : département et poste sous le type, recherche par département ; menu latéral : « Départements ».
+- `public/docs/procedure-paiement-plateforme.md` : section « Départements ».
+
+**Erreurs rencontrées & solutions**
+- `prisma format` avait réécrit le schéma en LF et réaligné d'autres modèles → remis en CRLF (réalignements conservés, sans effet).
+- Fonctions annexes exportées depuis un fichier de route (refusé par Next.js) → déplacées dans `lib/departementsServeur.ts`.
+- Test en base : la migration précédente (détail et délai) n'est pas appliquée en local → les deux migrations sont jouées dans la transaction de test.
+
+**À tester / points d'attention**
+- **Mises à jour de la base à appliquer** (local et en ligne), dans l'ordre, par `pnpm prisma migrate deploy` : droits par action, détail et délai des lignes, départements. Sans elles, les pages de budget et de prestataires sont en erreur.
+- Vérifié : `tsc` et lint sans erreur ; migration jouée sur la base locale dans une transaction annulée (8 départements, « Informatique » et « informatique  » fusionnés, 15 lignes sur 15 rattachées, 4 droits pour les 3 rôles) ; 19 tests (schémas, majuscules, total par département, département désactivé, rattachement, filtre, requêtes de la fiche), base intacte.
+- À l'écran : compléter les départements créés automatiquement (ex. COMMERCIAL) ; rattacher les prestataires internes avec leur poste ; créer un budget avec des lignes de départements différents (total par département, PDF) ; essayer deux responsables dans un même département (refus attendu).
+- Pas encore fait : rapport « Dépenses par département » mois par mois (classement, comparaison) — prochaine étape ; l'e-mail de soumission n'affiche plus de département pour les nouveaux budgets.
+
+## 2026-11-24 (suite 2) — Budget de campagne : « Nom de la campagne (client) », proforma à côté
+
+**Demande / Contexte**
+Dans le formulaire de budget, la proforma doit se trouver à côté du champ « Client / campagne ». Ce champ devient « Nom de la campagne » ; le bénéficiaire est enregistré au format « Nom de la campagne (Nom du client) ».
+
+**Modifications apportées**
+- `components/DemandeBudgetForm.tsx` :
+  - budget **Campagne** : champ **« Nom de la campagne * »** (au lieu de « Client / campagne ») ; le client est celui de la **proforma choisie** ; « Pour le compte de » est enregistré comme `Nom de la campagne (Nom du client)` (`nomAvecClient`), avec un aperçu « Enregistré comme : … » sous le champ ; sans parenthèses si le nom saisi est déjà celui du client (anciens budgets) ;
+  - choisir la proforma alors que le nom est vide propose l'**objet de la proforma** comme nom de campagne ;
+  - la **proforma** n'est plus en bas du formulaire : elle est sur la même rangée que le département et le nom de la campagne (3 colonnes sur grand écran, 2 puis 1 en dessous) ; même chose pour un budget **Tiers** (proforma facultative, format `CAMPAGNE/CLIENT (…)` inchangé) ;
+  - modification d'un budget : le nom de campagne est relu dans le nouveau format, et toujours dans l'ancien (`CAMPAGNE/CLIENT (Nom - RP-PRO-…)`) ;
+  - liste Département en pleine largeur.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- Créer un budget de campagne : choisir la proforma (le nom se préremplit avec son objet), corriger le nom, vérifier « Pour le compte de : Nom (Client) » sur la fiche et le PDF.
+- Les budgets déjà enregistrés gardent leur ancien libellé tant qu'ils ne sont pas re-soumis.
+
+## 2026-11-24 (suite) — Formulaire de budget plus large, sans défilement horizontal
+
+**Demande / Contexte**
+Le formulaire de saisie d'un budget était trop étroit : le tableau des lignes (désignation, catégorie, moyen, montant, délai) défilait horizontalement. Il faut un formulaire plus large où tout s'affiche bien, et un texte trop long doit passer à la ligne plutôt que défiler.
+
+**Modifications apportées**
+- `app/(main)/budget/nouvelle-demande/page.tsx` et `app/(main)/budget/demandes/[id]/modifier/page.tsx` : largeur maximale `max-w-4xl` → `max-w-6xl` (y compris l'écran de chargement).
+- `components/DemandeBudgetForm.tsx` :
+  - le tableau des lignes (`Table`, cellules en `whitespace-nowrap` et largeurs minimales) est remplacé par une **grille adaptative** fondée sur des requêtes de conteneur Tailwind (`@container`) : une seule rangée quand le bloc fait au moins 64rem (en-tête de colonnes affiché), deux colonnes en dessous (désignation sur toute la largeur), une colonne sur téléphone, avec un libellé au-dessus de chaque champ ; colonnes en `minmax(0, …fr)`, jamais de débordement ;
+  - `ChampAutoHauteur` : la désignation est une zone de texte d'une ligne qui **grandit avec son contenu** (passage à la ligne, hauteur recalculée si la largeur change) ; Entrée et retours à la ligne collés sont neutralisés (la désignation reste un texte d'une ligne) ;
+  - listes Catégorie et Moyen : pleine largeur, le texte passe à la ligne au lieu d'être coupé ;
+  - boutons Détail et Supprimer : icônes seules sur une rangée, icône + texte en mode étroit ;
+  - documents à joindre : type et fichier empilés sur petit écran.
+- Classes générées vérifiées en compilant `app/globals.css` avec Tailwind (`@5xl:grid-cols-[…]`, `@xl:grid-cols-2`, `data-[size=default]:h-auto`, `line-clamp-none`…).
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**À tester / points d'attention**
+- À l'écran : formulaire en plein écran (une rangée par ligne), fenêtre réduite (deux colonnes), téléphone (empilé) ; désignation très longue (doit passer à la ligne) ; reconduction (texte « Précédent » sous le montant).
+
+## 2026-11-24 — Budget : détail et délai propres à chaque ligne
+
+**Demande / Contexte**
+Lors de l'élaboration d'un budget, chaque ligne doit pouvoir porter, en option, un **détail** (zone de texte libre) après la désignation et le montant, consultable dans une fenêtre propre à la ligne par l'administrateur et par toute personne qui voit le budget. Chaque ligne doit aussi pouvoir avoir son **propre délai** : pour les budgets mensuels et de campagne, chaque service a des échéances de décaissement différentes.
+
+**Modifications apportées**
+- `prisma/schema.prisma` : `DemandeBudgetLigne.detail String?` et `DemandeBudgetLigne.dateLimite DateTime?`.
+- `prisma/migrations/20261124100000_detail_delai_ligne_budget/migration.sql` : deux colonnes ajoutées, rien d'autre (les lignes existantes restent sans détail ni délai). **À appliquer** : `pnpm prisma migrate deploy`.
+- `lib/budgetSchema.ts` : `detail` (2000 caractères au plus) et `dateLimite` facultatifs sur chaque ligne ; `toDateJour()` (date du jour à midi UTC, date invalide refusée) ; `lignesAvecMode()` enregistre le détail (vide → null) et le délai. Création et re-soumission en profitent sans autre changement.
+- `components/DemandeBudgetForm.tsx` : colonne **Délai** (date) sur chaque ligne ; icône carnet qui déplie une zone **Détail** sous la ligne (dépliée d'office si la ligne a déjà un détail). Aide sous « Date limite souhaitée » : celle-ci vaut pour tout le budget.
+- `app/(main)/budget/demandes/[id]/modifier/page.tsx` : type des lignes complété.
+- `app/api/demandes-budget/[id]/lignes/[ligneId]/route.ts` et `components/budget/BudgetLigneCorrectionDialog.tsx` : une ligne renvoyée en correction peut aussi changer de détail et de délai (chaîne vide = effacé, champ absent = inchangé).
+- `app/api/demandes-budget/[id]/reconduction/route.ts` : le détail est repris ; pour un budget **mensuel**, le délai est décalé d'autant de mois que le budget (le 10 reste le 10, le 31 devient le 30 si besoin) ; pour les autres types, il est à redéfinir.
+- `lib/budgetDelai.ts` (nouveau) : `etatDelaiLigne()` → À venir, Proche (3 jours ou moins), Dépassé, ou Terminé (ligne retirée, entièrement dépensée, budget rejeté, soldé ou clôturé) ; `libelleDelai()`, `CLASSES_DELAI`.
+- `components/budget/BudgetLigneDetailDialog.tsx` (nouveau) : fenêtre **Détail** d'une ligne (statut, catégorie, moyen, demandé, accordé, consommé, reste, délai et son état, décision du valideur, texte du détail). Lecture seule, ouverte à tous ceux qui voient le budget.
+- `app/(main)/budget/demandes/[id]/page.tsx` : la désignation de chaque ligne ouvre la fenêtre Détail ; badge du délai (bleu à venir, orange proche, rouge dépassé, gris terminé) et badge **Détail** quand la ligne en a un ; la correction transmet le détail et le délai ; le PDF les reçoit.
+- `lib/pdf/budgetPdf.ts` : sous la désignation, en petit gris : « Délai : jj/mm/aaaa » puis le détail (6 lignes au plus, « … » au-delà) ; la hauteur de la ligne s'adapte.
+- `public/docs/procedure-paiement-plateforme.md` : délai et détail de ligne décrits à l'étape de création du budget.
+
+**Erreurs rencontrées & solutions**
+- Échappements `\d` et `\r\n` perdus par le shell dans les scripts de remplacement → corrigés avec l'outil Edit (`toDateJour`) et en s'appuyant sur `wrap()` qui découpe déjà les paragraphes (PDF).
+- `modifier/page.tsx` est en LF dans la copie de travail : remis en LF après un remplacement qui avait mêlé des CRLF.
+
+**À tester / points d'attention**
+- **Migration à appliquer** (local et en ligne) avant de redémarrer : `pnpm prisma migrate deploy`. Sans elle, toute page qui lit les lignes de budget sera en erreur (colonnes `detail` et `dateLimite` absentes).
+- Vérifié : `tsc` et lint sans erreur ; 23 tests hors base (schéma, dates, états du délai, PDF généré) réussis. Le rendu visuel du PDF n'a pas pu être affiché ici (outil de rendu absent) : à regarder à l'écran.
+- À l'écran : créer un budget mensuel avec deux lignes aux délais différents et un détail ; ouvrir la fenêtre Détail ; corriger une ligne renvoyée ; imprimer le PDF ; reconduire au mois suivant (délais décalés d'un mois).
+
 ## 2026-11-21 (suite 2) — Dépense : receveur facultatif pour les budgets mensuels et de campagne
 
 **Demande / Contexte**

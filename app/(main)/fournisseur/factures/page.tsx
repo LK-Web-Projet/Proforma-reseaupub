@@ -16,7 +16,7 @@ import { AttachmentPreviewButton } from '@/components/AttachmentPreviewButton';
 import { PayerFactureDialog } from '@/components/fournisseurs/PayerFactureDialog';
 import { BoutonRetardPaiement, EcheanceFacture, classeLigneRetard } from '@/components/fournisseurs/RetardPaiement';
 import type { EtatEcheance } from '@/lib/retardPaiement';
-import { FactureFournisseurStatusBadge, StatusDot } from '@/components/FactureFournisseurStatusBadge';
+import { FactureStatutControl } from '@/components/fournisseurs/FactureStatutControl';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   CalendarIcon, Pencil, Plus, X, Building2, Wallet, Clock, CheckCircle2, AlarmClock,
@@ -27,8 +27,6 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useDroits } from '@/components/DroitsProvider';
-import { useActionEnCours } from "@/lib/useActionEnCours";
-import { Indicateur } from "@/components/ui/indicateur";
 
 // Define the type for a supplier invoice, including the related supplier
 interface FactureFournisseur {
@@ -46,6 +44,9 @@ interface FactureFournisseur {
   ligneBudgetId?: string | null;
   /** Échéance de paiement selon le type du prestataire (null si payée ou annulée). */
   echeance?: EtatEcheance | null;
+  // Payée hors plateforme (moyen, date) : affiché sous le statut.
+  paiementManuelDate?: string | null;
+  paiementManuelMode?: string | null;
 }
 
 const formatMontant = (value: number) => `${new Intl.NumberFormat('fr-FR').format(value)} XOF`;
@@ -77,10 +78,8 @@ const defaultFilters = {
 };
 
 export default function FacturesListPage() {
-  const { enCours, lancer } = useActionEnCours();
   // Droits d'action (Paramètres → Rôles) : boutons masqués, vérifiés par le serveur.
   const { peut } = useDroits();
-  const peutStatutFacture = ["fournisseurs.factureModifier", "fournisseurs.factureAnnuler", "canValidateBudgetMensuel"].some((k) => peut(k));
 
   const [factures, setFactures] = useState<FactureFournisseur[]>([]);
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
@@ -209,33 +208,6 @@ export default function FacturesListPage() {
     }
     return chips;
   }, [filters, fournisseurs]);
-
-  const handleStatusChange = async (facture: FactureFournisseur, newStatus: FactureFournisseur['status']) => {
-      try {
-        const response = await fetch(`/api/factures-fournisseurs/${facture.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Failed to update status');
-        }
-
-        setFactures(prevFactures =>
-          prevFactures.map(f =>
-            f.id === facture.id ? { ...f, status: newStatus, echeance: newStatus === 'EN_ATTENTE' ? f.echeance : null } : f
-          )
-        );
-        fetchRetards();
-        toast.success('Statut mis à jour avec succès !');
-      } catch (error: unknown) {
-        console.error(error);
-        const message = error instanceof Error ? error.message : 'Erreur lors de la mise à jour du statut.';
-        toast.error(message);
-      }
-    };
 
   const summary = useMemo(() => {
     const total = factures.reduce((sum, f) => sum + Number(f.montant), 0);
@@ -475,33 +447,7 @@ export default function FacturesListPage() {
                   </TableCell>
                   <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(facture.montant)}</TableCell>
                   <TableCell>
-                    {isLocked || !peutStatutFacture ? (
-                      <FactureFournisseurStatusBadge status={facture.status} animate={false} />
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5">
-                      <Select value={facture.status} onValueChange={(newStatus: FactureFournisseur['status']) => lancer(facture.id, () => handleStatusChange(facture, newStatus))} disabled={enCours(facture.id)}>
-                        <SelectTrigger className="border-none bg-transparent! p-0 h-auto cursor-pointer">
-                          <SelectValue>
-                            <FactureFournisseurStatusBadge status={facture.status} />
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="EN_ATTENTE">
-                            <span className="flex items-center gap-2"><StatusDot status="EN_ATTENTE" animate={false} />En attente</span>
-                          </SelectItem>
-                          {/* « Payée » à la main comme avant, sauf pour une facture rattachée à un bon de commande
-                              ou à une ligne de budget : celle-là passe « payée » par son paiement sur le budget. */}
-                          <SelectItem value="PAYEE" disabled={!!facture.commandeId || !!facture.ligneBudgetId || !peut("canValidateBudgetMensuel")}>
-                            <span className="flex items-center gap-2"><StatusDot status="PAYEE" animate={false} />{facture.commandeId || facture.ligneBudgetId ? 'Payée (par le budget)' : 'Payée'}</span>
-                          </SelectItem>
-                          <SelectItem value="ANNULEE">
-                            <span className="flex items-center gap-2"><StatusDot status="ANNULEE" animate={false} />Annulée</span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-{enCours(facture.id) && <Indicateur label="Mise à jour du statut…" />}
-</span>
-                    )}
+                    <FactureStatutControl facture={facture} onChange={() => { fetchFactures(); fetchRetards(); }} />
                   </TableCell>
                   <TableCell>
                     <AttachmentPreviewButton url={facture.pieceJointe} title={`Facture ${facture.reference}`} />

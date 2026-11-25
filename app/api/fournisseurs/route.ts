@@ -15,7 +15,10 @@ export async function GET() {
           entreprise: 'asc',
         },
         // Factures à payer : seulement pour calculer les retards (non renvoyées telles quelles).
-        include: { factures: { where: { status: 'EN_ATTENTE' }, select: { montant: true, date: true, status: true } } },
+        include: {
+          factures: { where: { status: 'EN_ATTENTE' }, select: { montant: true, date: true, status: true } },
+          departement: { select: { id: true, nom: true, code: true } },
+        },
       }),
       getDelaisPaiement(),
     ]);

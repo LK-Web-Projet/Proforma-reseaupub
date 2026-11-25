@@ -1,6 +1,8 @@
 import { OperationType, PaiementType, Prisma } from "@prisma/client";
 import { safeCreatedById } from "@/lib/authz";
 import { recordCashMovement } from "@/lib/cashJournal";
+import { auteurDepuisUtilisateur, journaliserProforma, type AuteurHistorique } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
 
 interface RecordCashDepenseInput {
   cashRegisterId: number;
@@ -42,6 +44,8 @@ interface RecordDepensePaiementInput {
   reference?: string;
   notes?: string;
   createdById?: string | null;
+  /** Auteur pour l'historique de la proforma (à défaut : l'utilisateur createdById). */
+  auteur?: AuteurHistorique | null;
 }
 
 /**
@@ -54,7 +58,7 @@ interface RecordDepensePaiementInput {
  */
 export async function recordDepensePaiement(
   tx: Prisma.TransactionClient,
-  { invoiceId, cashRegisterId, montant, libelle, date_operation, methode, reference, notes, createdById }: RecordDepensePaiementInput
+  { invoiceId, cashRegisterId, montant, libelle, date_operation, methode, reference, notes, createdById, auteur }: RecordDepensePaiementInput
 ) {
   const cashJournalEntry = await recordCashDepense(tx, { cashRegisterId, montant, libelle, date_operation, createdById });
   const safeCreatorId = await safeCreatedById(tx, createdById);
@@ -72,6 +76,15 @@ export async function recordDepensePaiement(
       createdById: safeCreatorId,
     },
   });
+  // Historique de la proforma (toutes les sources : proforma, budget, bon de commande, CampTrack).
+  await journaliserProforma(
+    tx,
+    invoiceId,
+    "DEPENSE",
+    `Dépense de ${fcfa(montant)} — ${libelle}`,
+    auteur ?? (await auteurDepuisUtilisateur(tx, safeCreatorId)),
+    { montant, methode: methode ?? null, cashRegisterId, ecriture: cashJournalEntry.id }
+  );
 
   return { paiement, cashJournalEntry };
 }
