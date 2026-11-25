@@ -27,8 +27,8 @@ import {
 } from '@/components/ui/select';
 import { FournisseurCombobox, Fournisseur } from '@/components/FournisseurCombobox';
 import { FournisseurModal } from '@/components/FournisseurModal';
-import { InvoiceCombobox, InvoiceOption } from '@/components/InvoiceCombobox';
-import { LigneBudgetCommandeField } from '@/components/fournisseurs/LigneBudgetCommandeField';
+import type { InvoiceOption } from '@/components/InvoiceCombobox';
+import { RattachementCommandeField, rattachementInitial, type RattachementCommande } from '@/components/fournisseurs/RattachementCommandeField';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2 } from 'lucide-react';
@@ -76,9 +76,11 @@ export function CommandeFournisseurModal({
   const [appliquerTva, setAppliquerTva] = useState(false);
   const [appliquerAib, setAppliquerAib] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-  // Une seule proforma par bon ; si elle a un budget, la ligne de ce budget est obligatoire.
-  const [proformaId, setProformaId] = useState('');
-  const [ligneBudgetId, setLigneBudgetId] = useState('');
+  // Rattachement obligatoire : campagne (proforma, et ligne de son budget s'il existe) ou hors campagne
+  // (budget mensuel, ponctuel… et sa ligne). Voir RattachementCommandeField.
+  const [rattachement, setRattachement] = useState<RattachementCommande>(rattachementInitial());
+  const [erreurRattachement, setErreurRattachement] = useState<string | null>(null);
+  const { proformaId, ligneBudgetId } = rattachement;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFournisseurModalOpen, setIsFournisseurModalOpen] = useState(false);
 
@@ -90,8 +92,7 @@ export function CommandeFournisseurModal({
     setLignes([]);
     setAppliquerTva(false);
     setAppliquerAib(false);
-    setProformaId('');
-    setLigneBudgetId('');
+    setRattachement(rattachementInitial());
 
     fetch('/api/factures')
       .then((res) => (res.ok ? res.json() : []))
@@ -189,6 +190,10 @@ export function CommandeFournisseurModal({
       toast.error('Veuillez ajouter au moins une ligne de produit.');
       return;
     }
+    if (erreurRattachement) {
+      toast.error(erreurRattachement);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -266,15 +271,13 @@ export function CommandeFournisseurModal({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label>Proforma associée</label>
-              <InvoiceCombobox invoices={invoices} value={proformaId} onChange={setProformaId} />
-              <p className="text-[11px] text-muted-foreground">
-                Une seule proforma par bon de commande : validée, payée ou soldée.
-              </p>
-            </div>
-
-            <LigneBudgetCommandeField proformaId={proformaId} montantNet={montantNet} value={ligneBudgetId} onChange={setLigneBudgetId} />
+            <RattachementCommandeField
+              valeur={rattachement}
+              onChange={setRattachement}
+              invoices={invoices}
+              montantNet={montantNet}
+              onEtat={setErreurRattachement}
+            />
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

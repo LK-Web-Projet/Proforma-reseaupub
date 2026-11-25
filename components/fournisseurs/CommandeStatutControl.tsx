@@ -36,8 +36,12 @@ interface CommandeStatutControlProps {
     isAdmin: boolean;
     /** Scan du bon signé joint (connu sur la fiche) ; non renseigné : le serveur tranche. */
     bcSigne?: boolean;
-    /** Bon lié à rien (ni ligne de budget, ni proforma) : la direction le valide sans attendre le scan. */
-    sansLiaison?: boolean;
+    /**
+     * Comment ce brouillon se valide à la main (fiche, renvoyé par le serveur) : DIRECTE (campagne dont
+     * la proforma n'a pas de budget, sans attendre le scan), A_RATTACHER (lié à rien : impossible),
+     * SIGNATURE (une fois le scan signé joint). Non renseigné (listes) : le serveur tranche.
+     */
+    modeValidation?: "DIRECTE" | "A_RATTACHER" | "SIGNATURE";
     /** Peut renvoyer une promesse : la liste est alors désactivée, avec un indicateur, jusqu'à sa fin. */
     onChange: (statut: StatutCommandeFournisseur) => void | Promise<unknown>;
     triggerClassName?: string;
@@ -49,13 +53,14 @@ interface CommandeStatutControlProps {
  * Contrôle de statut d'un bon de commande fournisseur (liste globale, onglet d'un fournisseur,
  * fiche). Ne propose que les passages autorisés (BROUILLON → VALIDEE → LIVREE, ANNULEE) ;
  * « Validée » (bon signé par la DG) seulement pour la direction et, sur la fiche, une fois le
- * scan signé joint — sauf pour un bon lié à rien, validé directement. Le serveur applique les mêmes règles (app/api/fournisseurs/commandes/[commandeId]).
+ * scan signé joint — sauf un bon de campagne dont la proforma n'a pas de budget (validation directe) ;
+ * un bon lié à rien doit d'abord être rattaché. Le serveur applique les mêmes règles (app/api/fournisseurs/commandes/[commandeId]).
  */
 export function CommandeStatutControl({
     statut,
     isAdmin,
     bcSigne,
-    sansLiaison,
+    modeValidation,
     onChange,
     triggerClassName,
     badgeClassName,
@@ -75,8 +80,9 @@ export function CommandeStatutControl({
         s === "LIVREE" ? peut("fournisseurs.commandeLivrer") : s === "ANNULEE" ? peut("fournisseurs.commandeAnnuler") : true
     );
     const isLocked = suivants.length === 0;
-    const scanManquant = bcSigne === false && !sansLiaison;
-    const valideeImpossible = !isAdmin || scanManquant;
+    const aRattacher = modeValidation === "A_RATTACHER";
+    const scanManquant = bcSigne === false && modeValidation !== "DIRECTE";
+    const valideeImpossible = !isAdmin || aRattacher || scanManquant;
 
     if (!isLocked) {
         return (
@@ -94,7 +100,13 @@ export function CommandeStatutControl({
                     {suivants.map((s) => (
                         <SelectItem key={s} value={s} disabled={s === "VALIDEE" && valideeImpossible}>
                             {STATUT_LABELS[s as StatutCommandeFournisseur]}
-                            {s === "VALIDEE" && !isAdmin ? " (direction)" : s === "VALIDEE" && scanManquant ? " (joindre le BC signé)" : ""}
+                            {s === "VALIDEE" && !isAdmin
+                                ? " (direction)"
+                                : s === "VALIDEE" && aRattacher
+                                    ? " (rattacher d'abord le bon)"
+                                    : s === "VALIDEE" && scanManquant
+                                        ? " (joindre le BC signé)"
+                                        : ""}
                         </SelectItem>
                     ))}
                 </SelectContent>

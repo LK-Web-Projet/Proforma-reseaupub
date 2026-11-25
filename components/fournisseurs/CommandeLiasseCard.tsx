@@ -59,6 +59,8 @@ export interface CommandeSuivi {
   ligneBudget: { id: string; designation: string; demandeBudget: { id: string; numero: string; type: string; statut: string } } | null;
   /** Proforma du bon (une seule) : détermine les lignes de budget proposées. */
   proformas?: { invoice: { id: string } }[];
+  /** DIRECTE = campagne dont la proforma n'a pas de budget : aucune ligne à rattacher (voir modeValidationCommande). */
+  modeValidation?: "DIRECTE" | "A_RATTACHER" | "SIGNATURE";
   documents: { id: string; kind: string; url: string; fileName: string; libelle?: string | null; createdAt: string; createdByEmail: string }[];
   factures: { id: string; reference: string; montant: number | string; date: string; status: string; pieceJointe: string | null }[];
   depenses: {
@@ -183,10 +185,14 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                 Budget {commande.ligneBudget.demandeBudget.numero} — {commande.ligneBudget.designation}
               </Link>
             ) : (
-              <p className="text-amber-800">Aucune ligne de budget : l&apos;avance et le solde ne pourront pas être payés.</p>
+              commande.modeValidation === 'DIRECTE' ? (
+                <p className="text-slate-700">Campagne sans budget : l&apos;avance et le solde se paient depuis la proforma de la campagne.</p>
+              ) : (
+                <p className="text-amber-800">Aucune ligne de budget : l&apos;avance et le solde ne pourront pas être payés.</p>
+              )
             )}
           </div>
-          {!paiementsActifs && !annulee && peutLigne && (
+          {!paiementsActifs && !annulee && peutLigne && commande.modeValidation !== 'DIRECTE' && (
             <Button variant="outline" size="sm" className="gap-1" onClick={() => setLigneOuverte(true)}>
               <Link2 className="h-3.5 w-3.5" /> {commande.ligneBudget ? 'Changer de ligne' : 'Rattacher à une ligne de budget'}
             </Button>

@@ -25,6 +25,37 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 7) — Bon de commande : rattachement obligatoire (campagne ou hors campagne)
+
+**Demande / Contexte**
+Mieux guider le formulaire du bon de commande. D'abord « campagne ou non ». Campagne : proforma obligatoire ; si cette proforma a un budget, la ligne de ce budget est obligatoire (ligne accordée → bon validé d'office) ; si elle n'a pas de budget, validation directe par la direction. Hors campagne : un budget validé existant qui n'est pas un budget de campagne et n'est lié à aucune proforma (mensuel, ponctuel…), puis sa ligne. **Plus aucun bon lié à rien.** Erreur de rattachement : corrigeable tant que le bon est en brouillon.
+Décisions : **1a** budget de la proforma pas encore validé → le bon ne peut pas être émis ; **2a** campagne sans budget → la direction valide depuis la fiche, sans attendre le scan (exigé avant tout paiement) ; **3a** un brouillon lié à rien doit d'abord être rattaché (la validation directe d'un bon lié à rien, entrée « suite 6 », est retirée) ; **4a** on ne touche pas aux bons existants.
+
+**Modifications apportées**
+- `lib/commandeFournisseurSuivi.ts` :
+  - `refusRattachementCommande` (nouveau, règle unique) : rien → refus ; campagne avec budget → ligne accordée de ce budget obligatoire, budget pas ouvert → refus (1a) ; campagne sans budget → aucune ligne ; hors campagne → ligne accordée d'un budget validé, ni « Campagne », ni lié à une proforma.
+  - `modeValidationCommande` (nouveau) : validation à la main d'un brouillon — `DIRECTE` (campagne sans budget), `A_RATTACHER` (lié à rien), `SIGNATURE` (anciens cas : scan signé exigé).
+  - `lignesBudgetPourCommande` : proforma sans budget → aucune ligne ; hors campagne → budgets non « Campagne » sans proforma ; renvoie le mois d'un budget mensuel.
+  - `refusCoherenceLigneProforma` (ligne facultative) supprimée, remplacée par la nouvelle règle.
+- `lib/commandeFournisseurLiasse.ts` : `commandeSansLiaison` (suite 6) supprimée.
+- `app/api/fournisseurs/commandes/route.ts` (création), `[commandeId]/route.ts` (modification d'un brouillon, changement de ligne, statut) : nouvelle règle partout ; « Validée » à la main selon `modeValidationCommande` (lié à rien : « associez-le d'abord… ») ; le GET renvoie `modeValidation`.
+- `components/fournisseurs/RattachementCommandeField.tsx` (nouveau) : choix « Campagne / Hors campagne », proforma, budget puis ligne, messages (budget pas validé, validation directe, dépassement du reste) ; signale ce qui manque — l'enregistrement est bloqué tant que le rattachement n'est pas complet. Utilisé par les trois formulaires : `components/CommandeFournisseurModal.tsx`, `components/fournisseurs/NewCommandeForm.tsx`, `components/fournisseurs/EditCommandeFournisseurModal.tsx` (un ancien brouillon lié à rien demande de choisir).
+- `components/fournisseurs/CommandeStatutControl.tsx` (prop `modeValidation` : « Validée (rattacher d'abord le bon) »), fiche du bon (`app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx`), `components/fournisseurs/CommandeLiasseCard.tsx` (campagne sans budget : « l'avance et le solde se paient depuis la proforma », pas de bouton de rattachement à une ligne).
+- Guide : section « Le bon de commande », points 1 et 4.
+
+**Erreurs rencontrées & solutions**
+- Jeu d'essai mal construit (un budget ponctuel lié à la même proforma que le budget « pas validé ») : 2 vérifications fausses, corrigées dans le test ; le code était juste.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test, dans une transaction annulée : **27 / 27** — lié à rien refusé ; campagne avec budget (ligne obligatoire, ligne du budget acceptée, ligne en attente ou d'un autre budget refusée, validation d'office, dépassement refusé) ; 1a (budget pas validé → impossible) ; 2a (sans ligne accepté, avec ligne refusé, mode DIRECTE) ; hors campagne (mensuel accepté ; budget de campagne, budget lié à une proforma, ligne en attente refusés) ; modes A_RATTACHER / SIGNATURE ; lignes proposées dans chaque cas ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- RESULTAT_BUILD
+
+**À tester / points d'attention**
+- À l'écran : créer un bon « Campagne » avec une proforma qui a un budget validé (ligne obligatoire → validé), avec une proforma dont le budget n'est pas validé (bloqué), avec une proforma sans budget (brouillon → la direction le valide sur la fiche) ; un bon « Hors campagne » (budget, puis ligne → validé) ; enregistrer sans choix → refusé.
+- Anciens bons (4a) : BCF-2026-0004 et BCF-2026-0006 (liés à rien) restent en brouillon ; les rattacher par *Modifier* pour les valider.
+- Les anciens tests en base qui créaient des bons sans rattachement ne correspondent plus à la règle (normal).
+
 ## 2026-11-25 (suite 6) — Bon de commande lié à rien : validation directe par la direction
 
 **Demande / Contexte**

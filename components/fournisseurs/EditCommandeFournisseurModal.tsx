@@ -25,8 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { InvoiceCombobox, InvoiceOption } from '@/components/InvoiceCombobox';
-import { LigneBudgetCommandeField } from '@/components/fournisseurs/LigneBudgetCommandeField';
+import type { InvoiceOption } from '@/components/InvoiceCombobox';
+import { RattachementCommandeField, rattachementInitial, type RattachementCommande } from '@/components/fournisseurs/RattachementCommandeField';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Building2 } from 'lucide-react';
@@ -82,9 +82,11 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
   const [appliquerTva, setAppliquerTva] = useState(false);
   const [appliquerAib, setAppliquerAib] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
-  // Une seule proforma par bon ; si elle a un budget, la ligne de ce budget est obligatoire.
-  const [proformaId, setProformaId] = useState('');
-  const [ligneBudgetId, setLigneBudgetId] = useState('');
+  // Rattachement obligatoire : campagne (proforma, et ligne de son budget s'il existe) ou hors campagne
+  // (budget mensuel, ponctuel… et sa ligne). Voir RattachementCommandeField.
+  const [rattachement, setRattachement] = useState<RattachementCommande>(rattachementInitial());
+  const [erreurRattachement, setErreurRattachement] = useState<string | null>(null);
+  const { proformaId, ligneBudgetId } = rattachement;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -93,8 +95,8 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
     setDateCommande(new Date(commande.dateCommande).toISOString().split('T')[0]);
     setAppliquerTva(commande.appliquerTva);
     setAppliquerAib(commande.appliquerAib);
-    setProformaId(commande.proformas[0]?.invoice.id ?? '');
-    setLigneBudgetId(commande.ligneBudgetId ?? '');
+    // Brouillon lié à rien (ancien bon) : « Campagne » ou « Hors campagne » à choisir avant d'enregistrer.
+    setRattachement(rattachementInitial({ proformaId: commande.proformas[0]?.invoice.id, ligneBudgetId: commande.ligneBudgetId }));
     setLignes(
       commande.lignes.map((l) => ({
         produitFournisseurId: l.produitFournisseur.id,
@@ -187,6 +189,10 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
       toast.error('Veuillez ajouter au moins une ligne de produit.');
       return;
     }
+    if (erreurRattachement) {
+      toast.error(erreurRattachement);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -255,16 +261,16 @@ export function EditCommandeFournisseurModal({ commande, onClose, onSuccess }: E
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label>Proforma associée</label>
-            <InvoiceCombobox invoices={invoices} value={proformaId} onChange={setProformaId} />
-            <p className="text-[11px] text-muted-foreground">
-              Une seule proforma par bon de commande : validée, payée ou soldée.
-            </p>
-          </div>
-
           {commande && (
-            <LigneBudgetCommandeField proformaId={proformaId} commandeId={commande.id} montantNet={montantNet} value={ligneBudgetId} onChange={setLigneBudgetId} />
+            <RattachementCommandeField
+              key={commande.id}
+              valeur={rattachement}
+              onChange={setRattachement}
+              invoices={invoices}
+              montantNet={montantNet}
+              commandeId={commande.id}
+              onEtat={setErreurRattachement}
+            />
           )}
 
           <div className="space-y-2">

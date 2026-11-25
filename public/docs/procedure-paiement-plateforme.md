@@ -150,19 +150,22 @@ Fournisseur | Envoie sa **facture** (même montant que le bon) | violet
 Comptable | **Appliquer le paiement** : bon **payé** | vert
 ```
 
-1. Le bon est créé dans **Prestataires → Bons de commande**, avec **une seule proforma**. Le champ **« Ligne de budget »** propose :
-   - **proforma liée à un budget** : **uniquement les lignes accordées de ce budget**, avec ce qui reste à engager sur chacune ;
-   - **pas de proforma** (achat interne) ou **proforma sans budget** : les lignes des budgets sans proforma (mensuel, ponctuel…).
+1. Le bon est créé dans **Prestataires → Bons de commande**. Le formulaire demande d'abord : **« Ce bon de commande est-il pour une campagne ? »**. **Un bon est toujours rattaché** : il n'y a plus de bon lié à rien.
+   - **Campagne** : la **proforma** est obligatoire (une seule, validée, payée ou soldée).
+     - La proforma a un **budget validé** : la **ligne de ce budget** qui finance le bon est obligatoire (seules ses lignes accordées sont proposées, avec ce qui reste à engager).
+     - La proforma a un budget **pas encore validé** : le bon ne peut pas être émis ; attendre la validation du budget.
+     - La proforma **n'a pas de budget** : pas de ligne ; le bon reste en brouillon et la **direction le valide directement** depuis sa fiche.
+   - **Hors campagne** : choisir un **budget validé** qui n'est pas un budget de campagne et qui n'est lié à aucune proforma (mensuel, ponctuel…), puis **sa ligne**.
 
-   La ligne est **facultative à la création** (choix « Plus tard ») : sans ligne, le bon reste en brouillon. On la choisit ensuite sur la **fiche du bon** (*Rattacher à une ligne de budget*), qui ne montre, elle aussi, que les lignes du budget de la proforma du bon. Une ligne d'un autre budget est toujours refusée.
+   Erreur de rattachement : tant que le bon est **en brouillon** (et sans paiement), on le corrige par **Modifier** (campagne ou non, proforma, budget, ligne) ou, sur la fiche, par *Changer de ligne* ; il suit alors le bon circuit. Une ligne d'un autre budget est toujours refusée.
 2. **Ligne accordée = bon validé d'office.** Si la ligne est accordée et que le bon tient dans ce qui reste à engager sur elle (plafond − déjà dépensé − autres bons en cours), il passe **« Validé »** tout de suite. Une notification part : « Le bon de commande X a été émis pour l'exécution de l'activité liée à la proforma Y » (demandeur du budget, comptables, direction). Au-delà du reste, le bon est refusé : réduire le bon ou demander un dépassement.
 3. **Scan du bon signé** : on l'imprime, la DG le signe, on **joint le scan** sur la fiche du bon. Tant qu'il manque :
    - la partie « Scan du bon de commande signé à joindre » est **en rouge** sur la fiche ;
    - une **pastille rouge « Scan signé manquant »** s'affiche dans la liste des bons ;
    - un rappel est envoyé au demandeur et à la direction ;
    - **aucun paiement** (avance ou solde) n'est possible.
-4. **Bon lié à rien** (ni proforma, ni ligne de budget) : la direction le **valide directement** depuis la fiche du bon (statut « Validée »), sans attendre le scan signé. Le scan reste exigé avant tout paiement, et le rappel de le joindre est envoyé.
-   Un bon lié à une proforma mais pas encore à une ligne suit le circuit de la DG : il est validé une fois le scan signé joint (ou d'office dès qu'on le rattache à une ligne accordée).
+4. **Campagne sans budget** : la direction **valide directement** le bon depuis sa fiche (statut « Validée »), sans attendre le scan signé. Le scan reste exigé avant tout paiement (avance ou solde, payés depuis la proforma), et le rappel de le joindre est envoyé.
+   **Anciens bons** : un brouillon lié à rien doit d'abord être rattaché (*Modifier*) avant d'être validé ; les autres anciens brouillons (proforma avec budget mais sans ligne…) sont validés par la DG une fois le scan signé joint. Les bons déjà validés, livrés ou payés ne changent pas.
 5. La fiche du bon affiche la **liasse**, le **payé et le reste par ligne de produit**, les avances et le solde.
 
 ### La liasse du bon de commande

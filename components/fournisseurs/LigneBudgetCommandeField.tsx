@@ -10,6 +10,7 @@ export interface LigneBudgetCommandeOption {
   budgetId: string;
   budgetNumero: string;
   budgetType: string;
+  budgetPeriode: string | null;
   plafond: number;
   consomme: number;
   engage: number;

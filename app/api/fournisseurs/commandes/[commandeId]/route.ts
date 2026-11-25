@@ -5,10 +5,10 @@ import { getBudgetCapabilities } from "@/lib/budgetAuth";
 import { getDroits, peut, refusDroit, requirePage, requirePermission } from "@/lib/authz";
 import { computeLigne, computeTotaux, STATUTS_PROFORMA_ASSOCIABLES } from "@/lib/commandeFournisseurCalc";
 import { StatutCommandeFournisseur } from "@prisma/client";
-import { refusCoherenceLigneProforma, refusLigneBudgetCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
+import { modeValidationCommande, refusRattachementCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
 
 const UNE_SEULE_PROFORMA = "Un bon de commande n'est associé qu'à une seule proforma.";
-import { commandeSansLiaison, etatLiasse } from "@/lib/commandeFournisseurLiasse";
+import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
 import {
     sendCommandeEmiseNotification,
     sendCommandeFournisseurValideeNotification,
@@ -49,7 +49,7 @@ const commandeInclude = {
         },
     },
     documents: { orderBy: { createdAt: "asc" as const } },
-    // Ancien rattachement d'un budget entier : seulement pour savoir si le bon est lié (validation directe).
+    // Ancien rattachement d'un budget entier : seulement pour savoir si le bon est lié (modeValidationCommande).
     demandesBudget: { select: { id: true } },
     factures: { orderBy: { date: "asc" as const } },
     // Imputations des paiements (budget, proforma ou Camptrack) : payé par ligne de produit.
@@ -109,7 +109,13 @@ export async function GET(
             );
         }
 
-        return NextResponse.json(commande);
+        // Comment ce brouillon se valide à la main (fiche : choix « Validée » de la direction).
+        const modeValidation = await modeValidationCommande(prisma, {
+            ligneBudgetId: commande.ligneBudgetId,
+            proformaId: commande.proformas[0]?.invoiceId,
+            nbBudgetsRattaches: commande.demandesBudget.length,
+        });
+        return NextResponse.json({ ...commande, modeValidation });
     } catch (error) {
         console.error("Error fetching commande details:", error);
         return NextResponse.json(
@@ -127,10 +133,10 @@ const patchSchema = z.object({
 // PATCH /api/fournisseurs/commandes/[commandeId] — statut et/ou ligne de budget, section
 // « Prestataires » requise. Statut : BROUILLON → VALIDEE → LIVREE, ANNULEE depuis BROUILLON ou
 // VALIDEE (sans paiement), jamais de retour en arrière. Un brouillon rattaché à une ligne de budget
-// ACCORDÉE est validé d'office (validationAutomatiqueCommande) ; sinon, VALIDEE = signé par la DG :
-// réservé au droit « Valider les budgets mensuels » et seulement une fois le scan du BC signé joint —
-// sauf pour un bon lié à rien (ni ligne de budget, ni proforma, ni budget), que la direction valide
-// directement (le scan reste exigé avant tout paiement ; un rappel est envoyé).
+// ACCORDÉE est validé d'office (validationAutomatiqueCommande). À la main, VALIDEE est réservé au droit
+// « Valider les budgets mensuels » (direction), selon modeValidationCommande : bon de campagne dont la
+// proforma n'a pas de budget → validation directe (scan exigé avant tout paiement, rappel envoyé) ;
+// bon lié à rien → refusé, à rattacher d'abord ; autres cas → une fois le scan du BC signé joint.
 export async function PATCH(
     request: Request,
     { params }: { params: Promise<{ commandeId: string }> }
@@ -166,7 +172,7 @@ export async function PATCH(
 
         const data: { statut?: StatutCommandeFournisseur; ligneBudgetId?: string | null } = {};
         let emisSurBudget = false;
-        let valideSansLiaison = false;
+        let valideDirectement = false;
 
         // Droits d'action : rattacher à une ligne = modifier le bon ; livrer / annuler ont chacun
         // leur droit. Valider reste réservé à la direction (contrôle plus bas).
@@ -189,9 +195,7 @@ export async function PATCH(
             if (actuelle.imputations.length > 0) {
                 return NextResponse.json({ error: "Des paiements ont déjà été faits sur ce bon : sa ligne de budget ne peut plus changer." }, { status: 400 });
             }
-            const refusLigne =
-                (await refusLigneBudgetCommande(prisma, ligneBudgetId)) ??
-                (await refusCoherenceLigneProforma(prisma, { ligneBudgetId, proformaId: actuelle.proformas[0]?.invoiceId }));
+            const refusLigne = await refusRattachementCommande(prisma, { ligneBudgetId, proformaId: actuelle.proformas[0]?.invoiceId });
             if (refusLigne) return NextResponse.json({ error: refusLigne }, { status: 400 });
             data.ligneBudgetId = ligneBudgetId;
             // Ligne accordée : contrôle de l'engagement, et un brouillon est validé d'office.
@@ -214,12 +218,21 @@ export async function PATCH(
                 if (!caps.canValidateMensuel) {
                     return NextResponse.json({ error: "Seule la direction (signataire des bons de commande) peut valider un bon de commande." }, { status: 403 });
                 }
-                // Lié à rien (et pas rattaché dans cette même demande) : validation directe.
-                const sansLiaison = commandeSansLiaison({ ...actuelle, ligneBudgetId: data.ligneBudgetId ?? actuelle.ligneBudgetId });
-                if (!sansLiaison && !etatLiasse(actuelle.documents).bcSigne) {
+                const mode = await modeValidationCommande(prisma, {
+                    ligneBudgetId: data.ligneBudgetId !== undefined ? data.ligneBudgetId : actuelle.ligneBudgetId,
+                    proformaId: actuelle.proformas[0]?.invoiceId,
+                    nbBudgetsRattaches: actuelle.demandesBudget.length,
+                });
+                if (mode === "A_RATTACHER") {
+                    return NextResponse.json(
+                        { error: "Ce bon n'est rattaché à rien : associez-le d'abord à une proforma (campagne) ou à une ligne de budget (hors campagne)." },
+                        { status: 400 }
+                    );
+                }
+                if (mode === "SIGNATURE" && !etatLiasse(actuelle.documents).bcSigne) {
                     return NextResponse.json({ error: "Joignez d'abord le scan du bon de commande signé par la DG." }, { status: 400 });
                 }
-                valideSansLiaison = sansLiaison;
+                valideDirectement = mode === "DIRECTE";
             }
             if (nouveauStatut === StatutCommandeFournisseur.ANNULEE && actuelle.imputations.length > 0) {
                 return NextResponse.json({ error: "Ce bon a déjà des paiements : annulez d'abord les dépenses concernées." }, { status: 400 });
@@ -247,7 +260,7 @@ export async function PATCH(
                 console.error("Erreur lors de la notification de bon de commande validé:", err)
             );
             // Validé directement sans scan signé : le rappel de le joindre part comme pour un bon émis sur budget.
-            if (valideSansLiaison && !etatLiasse(actuelle.documents).bcSigne) {
+            if (valideDirectement && !etatLiasse(actuelle.documents).bcSigne) {
                 sendCommandeScanAJoindreNotification(updatedCommande).catch((err) =>
                     console.error("Erreur lors du rappel de scan du bon de commande:", err)
                 );
@@ -295,9 +308,9 @@ export async function PUT(
             return NextResponse.json({ error: UNE_SEULE_PROFORMA }, { status: 400 });
         }
         const ligneVisee = validatedData.ligneBudgetId !== undefined ? validatedData.ligneBudgetId : commandeActuelle.ligneBudgetId;
-        const refusLigne =
-            (await refusLigneBudgetCommande(prisma, validatedData.ligneBudgetId)) ??
-            (await refusCoherenceLigneProforma(prisma, { ligneBudgetId: ligneVisee, proformaId: validatedData.proformaIds[0] }));
+        // Un brouillon corrigé suit le circuit : campagne (proforma, et ligne de son budget s'il existe)
+        // ou hors campagne (ligne d'un budget non campagne) — jamais lié à rien.
+        const refusLigne = await refusRattachementCommande(prisma, { ligneBudgetId: ligneVisee, proformaId: validatedData.proformaIds[0] });
         if (refusLigne) {
             return NextResponse.json({ error: refusLigne }, { status: 400 });
         }
