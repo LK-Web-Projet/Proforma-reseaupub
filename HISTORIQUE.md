@@ -25,6 +25,34 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 5) — Rapport « Dépenses par département »
+
+**Demande / Contexte**
+Suite des départements (2026-11-24) : savoir chaque mois quel département dépense le plus. Question 4 tranchée par l'utilisateur : une dépense compte dans le **mois où l'argent est réellement sorti** (4a), pas dans le mois du budget.
+
+**Modifications apportées**
+- `lib/depensesDepartement.ts` (nouveau, partagé, sans base) : règles et calculs — mois (`moisCle`, `decalerMois`, `listeMois`), `classementMois` (rang, part, mois précédent et évolution, prévu, enveloppe, hors budget), `evolutionParMois`, `repartitionCategories`, `seriesGraphique` (7 couleurs fixes attribuées par ordre alphabétique, le reste dans « Autres départements »).
+- `lib/depensesDepartementServeur.ts` (nouveau) : `chargerRapportDepensesDepartement(db, from, to)` — dépenses non annulées à leur date, département de la ligne (anciennes lignes : celui du budget, en majuscules ; sinon « Sans département ») ; budgets payés avant le suivi des dépenses : accordé compté à la date de paiement ; prévu = accordé + dépassements approuvés des budgets du mois (même règle que le suivi budgétaire) ; sorties de caisse hors budget (ni dépense de budget, ni annulation, ni transfert entre caisses, ni apport) ; mois précédant la période chargé pour la comparaison. `periodeRapport` : 6 derniers mois par défaut, ordre rétabli, 24 mois au plus.
+- `app/api/rapports/depenses-departement/route.ts` (nouveau) : GET, réservé aux rôles du circuit budget (comme le suivi budgétaire).
+- `app/(main)/dashboard/rapports/depenses-departement/page.tsx` (nouveau) : période et mois du classement ; 4 chiffres (dépensé du mois et évolution, département qui dépense le plus, nombre de départements et de dépenses, sorties hors budget) ; classement (lien vers la fiche du département, part, mois précédent, prévu, enveloppe et « dépassée ») ; graphique empilé mois par mois + tableau ; répartition par catégorie (tous ou un département) ; export Excel (droit « Exporter les rapports ») : classement, par mois, par catégorie, détail des dépenses. Sans défilement horizontal de la page (colonnes masquées sur petit écran).
+- `components/rapports/VariationMontant.tsx` (nouveau) : flèche + pourcentage par rapport au mois précédent (« nouveau » sans comparaison).
+- `components/dashboard/DepensesDepartementCard.tsx` (nouveau) + `app/(main)/dashboard/page.tsx` : résumé dans l'onglet « Ce mois » du tableau de bord (5 premiers départements, total et évolution), masqué pour les rôles hors circuit budget.
+- `app/(main)/dashboard/rapports/page.tsx` : carte « Dépenses par département ».
+- Guide `public/docs/procedure-paiement-plateforme.md` : rapport décrit dans « Départements ».
+
+**Erreurs rencontrées & solutions**
+- Coupures réseau vers la base de test pendant les essais : test relancé une fois la connexion revenue.
+- Une attente erronée dans le test (6 dépenses au lieu de 5) corrigée dans le test ; le rapport était juste.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test, dans une transaction annulée (données de janvier à mars 2019 créées pour l'essai) : **33 / 33** — mois et comparaisons, période par défaut / inversée / limitée, couleurs stables, dépense annulée exclue, dépense comptée au mois de sortie de l'argent (budget de janvier payé en février → février), ancienne ligne sans département, ancien budget payé, classement et parts, prévu avec dépassement (ligne en attente exclue), enveloppe, hors budget (transfert exclu), évolution −67 %, « nouveau », catégories, mois de comparaison chargé mais non affiché ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : *Dashboard → Rapports → Dépenses par département* (changer de période et de mois, export Excel), résumé du tableau de bord (onglet « Ce mois »), rôle hors circuit budget : rapport fermé et résumé absent.
+- Sur la base de test, une seule dépense de budget existe (novembre 2026) : le rapport sera peu rempli tant que les dépenses ne passent pas par les lignes de budget.
+
 ## 2026-11-25 (suite 4) — Liste des proformas : toute la ligne ouvre la proforma
 
 **Demande / Contexte**

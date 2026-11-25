@@ -14,6 +14,7 @@ import {
   BarChart3,
   PieChart,
   Megaphone,
+  Building2,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -72,6 +73,13 @@ const CARDS: RapportCardDef[] = [
     icon: Wallet,
     color: 'blue',
     href: '/dashboard/rapports/suivi-budgetaire',
+  },
+  {
+    title: 'Dépenses par département',
+    description: "Qui dépense le plus chaque mois : classement, évolution, catégories, comparaison au prévu et à l'enveloppe.",
+    icon: Building2,
+    color: 'blue',
+    href: '/dashboard/rapports/depenses-departement',
   },
   {
     title: 'Rapport employés',

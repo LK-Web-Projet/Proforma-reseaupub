@@ -360,7 +360,7 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
   - les paiements Camptrack à rattacher.
 - **Notifications** : la cloche en haut de la barre latérale. Dans **Paramètres → Notifications**, l'admin choisit pour chaque événement : email, application ou les deux.
 - **Recherche** : un numéro, un client, un prestataire, un nom de fichier ou un montant permet de retrouver budgets, pièces, bons de commande, factures, écritures de caisse et proformas. Chacun ne voit que ce que ses droits permettent.
-- **Rapports** : *Dashboard → Rapports → Suivi budgétaire*, par service, catégorie et moyen de paiement, avec export Excel.
+- **Rapports** : *Dashboard → Rapports → Suivi budgétaire*, par service, catégorie et moyen de paiement, avec export Excel ; *Dashboard → Rapports → Dépenses par département* (voir « Départements »).
 
 ---
 
@@ -390,6 +390,12 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
 - Les **prestataires internes et externes** peuvent être rattachés à un département avec un **poste** : responsable de département (un seul par département), équipe, stagiaire professionnel, stagiaire académique, prestataire ponctuel. Les **fournisseurs** ne le sont jamais. Chaque changement (département ou poste) est conservé dans l'historique, avec sa date, son motif et son auteur.
 - La **fiche d'un département** montre son responsable, ses prestataires, ses dépenses des 6 derniers mois (comparées au montant mensuel indicatif) et ses lignes de budget en cours.
 - Droits (Paramètres → Rôles, page Prestataires) : créer, modifier, activer / désactiver un département ; rattacher un prestataire à un département.
+- **Rapport « Dépenses par département »** (*Dashboard → Rapports*, réservé aux rôles du circuit budget) : qui dépense le plus chaque mois.
+  - Une dépense compte dans le **mois où l'argent est réellement sorti** (sa date), sur le département de sa ligne de budget, même si le budget appartient à un autre mois. Les dépenses annulées ne comptent pas.
+  - Pour le mois choisi : classement des départements, part de chacun, comparaison avec le mois précédent, **prévu** des budgets de ce mois, **montant mensuel indicatif** du département (signalé s'il est dépassé), répartition par catégorie.
+  - Sur la période : graphique et tableau mois par mois. **Sorties hors budget** : sorties de caisse rattachées à aucune ligne de budget (hors transferts entre caisses), qu'aucun département ne porte.
+  - Export Excel (droit « Exporter les rapports ») : classement, par mois, par catégorie, détail des dépenses.
+  - Résumé sur le **tableau de bord**, onglet « Ce mois » : les 5 départements qui dépensent le plus.
 
 ## Moyens de paiement
 

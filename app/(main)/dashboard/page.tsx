@@ -15,6 +15,7 @@ import {
 } from '@/components/dashboard/ExtraIndicatorsSection';
 import { CashJournalLinesCard, type CashJournalLine } from '@/components/dashboard/CashJournalLinesCard';
 import { MonthlyFluctuationChart, type DailyFluctuation } from '@/components/dashboard/MonthlyFluctuationChart';
+import { DepensesDepartementCard } from '@/components/dashboard/DepensesDepartementCard';
 import { AlertCircle, TrendingUp, TrendingDown, Wallet, ArrowLeftRight } from 'lucide-react';
 
 const formatCurrency = (value: number) =>
@@ -190,6 +191,8 @@ export default function DashboardPage() {
                   accent={{ bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-t-slate-400' }}
                 />
               </div>
+
+              <DepensesDepartementCard formatCurrency={formatCurrency} />
 
               <MonthlyFluctuationChart data={monthData.fluctuation} formatCurrency={formatCurrency} />
 
