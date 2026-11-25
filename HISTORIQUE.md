@@ -49,7 +49,7 @@ Décisions : **1a** budget de la proforma pas encore validé → le bon ne peut 
 **Vérifications (2026-11-25)**
 - Test sur la base de test, dans une transaction annulée : **27 / 27** — lié à rien refusé ; campagne avec budget (ligne obligatoire, ligne du budget acceptée, ligne en attente ou d'un autre budget refusée, validation d'office, dépassement refusé) ; 1a (budget pas validé → impossible) ; 2a (sans ligne accepté, avec ligne refusé, mode DIRECTE) ; hors campagne (mensuel accepté ; budget de campagne, budget lié à une proforma, ligne en attente refusés) ; modes A_RATTACHER / SIGNATURE ; lignes proposées dans chaque cas ; base intacte.
 - Vérification des types et du style : aucune erreur, aucun avertissement.
-- RESULTAT_BUILD
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
 
 **À tester / points d'attention**
 - À l'écran : créer un bon « Campagne » avec une proforma qui a un budget validé (ligne obligatoire → validé), avec une proforma dont le budget n'est pas validé (bloqué), avec une proforma sans budget (brouillon → la direction le valide sur la fiche) ; un bon « Hors campagne » (budget, puis ligne → validé) ; enregistrer sans choix → refusé.
