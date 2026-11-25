@@ -25,7 +25,9 @@ export default async function RootLayout({
     <SidebarProvider>
       <AppSidebar />
       <PositionedSidebarTrigger />
-      <main className="w-full h-full flex-1 p-8 md:p-4 lg:p-4 lg:ml-6">
+      {/* min-w-0 : la zone de contenu peut rétrécir à côté du menu (sinon un tableau large fait défiler
+          toute la page) ; pas de w-full, qui s'ajoutait à la marge gauche et faisait déborder la page. */}
+      <main className="min-w-0 h-full flex-1 p-8 md:p-4 lg:p-4 lg:ml-6">
         {children}
       </main>
       <Toaster />

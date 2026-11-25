@@ -16,13 +16,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Eye, Filter, Wallet, Send, CheckCircle, Banknote, XCircle, Archive, Check, EyeOff, Download, Copy } from 'lucide-react';
 import { FactureTableSkeleton } from '@/components/FactureTableSkeleton';
 import { FactureStatusBadge, FACTURE_STATUS_META } from '@/components/FactureStatusBadge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useDroits } from '@/components/DroitsProvider';
 import { etatPiecesProforma, type EtatPiecesProforma } from '@/lib/proformaPieces';
+import { ActionsProformaMenu } from '@/components/proforma/ActionsProformaMenu';
 import { AlertTriangle, BellRing } from 'lucide-react';
 
 function formatDateFR(dateStr: string) {
@@ -141,6 +141,9 @@ export default function Home() {
     }
     return m;
   }, [allFactures]);
+  // Validée depuis le menu « … » : la ligne est mise à jour sans recharger la liste.
+  const marquerValidee = (id: string) =>
+    setAllFactures((prev) => prev.map((f) => (f.id === id ? { ...f, statut: 'Valider', dateValidation: new Date().toISOString() } : f)));
   const nbManquantes = Array.from(alertes.values()).filter((a) => a.factureManquante).length;
   const nbAReclamer = Array.from(alertes.values()).filter((a) => a.aReclamer).length;
 
@@ -471,19 +474,20 @@ export default function Home() {
         )}
       </div>
 
+      {/* Tableau sans défilement horizontal : colonnes à largeur fixe, textes tronqués (info-bulle) ou
+          renvoyés à la ligne ; gestionnaire et total TTC masqués sur les écrans étroits. */}
       <div className="rounded-md bg-white border">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Numéro</TableHead>
-              <TableHead>Client</TableHead>
+              <TableHead className="w-[9.5rem]">Numéro / date</TableHead>
+              <TableHead className="w-[18%]">Client</TableHead>
               <TableHead>Objet</TableHead>
-              <TableHead className="text-center">Gestionnaire</TableHead>
-              <TableHead className="text-right">Total TTC</TableHead>
-              <TableHead className="text-right">Reste à Payer</TableHead>
-              <TableHead className="text-center">Statut</TableHead>
-              <TableHead className="text-center">Voir</TableHead>
+              <TableHead className="hidden xl:table-cell w-[13%]">Gestionnaire</TableHead>
+              <TableHead className="hidden lg:table-cell w-[8.5rem] text-right">Total TTC</TableHead>
+              <TableHead className="w-[8.5rem] text-right">Reste à payer</TableHead>
+              <TableHead className="w-[9.5rem] text-center">Statut</TableHead>
+              <TableHead className="w-12 text-center"><span className="sr-only">Actions</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -491,79 +495,59 @@ export default function Home() {
               <FactureTableSkeleton />
             ) : filteredFactures.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center h-24 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
                   Aucune facture trouvée.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredFactures.map((facture) => (
-                <TableRow key={facture.id} className={cn("transition-colors", alertes.get(facture.id)?.alerteRouge ? "bg-red-50/70 hover:bg-red-50" : "hover:bg-muted/50")}>
-                  <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
-                  <TableCell className="font-mono text-sm">
+              filteredFactures.map((facture) => {
+                const etat = alertes.get(facture.id);
+                const gestionnaires = facture.gestionnaires?.length > 0
+                  ? facture.gestionnaires
+                      .map((g: { gestionnaire: { prenom: string; nom: string } }) => `${g.gestionnaire.prenom} ${g.gestionnaire.nom}`)
+                      .join(", ")
+                  : "-";
+                return (
+                <TableRow key={facture.id} className={cn("transition-colors", etat?.alerteRouge ? "bg-red-50/70 hover:bg-red-50" : "hover:bg-muted/50")}>
+                  <TableCell>
                     <button
                       type="button"
                       onClick={(e) => copyToClipboard(e, facture.numero, "Numéro")}
                       title="Cliquer pour copier le numéro"
-                      className="group inline-flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-muted"
+                      className="group inline-flex max-w-full items-center gap-1 rounded px-1 -mx-1 font-mono text-sm hover:bg-muted"
                     >
-                      {facture.numero}
+                      <span className="truncate">{facture.numero}</span>
                       <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100" />
                     </button>
+                    <span className="block text-[11px] text-muted-foreground">{formatDateFR(facture.dateCreation)}</span>
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     {facture.client?.id ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Link
-                              href={`/client/${facture.client.id}`}
-                              className="truncate max-w-[150px] inline-block text-primary hover:underline"
-                            >
-                              {facture.client?.nom || "-"}
-                            </Link>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Voir la fiche de {facture.client?.nom || "-"}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <Link
+                        href={`/client/${facture.client.id}`}
+                        title={`Voir la fiche de ${facture.client?.nom || "-"}`}
+                        className="block truncate text-primary hover:underline"
+                      >
+                        {facture.client?.nom || "-"}
+                      </Link>
                     ) : (
-                      <span className="truncate max-w-[150px] inline-block cursor-default">-</span>
+                      <span className="block truncate cursor-default">-</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="truncate max-w-[150px] inline-block cursor-default">
-                            {facture.objet}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{facture.objet}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <span className="block truncate cursor-default" title={facture.objet}>{facture.objet}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground xl:hidden" title={gestionnaires}>{gestionnaires}</span>
                   </TableCell>
-                  <TableCell className="text-center text-sm">
-                    {facture.gestionnaires?.length > 0
-                      ? facture.gestionnaires
-                          .map(
-                            (g: {
-                              gestionnaire: { prenom: string; nom: string };
-                            }) =>
-                              `${g.gestionnaire.prenom} ${g.gestionnaire.nom}`
-                          )
-                          .join(", ")
-                      : "-"}
+                  <TableCell className="hidden xl:table-cell text-sm">
+                    <span className="block truncate" title={gestionnaires}>{gestionnaires}</span>
                   </TableCell>
-                  <TableCell className="text-right font-semibold">
+                  <TableCell className="hidden lg:table-cell text-right font-semibold">
                     {formatMoney(facture.totalTTC, facture.devise)}
                   </TableCell>
                   <TableCell className="text-right font-semibold text-red-600">
                     {formatMoney(facture.resteAPayer, facture.devise)}
                   </TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-center whitespace-normal">
                     <FactureStatusBadge
                       status={facture.statut}
                       animate={!["Solde", "Annuler", "Archiver"].includes(facture.statut)}
@@ -573,30 +557,24 @@ export default function Home() {
                           : undefined
                       }
                     />
-                    {alertes.get(facture.id)?.aReclamer ? (
-                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold text-red-700">
-                        <BellRing className="h-3 w-3 animate-pulse" /> À réclamer
+                    {etat?.aReclamer ? (
+                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold leading-tight text-red-700">
+                        <BellRing className="h-3 w-3 shrink-0 animate-pulse" /> À réclamer
                       </span>
-                    ) : alertes.get(facture.id)?.factureManquante ? (
-                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold text-red-700">
-                        <AlertTriangle className="h-3 w-3 animate-pulse" /> Facture normalisée manquante
+                    ) : etat?.factureManquante ? (
+                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold leading-tight text-red-700" title="Facture normalisée manquante">
+                        <AlertTriangle className="h-3 w-3 shrink-0 animate-pulse" /> Facture manquante
                       </span>
-                    ) : alertes.get(facture.id)?.relanceProche ? (
-                      <span className="mt-1 block text-[10px] font-semibold text-amber-700">Échéance proche</span>
+                    ) : etat?.relanceProche ? (
+                      <span className="mt-1 block text-[10px] font-semibold leading-tight text-amber-700">Échéance proche</span>
                     ) : null}
                   </TableCell>
-                  <TableCell className="text-center">
-                    <Link
-                      href={`/facture/${facture.id}`}
-                      className="text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <Button variant="ghost" size="icon">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                  <TableCell className="text-center px-1">
+                    <ActionsProformaMenu facture={facture} onValidee={marquerValidee} />
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>

@@ -25,6 +25,28 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite) — Liste des proformas : menu « … » (ouvrir, valider, modifier) et plus de défilement horizontal
+
+**Demande / Contexte**
+Rendre l'ouverture d'une proforma plus simple : à la place de l'œil, un menu « … » avec « Ouvrir la proforma », « Valider la proforma » (seulement pour qui a le droit de valider) et « Modifier » (ouvre directement la fiche en mode modification). Et plus aucun défilement horizontal de la page, surtout depuis la mention « facture normalisée manquante » qui élargissait le tableau. La mise à jour de la base des pièces et de l'historique est appliquée (utilisateur).
+
+**Modifications apportées**
+- `components/proforma/ActionsProformaMenu.tsx` (nouveau) : menu « … » d'une ligne. « Ouvrir la proforma » ; « Valider la proforma » si le rôle a le droit « Valider » et la proforma est en brouillon ou envoyée (fenêtre de confirmation, puis `PATCH /api/factures/[id]` `{ statut: "Valider" }` : mêmes contrôles côté serveur, date de validation, notification et historique comme depuis la fiche) ; « Modifier » ouvre `/facture/<id>?modifier=1`, grisé avec la raison si la proforma ne se modifie plus (`raisonNonModifiable` : droit manquant, paiement en cours, bon de commande ou facture normalisée joint — mêmes règles que le bouton de la fiche).
+- `app/(main)/facture/[id]/page.tsx` : `?modifier=1` ouvre la fiche directement en mode modification (si modifiable ; sinon message), puis l'adresse est nettoyée.
+- `app/(main)/facture/page.tsx` : tableau à largeurs fixes (`table-fixed`), sans défilement horizontal : numéro et date réunis dans une colonne, client et objet tronqués (texte complet au survol), gestionnaire affiché sous l'objet sur les écrans étroits (colonne à partir des grands écrans), total TTC masqué sur les écrans moyens, mention d'alerte raccourcie (« Facture manquante », « À réclamer », « Échéance proche ») et renvoyée à la ligne, colonne « … » à la place de « Voir » ; une proforma validée depuis le menu est mise à jour dans la liste sans rechargement.
+- `components/FactureTableSkeleton.tsx` : lignes d'attente alignées sur les nouvelles colonnes, largeurs relatives.
+- `app/(main)/layout.tsx` : la zone de contenu peut rétrécir à côté du menu (`min-w-0`) et n'a plus `w-full`, qui s'ajoutait à la marge gauche et faisait déborder **toutes** les pages horizontalement.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement.
+- Construction complète de l'application (`next build`, dans `.next-verif`) : **réussie**, 45 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : menu « … » d'une ligne (ouvrir, valider avec un rôle qui a le droit, modifier → fiche en mode modification) ; « Valider » absent pour un rôle sans le droit ; plus de barre de défilement horizontale sur la liste, en grand écran comme en écran étroit, et sur les autres pages (cadre commun corrigé).
+
 ## 2026-11-25 — Pièces de la proforma en une seule table, relances des factures clients, historique de la proforma
 
 **Demande / Contexte**

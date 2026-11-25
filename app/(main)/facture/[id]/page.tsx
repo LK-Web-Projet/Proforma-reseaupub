@@ -374,6 +374,23 @@ export default function FactureDetailPage() {
     fetchFacture();
   }, [fetchFacture]);
 
+  // Arrivée depuis le menu « … » de la liste (« Modifier ») : la fiche s'ouvre directement en mode
+  // modification, si la proforma est modifiable (mêmes règles que le bouton « Modifier »).
+  const modificationDemandee = useRef(false);
+  useEffect(() => {
+    if (!facture || modificationDemandee.current) return;
+    if (new URLSearchParams(window.location.search).get("modifier") !== "1") return;
+    modificationDemandee.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    const verrouillee =
+      facture.documents?.some((d) => d.type === "BON_COMMANDE" || d.type === "FACTURE_NORMALISEE") || ["Payer", "Solde"].includes(facture.statut);
+    if (verrouillee || !(peutModifierContenu || peutChangerUnStatut)) {
+      toast.info("Cette proforma ne peut plus être modifiée (paiement en cours, ou bon de commande / facture normalisée joint).");
+      return;
+    }
+    setIsEditing(true);
+  }, [facture, peutModifierContenu, peutChangerUnStatut]);
+
   const handleSendEmail = async () => {
     setIsSending(true);
     try {
