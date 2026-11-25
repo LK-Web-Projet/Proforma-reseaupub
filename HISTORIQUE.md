@@ -25,6 +25,26 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 2) — Écran d'attente à l'ouverture d'une proforma
+
+**Demande / Contexte**
+Au clic sur une proforma, rien ne bougeait pendant le chargement : on avait l'impression que le site était bloqué. Il faut un effet visuel de chargement.
+
+**Modifications apportées**
+- `components/proforma/ProformaFicheSkeleton.tsx` (nouveau) : silhouette grisée animée de la fiche (barre du haut, contenu, encadrés de droite) avec une roue qui tourne et « Ouverture de la proforma… ».
+- `app/(main)/facture/[id]/loading.tsx` (nouveau) : cet écran s'affiche **immédiatement** au clic (ligne de la liste, menu « … » Ouvrir ou Modifier, lien depuis une autre page), pendant l'ouverture de la page.
+- `app/(main)/facture/[id]/page.tsx` : le même écran remplace « Chargement de la mission… » pendant la lecture des données, pour un passage sans saut.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 45 / 45 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- À l'écran : cliquer sur une proforma de la liste → la silhouette grisée doit apparaître tout de suite, puis la fiche.
+
 ## 2026-11-25 (suite) — Liste des proformas : menu « … » (ouvrir, valider, modifier) et plus de défilement horizontal
 
 **Demande / Contexte**

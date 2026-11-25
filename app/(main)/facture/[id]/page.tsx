@@ -54,6 +54,7 @@ import { moyensProposes } from "@/lib/moyensPaiement";
 import { useMoyensPaiement } from "@/lib/useMoyensPaiement";
 import { PiecesProformaCard, type DocumentProforma } from "@/components/proforma/PiecesProformaCard";
 import { HistoriqueProformaCard } from "@/components/proforma/HistoriqueProformaCard";
+import { ProformaFicheSkeleton } from "@/components/proforma/ProformaFicheSkeleton";
 import type { TypeDocumentProformaValue } from "@/lib/proformaPieces";
 
 type Campagne = {
@@ -576,12 +577,7 @@ export default function FactureDetailPage() {
     finally { setIsAddingPayment(false); }
   };
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center min-h-[600px] space-y-4">
-        <TrendingUp className="w-12 h-12 text-primary animate-pulse" />
-        <p className="text-muted-foreground animate-pulse font-medium">Chargement de la mission...</p>
-    </div>
-  );
+  if (loading) return <ProformaFicheSkeleton />;
   if (!facture) return <div className="text-center p-20 font-bold text-red-500">Facture introuvable.</div>;
 
   const displayDevise = editionContenu ? formData.devise : facture.devise;
