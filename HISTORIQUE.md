@@ -25,6 +25,30 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 6) — Bon de commande lié à rien : validation directe par la direction
+
+**Demande / Contexte**
+Rappel du circuit : un bon de commande est associé à une proforma (seules les lignes du budget de cette proforma sont proposées) ou, sinon, à une ligne d'un budget validé sans proforma ; rattaché à une ligne accordée, il est validé d'office (déjà en place). Problème : un bon lié **à rien** (ni proforma, ni ligne de budget) ne pouvait être validé qu'une fois le scan signé joint (« Validée (joindre le BC signé) » grisé sur la fiche). Il faut que l'administrateur puisse le valider directement depuis la fiche du bon.
+
+**Modifications apportées**
+- `lib/commandeFournisseurLiasse.ts` : `commandeSansLiaison` (ni ligne de budget, ni proforma, ni ancien rattachement d'un budget entier).
+- `app/api/fournisseurs/commandes/[commandeId]/route.ts` (PATCH statut) : un bon lié à rien passe « Validée » sans scan signé, toujours réservé au droit « Valider les budgets mensuels » (direction) ; rappel « scan à joindre » envoyé s'il manque. Bon lié (proforma sans ligne, ligne non accordée…) : règle inchangée (scan exigé). Le GET renvoie l'ancien rattachement d'un budget (`demandesBudget`, identifiants seulement).
+- `components/fournisseurs/CommandeStatutControl.tsx` (prop `sansLiaison`) et `app/(main)/fournisseur/[id]/commandes/[commandeId]/page.tsx` : « Validée » n'est plus grisé pour un bon lié à rien.
+- `components/fournisseurs/LigneBudgetCommandeField.tsx` : choix « Aucune (validation directe par la direction) ».
+- Guide : section « Le bon de commande », point 4.
+- **Inchangé** : aucun paiement (avance ou solde) tant que le scan signé n'est pas joint.
+
+**Erreurs rencontrées & solutions**
+- Coupure réseau vers la base de test pendant le contrôle en lecture.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Test de la règle : **6 / 6** (lié à rien, ligne de budget, proforma, ancien budget rattaché). Sur la base de test (lecture seule) : 4 bons en brouillon, dont **2 liés à rien** (BCF-2026-0004, BCF-2026-0006, sans scan signé) désormais validables directement.
+
+**À tester / points d'attention**
+- À l'écran, avec un rôle de direction : bon sans proforma ni ligne → fiche → statut « Validée » ; bon lié à une proforma sans ligne → « Validée (joindre le BC signé) » toujours grisé ; essayer une avance sur le bon validé sans scan → refusée.
+- Constat (non modifié) : un bon rattaché à une ligne **pas encore accordée** reste en brouillon quand le budget est validé ensuite (la DG le valide alors une fois le scan joint). Une validation automatique à la validation du budget peut être ajoutée.
+
 ## 2026-11-25 (suite 5) — Rapport « Dépenses par département »
 
 **Demande / Contexte**

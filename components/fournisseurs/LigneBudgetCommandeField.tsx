@@ -114,7 +114,7 @@ export function LigneBudgetCommandeField({
         <SelectContent>
           {!sansChoixVide && (
             <SelectItem value={AUCUNE}>
-              {aBudget ? 'Plus tard (à rattacher depuis la fiche du bon)' : 'Aucune (circuit de validation par la DG)'}
+              {aBudget ? 'Plus tard (à rattacher depuis la fiche du bon)' : 'Aucune (validation directe par la direction)'}
             </SelectItem>
           )}
           {horsListe && <SelectItem value={value}>Ligne actuelle (pas encore accordée)</SelectItem>}

@@ -49,6 +49,20 @@ export const TRANSITIONS_COMMANDE: Record<string, readonly string[]> = {
   ANNULEE: [],
 };
 
+/**
+ * Bon de commande lié à rien : ni ligne de budget, ni proforma, ni budget. La direction peut alors le
+ * valider directement, sans attendre le scan signé (il reste exigé avant tout paiement). Un bon lié
+ * passe par son circuit : validé d'office quand sa ligne de budget est accordée, sinon par la DG une
+ * fois le scan signé joint.
+ */
+export function commandeSansLiaison(c: {
+  ligneBudgetId?: string | null;
+  proformas?: readonly unknown[] | null;
+  demandesBudget?: readonly unknown[] | null;
+}): boolean {
+  return !c.ligneBudgetId && !(c.proformas?.length) && !(c.demandesBudget?.length);
+}
+
 export const NATURE_DEPENSE_LABELS: Record<string, string> = {
   NORMALE: "Dépense",
   AVANCE: "Avance",

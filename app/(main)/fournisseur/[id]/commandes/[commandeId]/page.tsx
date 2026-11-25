@@ -28,7 +28,7 @@ import { CommandeStatutControl } from "@/components/fournisseurs/CommandeStatutC
 import { EditCommandeFournisseurModal } from "@/components/fournisseurs/EditCommandeFournisseurModal";
 import { resolveTypeFournisseur } from "@/lib/typeFournisseur";
 import { CommandeLiasseCard, type CommandeSuivi } from "@/components/fournisseurs/CommandeLiasseCard";
-import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
+import { commandeSansLiaison, etatLiasse } from "@/lib/commandeFournisseurLiasse";
 import { genererBonCommandePdf } from "@/lib/pdf/bonCommandePdf";
 import { useDroits } from "@/components/DroitsProvider";
 
@@ -106,6 +106,8 @@ interface CommandeDetail {
     // Lot C : ligne de budget, liasse, factures et paiements (voir CommandeLiasseCard).
     fournisseurId: string;
     ligneBudget: CommandeSuivi["ligneBudget"];
+    /** Ancien rattachement d'un budget entier au bon (sert seulement à savoir si le bon est lié). */
+    demandesBudget?: { id: string }[];
     documents: CommandeSuivi["documents"];
     factures: CommandeSuivi["factures"];
     depenses: CommandeSuivi["depenses"];
@@ -340,6 +342,7 @@ export default function CommandeDetailPage() {
                                     statut={commande.statut}
                                     isAdmin={isAdmin}
                                     bcSigne={etatLiasse(commande.documents ?? []).bcSigne}
+                                    sansLiaison={commandeSansLiaison({ ligneBudgetId: commande.ligneBudget?.id, proformas: commande.proformas, demandesBudget: commande.demandesBudget })}
                                     onChange={handleStatutChange}
                                     badgeClassName="text-sm px-3 py-1 bg-white/20 text-white hover:bg-white/30 border-0"
                                     triggerClassName="border-none bg-transparent! p-0 h-auto cursor-pointer w-auto"

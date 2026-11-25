@@ -36,6 +36,8 @@ interface CommandeStatutControlProps {
     isAdmin: boolean;
     /** Scan du bon signé joint (connu sur la fiche) ; non renseigné : le serveur tranche. */
     bcSigne?: boolean;
+    /** Bon lié à rien (ni ligne de budget, ni proforma) : la direction le valide sans attendre le scan. */
+    sansLiaison?: boolean;
     /** Peut renvoyer une promesse : la liste est alors désactivée, avec un indicateur, jusqu'à sa fin. */
     onChange: (statut: StatutCommandeFournisseur) => void | Promise<unknown>;
     triggerClassName?: string;
@@ -47,12 +49,13 @@ interface CommandeStatutControlProps {
  * Contrôle de statut d'un bon de commande fournisseur (liste globale, onglet d'un fournisseur,
  * fiche). Ne propose que les passages autorisés (BROUILLON → VALIDEE → LIVREE, ANNULEE) ;
  * « Validée » (bon signé par la DG) seulement pour la direction et, sur la fiche, une fois le
- * scan signé joint. Le serveur applique les mêmes règles (app/api/fournisseurs/commandes/[commandeId]).
+ * scan signé joint — sauf pour un bon lié à rien, validé directement. Le serveur applique les mêmes règles (app/api/fournisseurs/commandes/[commandeId]).
  */
 export function CommandeStatutControl({
     statut,
     isAdmin,
     bcSigne,
+    sansLiaison,
     onChange,
     triggerClassName,
     badgeClassName,
@@ -72,7 +75,8 @@ export function CommandeStatutControl({
         s === "LIVREE" ? peut("fournisseurs.commandeLivrer") : s === "ANNULEE" ? peut("fournisseurs.commandeAnnuler") : true
     );
     const isLocked = suivants.length === 0;
-    const valideeImpossible = !isAdmin || bcSigne === false;
+    const scanManquant = bcSigne === false && !sansLiaison;
+    const valideeImpossible = !isAdmin || scanManquant;
 
     if (!isLocked) {
         return (
@@ -90,7 +94,7 @@ export function CommandeStatutControl({
                     {suivants.map((s) => (
                         <SelectItem key={s} value={s} disabled={s === "VALIDEE" && valideeImpossible}>
                             {STATUT_LABELS[s as StatutCommandeFournisseur]}
-                            {s === "VALIDEE" && !isAdmin ? " (direction)" : s === "VALIDEE" && bcSigne === false ? " (joindre le BC signé)" : ""}
+                            {s === "VALIDEE" && !isAdmin ? " (direction)" : s === "VALIDEE" && scanManquant ? " (joindre le BC signé)" : ""}
                         </SelectItem>
                     ))}
                 </SelectContent>

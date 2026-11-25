@@ -161,7 +161,8 @@ Comptable | **Appliquer le paiement** : bon **payé** | vert
    - une **pastille rouge « Scan signé manquant »** s'affiche dans la liste des bons ;
    - un rappel est envoyé au demandeur et à la direction ;
    - **aucun paiement** (avance ou solde) n'est possible.
-4. Un bon sans ligne de budget (campagne sans budget) suit l'ancien circuit : la DG le valide une fois le scan joint.
+4. **Bon lié à rien** (ni proforma, ni ligne de budget) : la direction le **valide directement** depuis la fiche du bon (statut « Validée »), sans attendre le scan signé. Le scan reste exigé avant tout paiement, et le rappel de le joindre est envoyé.
+   Un bon lié à une proforma mais pas encore à une ligne suit le circuit de la DG : il est validé une fois le scan signé joint (ou d'office dès qu'on le rattache à une ligne accordée).
 5. La fiche du bon affiche la **liasse**, le **payé et le reste par ligne de produit**, les avances et le solde.
 
 ### La liasse du bon de commande

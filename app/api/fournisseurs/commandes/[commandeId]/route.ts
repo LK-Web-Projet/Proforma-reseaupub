@@ -8,7 +8,7 @@ import { StatutCommandeFournisseur } from "@prisma/client";
 import { refusCoherenceLigneProforma, refusLigneBudgetCommande, TRANSITIONS_COMMANDE, validationAutomatiqueCommande } from "@/lib/commandeFournisseurSuivi";
 
 const UNE_SEULE_PROFORMA = "Un bon de commande n'est associé qu'à une seule proforma.";
-import { etatLiasse } from "@/lib/commandeFournisseurLiasse";
+import { commandeSansLiaison, etatLiasse } from "@/lib/commandeFournisseurLiasse";
 import {
     sendCommandeEmiseNotification,
     sendCommandeFournisseurValideeNotification,
@@ -49,6 +49,8 @@ const commandeInclude = {
         },
     },
     documents: { orderBy: { createdAt: "asc" as const } },
+    // Ancien rattachement d'un budget entier : seulement pour savoir si le bon est lié (validation directe).
+    demandesBudget: { select: { id: true } },
     factures: { orderBy: { date: "asc" as const } },
     // Imputations des paiements (budget, proforma ou Camptrack) : payé par ligne de produit.
     imputations: {
@@ -126,7 +128,9 @@ const patchSchema = z.object({
 // « Prestataires » requise. Statut : BROUILLON → VALIDEE → LIVREE, ANNULEE depuis BROUILLON ou
 // VALIDEE (sans paiement), jamais de retour en arrière. Un brouillon rattaché à une ligne de budget
 // ACCORDÉE est validé d'office (validationAutomatiqueCommande) ; sinon, VALIDEE = signé par la DG :
-// réservé au droit « Valider les budgets mensuels » et seulement une fois le scan du BC signé joint.
+// réservé au droit « Valider les budgets mensuels » et seulement une fois le scan du BC signé joint —
+// sauf pour un bon lié à rien (ni ligne de budget, ni proforma, ni budget), que la direction valide
+// directement (le scan reste exigé avant tout paiement ; un rappel est envoyé).
 export async function PATCH(
     request: Request,
     { params }: { params: Promise<{ commandeId: string }> }
@@ -149,7 +153,12 @@ export async function PATCH(
         const actuelle = await prisma.commandeFournisseur.findUnique({
             where: { id: commandeId },
             // Paiements actifs = imputations non annulées (budget, proforma ou Camptrack).
-            include: { documents: { select: { kind: true } }, imputations: { where: { annuleeAt: null }, select: { id: true } }, proformas: { select: { invoiceId: true } } },
+            include: {
+                documents: { select: { kind: true } },
+                imputations: { where: { annuleeAt: null }, select: { id: true } },
+                proformas: { select: { invoiceId: true } },
+                demandesBudget: { select: { id: true } },
+            },
         });
         if (!actuelle) {
             return NextResponse.json({ error: "Bon de commande introuvable" }, { status: 404 });
@@ -157,6 +166,7 @@ export async function PATCH(
 
         const data: { statut?: StatutCommandeFournisseur; ligneBudgetId?: string | null } = {};
         let emisSurBudget = false;
+        let valideSansLiaison = false;
 
         // Droits d'action : rattacher à une ligne = modifier le bon ; livrer / annuler ont chacun
         // leur droit. Valider reste réservé à la direction (contrôle plus bas).
@@ -204,9 +214,12 @@ export async function PATCH(
                 if (!caps.canValidateMensuel) {
                     return NextResponse.json({ error: "Seule la direction (signataire des bons de commande) peut valider un bon de commande." }, { status: 403 });
                 }
-                if (!etatLiasse(actuelle.documents).bcSigne) {
+                // Lié à rien (et pas rattaché dans cette même demande) : validation directe.
+                const sansLiaison = commandeSansLiaison({ ...actuelle, ligneBudgetId: data.ligneBudgetId ?? actuelle.ligneBudgetId });
+                if (!sansLiaison && !etatLiasse(actuelle.documents).bcSigne) {
                     return NextResponse.json({ error: "Joignez d'abord le scan du bon de commande signé par la DG." }, { status: 400 });
                 }
+                valideSansLiaison = sansLiaison;
             }
             if (nouveauStatut === StatutCommandeFournisseur.ANNULEE && actuelle.imputations.length > 0) {
                 return NextResponse.json({ error: "Ce bon a déjà des paiements : annulez d'abord les dépenses concernées." }, { status: 400 });
@@ -233,6 +246,12 @@ export async function PATCH(
             sendCommandeFournisseurValideeNotification(updatedCommande).catch((err) =>
                 console.error("Erreur lors de la notification de bon de commande validé:", err)
             );
+            // Validé directement sans scan signé : le rappel de le joindre part comme pour un bon émis sur budget.
+            if (valideSansLiaison && !etatLiasse(actuelle.documents).bcSigne) {
+                sendCommandeScanAJoindreNotification(updatedCommande).catch((err) =>
+                    console.error("Erreur lors du rappel de scan du bon de commande:", err)
+                );
+            }
         }
 
         return NextResponse.json(updatedCommande);
