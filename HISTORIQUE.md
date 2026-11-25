@@ -25,6 +25,26 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 4) — Liste des proformas : toute la ligne ouvre la proforma
+
+**Demande / Contexte**
+Pouvoir cliquer n'importe où sur une ligne pour ouvrir la proforma, avec un changement de couleur au survol ; garder la copie du numéro et le lien vers le client.
+
+**Modifications apportées**
+- `app/(main)/facture/page.tsx` :
+  - clic sur la ligne → la proforma s'ouvre (avec la barre de progression et l'écran d'attente) ; Ctrl / Cmd + clic ou clic molette → nouvel onglet ; rien si l'utilisateur vient de sélectionner du texte ; clavier : Tab jusqu'à la ligne puis Entrée ;
+  - survol : la ligne passe en bleu clair (rouge plus soutenu pour une ligne en alerte), le curseur devient une main, le numéro prend la couleur principale ;
+  - le numéro copie toujours au clic (sans ouvrir), le nom du client mène toujours à sa fiche (seul le nom est cliquable, le reste de la case ouvre la proforma), le menu « … » et ses fenêtres n'ouvrent pas la ligne.
+
+**Erreurs rencontrées & solutions**
+- Aucune.
+
+**Vérifications (2026-11-25)**
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+
+**À tester / points d'attention**
+- À l'écran : survol (couleur), clic sur la ligne, clic sur le numéro (copie seulement), clic sur le client (fiche client), menu « … » (pas d'ouverture parasite), Ctrl + clic (nouvel onglet).
+
 ## 2026-11-25 (suite 3) — Facture normalisée d'une proforma déjà soldée : sans délai ni relance
 
 **Demande / Contexte**

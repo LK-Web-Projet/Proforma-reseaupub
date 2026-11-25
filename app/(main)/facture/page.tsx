@@ -23,6 +23,7 @@ import * as XLSX from 'xlsx';
 import { useDroits } from '@/components/DroitsProvider';
 import { etatPiecesProforma, type EtatPiecesProforma } from '@/lib/proformaPieces';
 import { ActionsProformaMenu } from '@/components/proforma/ActionsProformaMenu';
+import { useRouter } from 'next-nprogress-bar';
 import { AlertTriangle, BellRing } from 'lucide-react';
 
 function formatDateFR(dateStr: string) {
@@ -51,6 +52,7 @@ const CONVERSION_RATES: Record<string, number> = {
 
 export default function Home() {
   const { peut } = useDroits();
+  const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [allFactures, setAllFactures] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,6 +188,22 @@ export default function Home() {
     { label: "Annulée", value: "Annuler", stats: stats["Annuler"], icon: XCircle },
     { label: "Archivée", value: "Archiver", stats: stats["Archiver"], icon: Archive },
   ];
+
+  /**
+   * Clic sur une ligne : ouvre la proforma (Ctrl / Cmd / clic molette : dans un nouvel onglet). Ignoré
+   * si l'utilisateur vient de sélectionner du texte. Le numéro (copie), le client (lien) et le menu
+   * « … » arrêtent le clic avant la ligne.
+   */
+  const ouvrirProforma = (e: React.MouseEvent | React.KeyboardEvent, id: string) => {
+    if ('button' in e && e.button === 2) return;
+    if (window.getSelection()?.toString()) return;
+    const url = `/facture/${id}`;
+    if (e.ctrlKey || e.metaKey || ('button' in e && e.button === 1)) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    router.push(url);
+  };
 
   const copyToClipboard = (e: React.MouseEvent, value: string, label: string) => {
     e.stopPropagation();
@@ -508,34 +526,48 @@ export default function Home() {
                       .join(", ")
                   : "-";
                 return (
-                <TableRow key={facture.id} className={cn("transition-colors", etat?.alerteRouge ? "bg-red-50/70 hover:bg-red-50" : "hover:bg-muted/50")}>
+                <TableRow
+                  key={facture.id}
+                  role="link"
+                  tabIndex={0}
+                  aria-label={`Ouvrir la proforma ${facture.numero}`}
+                  title="Cliquer pour ouvrir la proforma"
+                  onClick={(e) => ouvrirProforma(e, facture.id)}
+                  onAuxClick={(e) => e.button === 1 && ouvrirProforma(e, facture.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && ouvrirProforma(e, facture.id)}
+                  className={cn(
+                    "group/ligne cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
+                    etat?.alerteRouge ? "bg-red-50/70 hover:bg-red-100" : "hover:bg-blue-50"
+                  )}
+                >
                   <TableCell>
                     <button
                       type="button"
                       onClick={(e) => copyToClipboard(e, facture.numero, "Numéro")}
                       title="Cliquer pour copier le numéro"
-                      className="group inline-flex max-w-full items-center gap-1 rounded px-1 -mx-1 font-mono text-sm hover:bg-muted"
+                      className="group inline-flex max-w-full items-center gap-1 rounded px-1 -mx-1 font-mono text-sm group-hover/ligne:text-primary hover:bg-white hover:shadow-sm"
                     >
                       <span className="truncate">{facture.numero}</span>
                       <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100" />
                     </button>
                     <span className="block text-[11px] text-muted-foreground">{formatDateFR(facture.dateCreation)}</span>
                   </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  <TableCell onAuxClick={(e) => e.stopPropagation()}>
                     {facture.client?.id ? (
                       <Link
                         href={`/client/${facture.client.id}`}
                         title={`Voir la fiche de ${facture.client?.nom || "-"}`}
-                        className="block truncate text-primary hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-block max-w-full truncate align-bottom text-primary hover:underline"
                       >
                         {facture.client?.nom || "-"}
                       </Link>
                     ) : (
-                      <span className="block truncate cursor-default">-</span>
+                      <span className="block truncate">-</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <span className="block truncate cursor-default" title={facture.objet}>{facture.objet}</span>
+                    <span className="block truncate" title={facture.objet}>{facture.objet}</span>
                     <span className="block truncate text-[11px] text-muted-foreground xl:hidden" title={gestionnaires}>{gestionnaires}</span>
                   </TableCell>
                   <TableCell className="hidden xl:table-cell text-sm">
@@ -569,7 +601,7 @@ export default function Home() {
                       <span className="mt-1 block text-[10px] font-semibold leading-tight text-amber-700">Échéance proche</span>
                     ) : null}
                   </TableCell>
-                  <TableCell className="text-center px-1">
+                  <TableCell className="text-center px-1" onClick={(e) => e.stopPropagation()} onAuxClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                     <ActionsProformaMenu facture={facture} onValidee={marquerValidee} />
                   </TableCell>
                 </TableRow>
