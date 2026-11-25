@@ -25,6 +25,40 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 — Pièces de la proforma en une seule table, relances des factures clients, historique de la proforma
+
+**Demande / Contexte**
+Toute recette passe par une proforma ou par le journal de caisse (déjà le cas). Sur la proforma : la recette peut être encaissée avant l'émission de la facture normalisée (il faut alors demander de la joindre), et la facture normalisée envoyée au client doit avoir un délai de relance (date d'émission, date d'envoi au client, délai ; calcul à partir de la date d'envoi). Unifier les deux tables de fichiers de la proforma (bon de commande, facture normalisée) en une seule, avec une sorte de pièce, sans changer le rangement des fichiers ; reprise automatique au premier lancement ; suppression des anciennes tables plus tard. Ajouter l'attestation de bonne fin d'exécution et un indicateur « dossier complet ». Alertes rouges comme pour les retards des prestataires. Et désormais un **historique de la proforma** avec toutes les actions la concernant.
+Décisions : **1a** dates et délai sur chaque facture normalisée (acompte, solde…) ; **2a** dossier complet = facture normalisée + attestation de bonne fin + soldée ; **3a** pas d'archivage automatique ; **4a** ajouter un fichier ne change plus le statut ; **5a** alertes rouges pour toutes les proformas ouvertes, sans notification en masse ; **6b** notification aux comptables et à la direction ; **7** délai par défaut 30 jours ; **8a** anciennes tables supprimées par une mise à jour suivante.
+Constat avant : 6 bons de commande et 11 factures normalisées (une seule pièce par sorte) ; ajouter une facture normalisée passait la proforma en « Payée » et un bon de commande en « Validée » (en conflit avec les encaissements).
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261125100000_pieces_historique_proforma/migration.sql` (ajouts seulement) : type `TypeDocumentProforma` (BON_COMMANDE, FACTURE_NORMALISEE, ATTESTATION_BONNE_FIN, AUTRE) ; table `DocumentProforma` (sorte, adresse, nom du fichier, précision, et pour une facture : numéro, montant, date d'émission, date d'envoi au client, délai de relance, relance notifiée, auteur) ; table `InvoiceHistorique` (action, détail, données, auteur, date) ; `EntrepriseConfig.delaiRelanceFactureClient` (30). Reprise : les 6 + 11 pièces copiées (adresse publique `/Upload/…` ; factures : dates = date d'ajout, délai 30 j, relance marquée faite) ; historique reconstitué (création, validation, encaissements, dépenses et annulations, pièces — marqué « reprise »). `BonCommande` et `FactureNormaliser` conservées, plus utilisées.
+- `lib/proformaPieces.ts` (partagé) : sortes, libellés, dossiers de rangement, `etatPiecesProforma` (facture manquante, relances, à réclamer, proche, envoi non renseigné, dossier complet et ce qui manque), `echeanceRelance`.
+- `lib/proformaHistorique.ts` (partagé : actions, libellés, couleurs, statuts) et `lib/proformaHistoriqueServeur.ts` (`journaliserProforma`, `auteurDepuisUtilisateur`).
+- `lib/uploadDocumentProforma.ts` : rangement inchangé `public/Upload/Bon|Facture|Attestation|Autre/<numéro>/`, sans écraser un fichier du même nom. `lib/documentProformaServeur.ts` : contrôle des champs (date d'émission et délai obligatoires pour une facture, envoi après émission, rien dans le futur, délai 1–365) et texte de l'historique.
+- Routes : `app/api/factures/[id]/documents` (GET, POST) et `[documentId]` (PATCH dates/délai — relance recalculée, DELETE — fichier conservé), `app/api/factures/[id]/historique` (GET). L'ancienne `app/api/factures/[id]/upload` (qui changeait le statut) est supprimée.
+- Historique écrit partout : création (`app/api/factures`), modification du contenu et statut (`app/api/factures/[id]`), encaissement et statut posé par l'encaissement (`paiements`), toute dépense sur la proforma (`lib/paiements.ts` : proforma, budget, bon de commande, CampTrack), annulation de dépense, rattachement au budget, justificatif ajouté (`upload-proof`), e-mail envoyé, budget lié (création et re-soumission), pièces, relance notifiée.
+- `lib/relanceProformaServeur.ts` (`relancesEchues`, `notifierRelancesProforma`) + tâche « relances-clients » (8 h, jours ouvrés, `lib/taches/planificateur.ts`) + événement `PROFORMA_RELANCE_PAIEMENT` (Comptables et direction).
+- Écrans : `components/proforma/PiecesProformaCard.tsx` (alertes, « Dossier complet » ou ce qui manque, liste des pièces, ajout / modification des dates / retrait) et `components/proforma/HistoriqueProformaCard.tsx` sur la fiche proforma (remplacent les deux anciens encadrés ; après un encaissement sans facture normalisée, la fenêtre d'ajout s'ouvre) ; liste des proformas : lignes rouges, mentions « À réclamer » / « Facture normalisée manquante » / « Échéance proche », filtres (lien `?alerte=reclamer` des notifications) ; Paramètres → Rôles : délai de relance par défaut. `app/api/factures` renvoie les pièces et la présence d'une recette ; `app/api/budget-config` : `delaiRelanceFactureClient`.
+- Guide `public/docs/procedure-paiement-plateforme.md` : « Pièces de la proforma, relances clients et historique ».
+
+**Erreurs rencontrées & solutions**
+- Coupure réseau pendant un test : une session de test est restée ouverte sur le serveur (« idle in transaction ») et bloquait des tables ; fermée par l'utilisateur (`pg_terminate_backend`), aucune donnée enregistrée. Précisé par l'utilisateur : la base locale est une base de **test**, pas la production (le commentaire du planificateur est faux). Test relancé avec un délai d'instruction allongé : réussi.
+- Types de la construction précédente (`.next-verif/types`) citant l'adresse supprimée → dossier vidé, régénéré par la construction.
+- Anciens tests écrits avant des mises à jour depuis appliquées (moyens de paiement, statut des factures) : quelques vérifications « base avant mise à jour » ne s'appliquent plus (normal). Test des paiements centralisés : nouvelle mise à jour jouée dans sa transaction → 31 / 31.
+
+**Vérifications (2026-11-25)**
+- Tests sur la vraie base, mise à jour jouée puis annulée : **43 / 43** — règles des alertes (validée sans facture, recette avant facture, pas d'alerte sur brouillon / annulée / archivée, à réclamer dès l'échéance, orange la veille, rien si soldée, sans date d'envoi, acompte + solde avec chacun sa relance, dossier complet), saisie d'une facture, rangement des fichiers dans les mêmes dossiers qu'avant (essai dans un dossier temporaire), reprise des 17 pièces (fichiers tous retrouvés sur le disque), anciennes tables et statuts inchangés, historique reconstitué (création, validations, encaissements, dépenses, pièces), aucune notification en masse, nouvelle facture échue trouvée une seule fois, plus rien si soldée, dépense notée dans l'historique ; base contrôlée intacte.
+- Sur la base de test : **88** proformas « facture normalisée manquante », **8** « paiement à réclamer », 0 dossier complet.
+- Non-régression : paiements centralisés **31 / 31**, statut des factures de prestataires 30 / 31, moyens de paiement 44 / 47, détail et délai des lignes **23 / 23** (les seuls écarts viennent de mises à jour déjà appliquées sur la base de test).
+- Vérification des types et lint sur tout le projet : aucune erreur, aucun avertissement. Construction complète (`next build`, dans `.next-verif`) : **réussie**, avec les nouvelles adresses des pièces et de l'historique ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base (`pnpm prisma migrate deploy` ; jamais de `reset`), puis redémarrer.
+- À l'écran : joindre une facture normalisée (dates, délai), vérifier l'échéance, l'alerte rouge, les filtres de la liste et l'historique ; encaisser une recette sans facture : la fenêtre d'ajout doit s'ouvrir.
+- Plus tard (8a) : une mise à jour supprimera `BonCommande` et `FactureNormaliser`, après vérification en ligne.
+
 ## 2026-11-24 (suite 8) — Factures de prestataires : « payée » hors plateforme ouverte par un droit, statut libre pour l'administrateur, historique
 
 **Demande / Contexte**

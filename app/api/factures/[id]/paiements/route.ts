@@ -18,6 +18,8 @@ import { sendProformaPaiementNotification } from "@/lib/email/proformaPaiement";
 import { requireCaisseUser } from "@/lib/budgetAuth";
 import { requirePermission } from "@/lib/authz";
 import { proformaDansPortee } from "@/lib/proformaPortee";
+import { auteurDepuisUtilisateur, journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa, libelleStatutProforma } from "@/lib/proformaHistorique";
 
 // ✅ Schéma de validation
 const paiementSchema = z.object({
@@ -253,6 +255,7 @@ export async function POST(
         newResteAPayer = 0;
       }
 
+      const statutAvant = (await tx.invoice.findUnique({ where: { id: invoiceId }, select: { statut: true } }))!.statut;
       const updatedInvoice = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
@@ -260,6 +263,29 @@ export async function POST(
           statut: newResteAPayer <= 0 ? "Solde" : "Payer",
         },
       });
+
+      // Historique : l'encaissement, et le statut s'il a changé (posé par l'encaissement).
+      const auteurHisto = (await auteurDepuisUtilisateur(tx, createdById)) ?? { email: auteur.email };
+      const caisse = await tx.cashRegister.findUnique({ where: { id: finalCashRegisterId }, select: { name: true } });
+      const moyen = await tx.moyenPaiement.findUnique({ where: { code: methode }, select: { nom: true } });
+      await journaliserProforma(
+        tx,
+        invoiceId,
+        "ENCAISSEMENT",
+        `Encaissement de ${fcfa(montantDecimal)} par ${moyen?.nom ?? methode} (caisse ${caisse?.name ?? finalCashRegisterId})${rest.reference ? ` — ${rest.reference}` : ""} — reste à payer ${fcfa(newResteAPayer)}`,
+        auteurHisto,
+        { montant: montantDecimal, methode, cashRegisterId: finalCashRegisterId, resteAPayer: newResteAPayer }
+      );
+      if (updatedInvoice.statut !== statutAvant) {
+        await journaliserProforma(
+          tx,
+          invoiceId,
+          "STATUT",
+          `Statut : ${libelleStatutProforma(statutAvant)} → ${libelleStatutProforma(updatedInvoice.statut)} (encaissement)`,
+          auteurHisto,
+          { ancien: statutAvant, nouveau: updatedInvoice.statut, automatique: true }
+        );
+      }
 
       return { updatedInvoice, newCashJournalEntryId: newCashJournalEntry.id };
     }, {

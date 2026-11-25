@@ -400,3 +400,14 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
 - Les espèces ne vont plus d'office dans la « Caisse Comptable » : il suffit de lier le moyen « Espèces » à cette caisse pour obtenir le même résultat.
 - Les paiements envoyés par **Camptrack** ne sont pas soumis à cette règle : Camptrack choisit lui-même sa caisse.
 - Droits (Paramètres → Rôles, page Finance) : créer, modifier (y compris les caisses liées), activer / désactiver un moyen de paiement.
+
+## Pièces de la proforma, relances clients et historique
+
+- **Une seule liste de pièces** sur la fiche de la proforma : bon de commande du client, **facture normalisée**, **attestation de bonne fin d'exécution**, autre document. On peut joindre plusieurs pièces de la même sorte (ex. une facture d'acompte puis une facture de solde). Ajouter ou retirer une pièce demande le droit *Joindre ou retirer des pièces* ; un retrait est noté dans l'historique (le fichier est conservé).
+- **Ajouter une pièce ne change jamais le statut** de la proforma : seuls les encaissements (Payée, Soldée) et les décisions des utilisateurs le font avancer.
+- **Facture normalisée** : on indique sa date d'émission, sa **date d'envoi au client** et le **délai de relance** (30 jours proposés, réglables dans Paramètres → Rôles, modifiable pour chaque facture), et au besoin son numéro et son montant. **Échéance = date d'envoi + délai.** Sans date d'envoi, pas de relance : la renseigner dès que la facture part.
+- **Alertes rouges** (fiche et liste des proformas, avec filtres) :
+  - *Facture normalisée manquante* : proforma validée, en cours de paiement ou soldée — ou recette déjà encaissée — sans facture normalisée. Juste après un encaissement, la plateforme propose de la joindre tout de suite.
+  - *Paiement à réclamer* : l'échéance d'une facture envoyée est atteinte et la proforma n'est pas soldée (orange 2 jours avant). Les comptables et la direction sont prévenus **une fois**, le matin (jours ouvrés).
+- **Dossier complet** : facture normalisée + attestation de bonne fin + proforma soldée. La fiche affiche « Dossier complet » ou ce qui manque ; l'archivage reste manuel.
+- **Historique de la proforma** : toutes les actions la concernant (création, modifications, statuts, encaissements, dépenses — y compris celles du budget et de Camptrack —, annulations, pièces, justificatifs, e-mails, budget lié, relances), avec leur auteur. Pour les proformas existantes, l'historique a été reconstitué à partir des données (marqué « repris de l'existant »).

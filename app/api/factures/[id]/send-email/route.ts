@@ -1,5 +1,7 @@
 import { refusHorsPortee } from "@/lib/proformaPortee";
 import { requirePermission } from "@/lib/authz";
+import { auteurDepuisUtilisateur, journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { libelleStatutProforma } from "@/lib/proformaHistorique";
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import nodemailer from "nodemailer";
@@ -118,10 +120,16 @@ export async function POST(
     await transporter.sendMail(mailOptions);
 
     // 📝 Mise à jour du statut
+    const statutAvant = facture.statut;
     await prisma.invoice.update({
       where: { id },
       data: { statut: "Envoyer" },
     });
+    const auteurHisto = (await auteurDepuisUtilisateur(prisma, droitsAcces.userId)) ?? { email: droitsAcces.email };
+    await journaliserProforma(prisma, id, "EMAIL_ENVOYE", `Proforma envoyée par e-mail à ${facture.client.email}`, auteurHisto, { destinataire: facture.client.email });
+    if (statutAvant !== "Envoyer") {
+      await journaliserProforma(prisma, id, "STATUT", `Statut : ${libelleStatutProforma(statutAvant)} → Envoyée (envoi par e-mail)`, auteurHisto, { ancien: statutAvant, nouveau: "Envoyer" });
+    }
 
     return new NextResponse("E-mail envoyé avec succès", { status: 200 });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -12,7 +12,8 @@ import { getEntrepriseConfig } from "@/lib/entreprise";
 //   les lignes accordées ne sont pas dépensables — lib/budgetSuivi.ts) ;
 // - maximum d'une petite dépense (droit « accueil ») ;
 // - liasse complète exigée pour payer le solde d'un bon de commande ;
-// - délais de paiement des factures prestataires selon le type (au-delà : en retard).
+// - délais de paiement des factures prestataires selon le type (au-delà : en retard) ;
+// - délai de relance proposé pour une facture normalisée envoyée au client.
 const reponse = (config: {
   plafondValidationDeleguee: unknown;
   typesBudgetSigneRequis: TypeBudget[];
@@ -21,12 +22,14 @@ const reponse = (config: {
   delaiPaiementFournisseur: number;
   delaiPaiementInterne: number;
   delaiPaiementExterne: number;
+  delaiRelanceFactureClient: number;
 }) => ({
   plafondValidationDeleguee: Number(config.plafondValidationDeleguee),
   typesBudgetSigneRequis: config.typesBudgetSigneRequis,
   plafondPetiteDepense: Number(config.plafondPetiteDepense),
   liasseExigeePourSolde: config.liasseExigeePourSolde,
   delaisPaiement: { fournisseur: config.delaiPaiementFournisseur, interne: config.delaiPaiementInterne, externe: config.delaiPaiementExterne },
+  delaiRelanceFactureClient: config.delaiRelanceFactureClient,
 });
 
 export async function GET() {
@@ -49,6 +52,7 @@ const schema = z
         externe: z.number().int("Nombre de jours entier.").min(1, "Au moins 1 jour.").max(365, "Au plus 365 jours."),
       })
       .optional(),
+    delaiRelanceFactureClient: z.number().int("Nombre de jours entier.").min(1, "Au moins 1 jour.").max(365, "Au plus 365 jours.").optional(),
   })
   .refine((d) => Object.values(d).some((v) => v !== undefined), {
     message: "Aucun réglage à enregistrer.",
@@ -62,7 +66,7 @@ export async function PUT(request: NextRequest) {
   if (!validation.success) {
     return NextResponse.json({ error: validation.error.issues[0]?.message ?? "Valeur invalide." }, { status: 400 });
   }
-  const { plafondValidationDeleguee, typesBudgetSigneRequis, plafondPetiteDepense, liasseExigeePourSolde, delaisPaiement } = validation.data;
+  const { plafondValidationDeleguee, typesBudgetSigneRequis, plafondPetiteDepense, liasseExigeePourSolde, delaisPaiement, delaiRelanceFactureClient } = validation.data;
 
   await getEntrepriseConfig(); // garantit l'existence de la ligne singleton
   const config = await prisma.entrepriseConfig.update({
@@ -72,6 +76,7 @@ export async function PUT(request: NextRequest) {
       ...(typesBudgetSigneRequis !== undefined ? { typesBudgetSigneRequis: Array.from(new Set(typesBudgetSigneRequis)) } : {}),
       ...(plafondPetiteDepense !== undefined ? { plafondPetiteDepense } : {}),
       ...(liasseExigeePourSolde !== undefined ? { liasseExigeePourSolde } : {}),
+      ...(delaiRelanceFactureClient !== undefined ? { delaiRelanceFactureClient } : {}),
       ...(delaisPaiement
         ? {
             delaiPaiementFournisseur: delaisPaiement.fournisseur,

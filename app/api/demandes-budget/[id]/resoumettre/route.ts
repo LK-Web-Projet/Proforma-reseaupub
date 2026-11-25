@@ -4,6 +4,8 @@ import prisma from "@/lib/prisma";
 import { logBudget } from "@/lib/budgetSuivi";
 import { erreurDepartementsLignes } from "@/lib/departementsServeur";
 import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
+import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
 import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
@@ -108,6 +110,10 @@ export async function POST(
     const attachmentRows = await saveTypedDemandeBudgetAttachments(id, formData, { date: new Date(), montant: montantTotal });
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
+    }
+
+    for (const invoiceId of data.proformaIds) {
+      await journaliserProforma(prisma, invoiceId, "BUDGET_LIE", `Budget ${existing.numero} soumis à nouveau pour cette proforma (${fcfa(montantTotal)})`, { email: caps.email, nom: caps.name }, { demandeBudgetId: id });
     }
 
     await logBudget(prisma, {

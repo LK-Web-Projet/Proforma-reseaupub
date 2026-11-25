@@ -90,6 +90,7 @@ export async function enregistrerLotPaiement(tx: Db, lot: EntreeLot) {
       date_operation: lot.dateDepense,
       methode: lot.modePaiement,
       reference: lot.referenceOperateur ?? lot.reference,
+      auteur: { nom: "CampTrack", email: lot.comptableEmail ?? null },
     });
     await tx.paiement.update({ where: { id: r.paiement.id }, data: { aRattacherBudget: true } });
     cashJournalEntry = r.cashJournalEntry;

@@ -22,6 +22,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useDroits } from '@/components/DroitsProvider';
+import { etatPiecesProforma, type EtatPiecesProforma } from '@/lib/proformaPieces';
+import { AlertTriangle, BellRing } from 'lucide-react';
 
 function formatDateFR(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -61,6 +63,12 @@ export default function Home() {
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [loading, setLoading] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
+  // Alertes des pièces : facture normalisée manquante, paiement à réclamer (lien des notifications : ?alerte=reclamer).
+  const [alerte, setAlerte] = useState<'' | 'manquante' | 'reclamer'>('');
+  useEffect(() => {
+    const a = new URLSearchParams(window.location.search).get('alerte');
+    if (a === 'manquante' || a === 'reclamer') setAlerte(a);
+  }, []);
   const [visibleCardLabels, setVisibleCardLabels] = useState<string[]>([
     "Valider & payer", "Brouillon", "Envoyée", "Validée", "Paiement en cours", "Soldée"
   ]);
@@ -126,12 +134,25 @@ export default function Home() {
     return initialStats;
   }, [allFactures]);
 
+  const alertes = useMemo(() => {
+    const m = new Map<string, EtatPiecesProforma>();
+    for (const f of allFactures) {
+      m.set(f.id, etatPiecesProforma({ statut: f.statut, resteAPayer: Number(f.resteAPayer), aRecette: !!f.aRecette, documents: f.documents ?? [] }));
+    }
+    return m;
+  }, [allFactures]);
+  const nbManquantes = Array.from(alertes.values()).filter((a) => a.factureManquante).length;
+  const nbAReclamer = Array.from(alertes.values()).filter((a) => a.aReclamer).length;
+
   // Filtrage final pour le tableau (Objet + Statut sélectionné via les cartes)
   const filteredFactures = useMemo(() => {
     const searchTerms = objet.toLowerCase().trim().split(/\s+/).filter(t => t !== '');
     
     return allFactures.filter(f => {
-      const matchStatut = statut === '' 
+      // Filtre d'alerte : tous statuts confondus (les alertes ignorent déjà brouillons, annulées, archivées).
+      if (alerte === 'manquante' && !alertes.get(f.id)?.factureManquante) return false;
+      if (alerte === 'reclamer' && !alertes.get(f.id)?.aReclamer) return false;
+      const matchStatut = alerte !== '' || statut === '' 
         ? (f.statut !== 'Brouillon' && f.statut !== 'Annuler' && f.statut !== 'Archiver') 
         : f.statut === statut;
       
@@ -150,7 +171,7 @@ export default function Home() {
         invoiceObjet.includes(term)
       );
     });
-  }, [allFactures, statut, objet]);
+  }, [allFactures, statut, objet, alerte, alertes]);
 
   const cards = [
     { label: "Valider & payer", value: "", stats: stats["Total"], icon: Wallet },
@@ -287,6 +308,31 @@ export default function Home() {
           </Popover>
         </div>
       </div>
+
+      {/* Alertes : facture normalisée manquante, paiement à réclamer */}
+      {(nbManquantes > 0 || nbAReclamer > 0 || alerte !== '') && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant={alerte === 'manquante' ? 'destructive' : 'outline'}
+            className={cn('h-8 gap-1.5', alerte !== 'manquante' && nbManquantes > 0 && 'border-red-300 text-red-700')}
+            onClick={() => setAlerte(alerte === 'manquante' ? '' : 'manquante')}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" /> Facture normalisée manquante ({nbManquantes})
+          </Button>
+          <Button
+            size="sm"
+            variant={alerte === 'reclamer' ? 'destructive' : 'outline'}
+            className={cn('h-8 gap-1.5', alerte !== 'reclamer' && nbAReclamer > 0 && 'border-red-300 text-red-700')}
+            onClick={() => setAlerte(alerte === 'reclamer' ? '' : 'reclamer')}
+          >
+            <BellRing className={cn('h-3.5 w-3.5', nbAReclamer > 0 && 'animate-pulse')} /> Paiement à réclamer ({nbAReclamer})
+          </Button>
+          {alerte !== '' && (
+            <Button size="sm" variant="ghost" className="h-8" onClick={() => setAlerte('')}>Retirer le filtre</Button>
+          )}
+        </div>
+      )}
 
       {/* Cartes de sélection / Filtres de statut */}
       <div className="grid gap-2.5 mb-8 grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
@@ -451,7 +497,7 @@ export default function Home() {
               </TableRow>
             ) : (
               filteredFactures.map((facture) => (
-                <TableRow key={facture.id} className="hover:bg-muted/50 transition-colors">
+                <TableRow key={facture.id} className={cn("transition-colors", alertes.get(facture.id)?.alerteRouge ? "bg-red-50/70 hover:bg-red-50" : "hover:bg-muted/50")}>
                   <TableCell>{formatDateFR(facture.dateCreation)}</TableCell>
                   <TableCell className="font-mono text-sm">
                     <button
@@ -527,6 +573,17 @@ export default function Home() {
                           : undefined
                       }
                     />
+                    {alertes.get(facture.id)?.aReclamer ? (
+                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold text-red-700">
+                        <BellRing className="h-3 w-3 animate-pulse" /> À réclamer
+                      </span>
+                    ) : alertes.get(facture.id)?.factureManquante ? (
+                      <span className="mt-1 flex items-center justify-center gap-1 text-[10px] font-semibold text-red-700">
+                        <AlertTriangle className="h-3 w-3 animate-pulse" /> Facture normalisée manquante
+                      </span>
+                    ) : alertes.get(facture.id)?.relanceProche ? (
+                      <span className="mt-1 block text-[10px] font-semibold text-amber-700">Échéance proche</span>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-center">
                     <Link

@@ -7,6 +7,8 @@ import prisma from "@/lib/prisma";
 import { requireBudgetUser } from "@/lib/budgetAuth";
 import { logBudget, recalculerStatutBudget } from "@/lib/budgetSuivi";
 import { controlerLigneBudget, DepenseError } from "@/lib/depenses/enregistrerDepense";
+import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
 
 const schema = z.object({
   paiementId: z.string().min(1),
@@ -87,6 +89,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         },
       });
       await tx.paiement.update({ where: { id: paiement.id }, data: { aRattacherBudget: false } });
+      await journaliserProforma(
+        tx,
+        paiement.invoiceId,
+        "DEPENSE_RATTACHEE",
+        `Dépense de ${fcfa(Number(paiement.montant))} rattachée au budget ${demande.numero} — ligne « ${ligne.designation} »`,
+        { email: caps.email, nom: caps.name },
+        { depenseId: created.id, paiementId: paiement.id }
+      );
       // Lot CampTrack reçu sans ligne de budget : il est désormais lié à cette dépense de budget.
       await tx.lotPaiement.updateMany({
         where: { cashJournalEntryId: paiement.cashJournalEntry.id, budgetDepenseId: null },

@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/authz";
+import { auteurDepuisUtilisateur, journaliserProforma } from "@/lib/proformaHistoriqueServeur";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { join } from "path";
@@ -79,6 +80,15 @@ export async function POST(
         },
       });
     }
+
+    await journaliserProforma(
+      prisma,
+      paiement.invoiceId,
+      "PREUVE_AJOUTEE",
+      `${files.length > 1 ? `${files.length} justificatifs ajoutés` : `Justificatif ajouté (${files[0]?.name ?? "fichier"})`} sur ${paiement.type === "PAIEMENT" ? "l'encaissement" : "la dépense"} « ${paiement.reference ?? "—"} »`,
+      (await auteurDepuisUtilisateur(prisma, droitsAcces.userId)) ?? { email: droitsAcces.email },
+      { paiementId: paiement.id, fichiers: files.map((f) => f.name) }
+    );
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {

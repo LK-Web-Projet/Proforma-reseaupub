@@ -224,6 +224,7 @@ export async function enregistrerDepense(tx: Db, e: EntreeDepense) {
       reference: e.reference ?? demande?.numero ?? undefined,
       notes: e.notes ?? undefined,
       createdById: e.auteur.userId,
+      auteur: { email: e.auteur.email, nom: e.source === SourceDepense.CAMPTRACK ? "CampTrack" : e.auteur.name },
     });
     paiement = r.paiement;
     cashJournalEntry = r.cashJournalEntry;

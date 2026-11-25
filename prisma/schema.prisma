@@ -92,6 +92,9 @@ model EntrepriseConfig {
   delaiPaiementFournisseur  Int          @default(30)
   delaiPaiementInterne      Int          @default(7)
   delaiPaiementExterne      Int          @default(3)
+  // Délai de relance d'une facture normalisée envoyée au client (jours, proposé à l'ajout de la
+  // facture et modifiable pour chacune) : au-delà, le paiement est « à réclamer ».
+  delaiRelanceFactureClient Int          @default(30)
   updatedAt                 DateTime     @updatedAt
 }
 
@@ -147,8 +150,13 @@ model Invoice {
   demandesBudget             DemandeBudgetProforma[]
   commandesFournisseur       CommandeFournisseurProforma[]
   budgetDepenses             BudgetDepense[]
+  documents                  DocumentProforma[]
+  historique                 InvoiceHistorique[]
 }
 
+// Anciennes tables des pièces de la proforma (une seule pièce par sorte) : reprises dans
+// DocumentProforma par la mise à jour 20261125100000_pieces_historique_proforma. Plus écrites ni
+// lues par l'application ; à supprimer par une mise à jour suivante, après vérification en ligne.
 model BonCommande {
   id        String   @id @default(uuid())
   invoiceId String   @unique
@@ -163,6 +171,61 @@ model FactureNormaliser {
   url       String
   createdAt DateTime @default(now())
   invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+}
+
+// Sortes de pièces jointes à une proforma (liste extensible).
+enum TypeDocumentProforma {
+  BON_COMMANDE // bon de commande du client
+  FACTURE_NORMALISEE // facture normalisée émise au client (dates d'émission, d'envoi, délai de relance)
+  ATTESTATION_BONNE_FIN // attestation de bonne fin d'exécution (clôt le dossier)
+  AUTRE
+}
+
+// Pièces d'une proforma (remplace BonCommande et FactureNormaliser) : plusieurs pièces de la même
+// sorte possibles (ex. facture d'acompte puis de solde). Les fichiers restent rangés par sorte dans
+// public/Upload/Bon|Facture|Attestation|Autre/<numéro de proforma>/ ; `url` est l'adresse publique.
+model DocumentProforma {
+  id                String               @id @default(uuid())
+  invoiceId         String
+  type              TypeDocumentProforma
+  url               String
+  fileName          String?
+  fileType          String?
+  // Précision libre (ex. « Acompte 50 % », « Solde »).
+  precision         String?
+  // Facture normalisée : numéro, montant facturé, date d'émission, date d'envoi au client et délai
+  // de relance (jours). Échéance = date d'envoi + délai ; au-delà, s'il reste à encaisser : « à
+  // réclamer » (rouge, notification une seule fois : relanceNotifieeAt).
+  numeroFacture     String?
+  montant           Decimal?             @db.Decimal(14, 2)
+  dateEmission      DateTime?
+  dateEnvoiClient   DateTime?
+  delaiRelanceJours Int?
+  relanceNotifieeAt DateTime?
+  ajouteParEmail    String?
+  ajouteParNom      String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  invoice           Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, type])
+}
+
+// Historique d'une proforma : toutes les actions la concernant (création, modifications, statuts,
+// encaissements, dépenses, pièces, e-mails…), avec leur auteur. Codes et libellés des actions :
+// lib/proformaHistorique.ts.
+model InvoiceHistorique {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  action      String
+  details     String?
+  donnees     Json?
+  auteurEmail String?
+  auteurNom   String?
+  createdAt   DateTime @default(now())
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, createdAt])
 }
 
 model InvoiceProduit {

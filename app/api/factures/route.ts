@@ -5,6 +5,8 @@ import { auth } from "@clerk/nextjs/server";
 import { getEntrepriseConfig } from "@/lib/entreprise";
 import { safeCreatedById, getDroits, requirePermission } from "@/lib/authz";
 import { filtrePorteeProformas } from "@/lib/proformaPortee";
+import { auteurDepuisUtilisateur, journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
 
 export async function GET(request: Request) {
   // Liste partagée : les écrans Proforma et Clients reçoivent les proformas complètes ; tout autre
@@ -68,10 +70,13 @@ export async function GET(request: Request) {
             gestionnaire: true,
           },
         },
+        // Alertes de la liste (facture normalisée manquante, paiement à réclamer) : pièces et recettes.
+        documents: { select: { id: true, type: true, numeroFacture: true, precision: true, dateEnvoiClient: true, delaiRelanceJours: true } },
+        _count: { select: { paiements: { where: { type: "PAIEMENT" } } } },
       },
     });
 
-    return NextResponse.json(factures);
+    return NextResponse.json(factures.map(({ _count, ...f }) => ({ ...f, aRecette: _count.paiements > 0 })));
   } catch (error) {
     console.error("Erreur lors de la récupération des factures :", error);
     return NextResponse.json(
@@ -245,6 +250,15 @@ export async function POST(request: Request) {
           },
         });
       }
+
+      await journaliserProforma(
+        tx,
+        facture.id,
+        "CREATION",
+        `Proforma ${facture.numero} créée pour ${client.nom} — ${facture.objet} — ${fcfa(Number(facture.totalTTC))} TTC`,
+        await auteurDepuisUtilisateur(tx, createdById),
+        { totalTTC: Number(facture.totalTTC) }
+      );
 
       return facture;
     }, {

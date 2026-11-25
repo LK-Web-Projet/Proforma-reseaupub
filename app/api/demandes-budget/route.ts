@@ -4,6 +4,8 @@ import prisma from "@/lib/prisma";
 import { logBudget, cloturerBudgetsMensuelsEchus, montantAccordeLigne } from "@/lib/budgetSuivi";
 import { erreurDepartementsLignes } from "@/lib/departementsServeur";
 import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
+import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
+import { fcfa } from "@/lib/proformaHistorique";
 import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
@@ -188,6 +190,11 @@ export async function POST(request: NextRequest) {
     });
     if (attachmentRows.length > 0) {
       await prisma.demandeBudgetAttachment.createMany({ data: attachmentRows });
+    }
+
+    // Historique de la proforma liée (budget de campagne ou de tiers).
+    for (const invoiceId of data.proformaIds) {
+      await journaliserProforma(prisma, invoiceId, "BUDGET_LIE", `Budget ${demande.numero} créé pour cette proforma (${fcfa(montantTotal)}, ${demande.lignes.length} ligne(s))`, { email: caps.email, nom: caps.name }, { demandeBudgetId: demande.id });
     }
 
     await logBudget(prisma, {

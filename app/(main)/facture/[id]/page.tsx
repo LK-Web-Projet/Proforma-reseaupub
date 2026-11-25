@@ -52,6 +52,9 @@ import { LotPaiementDetail, type LotPaiementResume } from "@/components/depenses
 import { etatLiasse, partsLignesCommande, payeSurCommande } from "@/lib/commandeFournisseurLiasse";
 import { moyensProposes } from "@/lib/moyensPaiement";
 import { useMoyensPaiement } from "@/lib/useMoyensPaiement";
+import { PiecesProformaCard, type DocumentProforma } from "@/components/proforma/PiecesProformaCard";
+import { HistoriqueProformaCard } from "@/components/proforma/HistoriqueProformaCard";
+import type { TypeDocumentProformaValue } from "@/lib/proformaPieces";
 
 type Campagne = {
   id: string;
@@ -168,8 +171,7 @@ type Facture = {
     gestionnaireId: string;
     gestionnaire: { prenom: string; nom: string };
   }>;
-  bonCommande: { url: string } | null;
-  factureNormaliser: { url: string } | null;
+  documents: DocumentProforma[];
   paymentConditionPercentage?: number | null;
 };
 
@@ -213,15 +215,10 @@ export default function FactureDetailPage() {
   const [isProduitModalOpen, setIsProduitModalOpen] = useState(false);
   const [activeProductRowIndex, setActiveProductRowIndex] = useState<number | null>(null);
 
-  const [bonCommandeFile, setBonCommandeFile] = useState<File | undefined>();
-  const [factureNormaliseeFile, setFactureNormaliseeFile] = useState<File | undefined>();
-  const [isUploadingBon, setIsUploadingBon] = useState(false);
-  const [isUploadingFacture, setIsUploadingFacture] = useState(false);
-  const [isDeletingBon, setIsDeletingBon] = useState(false);
-  const [isDeletingFacture, setIsDeletingFacture] = useState(false);
-
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [fileToDeleteType, setFileToDeleteType] = useState<'bon' | 'facture' | null>(null);
+  // Pièces : fenêtre d'ajout ouverte d'office (ex. facture normalisée juste après un encaissement) ;
+  // historique rechargé après chaque action.
+  const [ajoutPiece, setAjoutPiece] = useState<TypeDocumentProformaValue | null>(null);
+  const [versionHistorique, setVersionHistorique] = useState(0);
 
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [newPayment, setNewPayment] = useState({ montant: 0, methode: 'VIREMENT', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
@@ -369,6 +366,7 @@ export default function FactureDetailPage() {
       toast.error("Erreur lors du chargement des données.");
     } finally {
       setLoading(false);
+      setVersionHistorique((v) => v + 1);
     }
   }, [id]);
 
@@ -437,51 +435,6 @@ export default function FactureDetailPage() {
       toast.error("Erreur réseau.");
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  const handleFileUpload = async (type: 'bon' | 'facture') => {
-    const file = type === 'bon' ? bonCommandeFile : factureNormaliseeFile;
-    if (!file) return;
-    if (type === 'bon') setIsUploadingBon(true); else setIsUploadingFacture(true);
-    const data = new FormData();
-    data.append('file', file);
-    data.append('type', type);
-
-    try {
-      const res = await fetch(`/api/factures/${id}/upload`, { method: 'POST', body: data });
-      if (res.ok) {
-        toast.success(`${type === 'bon' ? 'Bon de commande' : 'Facture'} uploadé !`);
-        await fetchFacture();
-      } else toast.error("Échec de l'upload.");
-    } catch (error) {
-      toast.error("Erreur réseau.");
-    } finally {
-      if (type === 'bon') setIsUploadingBon(false); else setIsUploadingFacture(false);
-    }
-  };
-
-  const handleFileDelete = (type: 'bon' | 'facture') => {
-    setFileToDeleteType(type);
-    setIsDialogOpen(true);
-  };
-
-  const confirmDeleteFile = async () => {
-    if (!fileToDeleteType) return;
-    const type = fileToDeleteType;
-    if (type === 'bon') setIsDeletingBon(true); else setIsDeletingFacture(true);
-    setIsDialogOpen(false);
-    try {
-      const res = await fetch(`/api/factures/${id}/upload?type=${type}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success("Fichier supprimé !");
-        await fetchFacture();
-      } else toast.error("Échec de la suppression.");
-    } catch (error) {
-      toast.error("Erreur réseau.");
-    } finally {
-      if (type === 'bon') setIsDeletingBon(false); else setIsDeletingFacture(false);
-      setFileToDeleteType(null);
     }
   };
 
@@ -592,6 +545,11 @@ export default function FactureDetailPage() {
         setNewPayment({ montant: 0, methode: 'VIREMENT', datePaiement: new Date().toISOString().split('T')[0], reference: '', notes: '' });
         setPaymentFiles(null);
         toast.success("Opération enregistrée !");
+        // Recette encaissée sans facture normalisée : on demande de la joindre tout de suite.
+        if (operationType === 'PAIEMENT' && !facture?.documents?.some((d) => d.type === 'FACTURE_NORMALISEE')) {
+          toast.info("Joignez maintenant la facture normalisée de cette recette.");
+          setAjoutPiece('FACTURE_NORMALISEE');
+        }
         await fetchFacture();
       } else {
         const err = await res.json();
@@ -672,7 +630,7 @@ export default function FactureDetailPage() {
             </div>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            {!facture.bonCommande && !facture.factureNormaliser && (peutModifierContenu || peutChangerUnStatut) && (
+            {!facture.documents?.some((d) => d.type === "BON_COMMANDE" || d.type === "FACTURE_NORMALISEE") && (peutModifierContenu || peutChangerUnStatut) && (
                 <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "destructive" : "outline"} size="sm" disabled={["Payer", "Solde"].includes(facture.statut)}>
                     {isEditing ? <><X className="w-4 h-4 mr-2" /> Annuler</> : <><Edit3 className="w-4 h-4 mr-2" /> Modifier</>}
                 </Button>
@@ -958,62 +916,19 @@ export default function FactureDetailPage() {
                 </CardContent>
             </Card>
 
-            {/* Documents Section moved here */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
-                    <CardHeader className="pb-3 border-b">
-                        <CardTitle className="text-xs font-bold uppercase flex items-center gap-2 text-slate-500">
-                            <FileText className="w-4 h-4 text-blue-500" /> Bon de Commande
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        {facture.bonCommande ? (
-                            <div className="flex items-center justify-between p-3 bg-slate-900 rounded-xl group">
-                                <a href={`/Upload/Bon/${facture.numero}/${facture.bonCommande.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-blue-400">
-                                    <ExternalLink className="w-3 h-3" /> Visualiser le document
-                                </a>
-                                {peut("proforma.pieces") && <Button variant="ghost" size="icon" onClick={() => handleFileDelete("bon")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>}
-                            </div>
-                        ) : !peut("proforma.pieces") ? (
-                            <p className="text-xs text-muted-foreground italic">Aucun bon de commande joint.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                <Input type="file" onChange={(e) => setBonCommandeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("bon")} loading={isUploadingBon} disabled={!bonCommandeFile || isUploadingBon} size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
-                                    {isUploadingBon ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader le bon</>}
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
-                    <CardHeader className="pb-3 border-b">
-                        <CardTitle className="text-xs font-bold uppercase flex items-center gap-2 text-slate-500">
-                            <Receipt className="w-4 h-4 text-green-500" /> Facture Normalisée
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                        {facture.factureNormaliser ? (
-                            <div className="flex items-center justify-between p-3 bg-slate-900 rounded-xl group">
-                                <a href={`/Upload/Facture/${facture.numero}/${facture.factureNormaliser.url.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-white flex items-center gap-2 hover:text-green-400">
-                                    <ExternalLink className="w-3 h-3" /> Visualiser la facture
-                                </a>
-                                {peut("proforma.pieces") && <Button variant="ghost" size="icon" onClick={() => handleFileDelete("facture")} className="h-8 w-8 text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></Button>}
-                            </div>
-                        ) : !peut("proforma.pieces") ? (
-                            <p className="text-xs text-muted-foreground italic">Aucune facture normalisée jointe.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                <Input type="file" onChange={(e) => setFactureNormaliseeFile(e.target.files?.[0])} className="text-[10px] h-9" />
-                                <Button onClick={() => handleFileUpload("facture")} loading={isUploadingFacture} disabled={!factureNormaliseeFile || isUploadingFacture} size="sm" className="w-full bg-green-600 hover:bg-green-700">
-                                    {isUploadingFacture ? "Envoi..." : <><Upload className="w-3 h-3 mr-2" /> Uploader la facture</>}
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+            {/* Pièces de la proforma (bon de commande du client, factures normalisées, attestation…) et historique */}
+            <PiecesProformaCard
+                invoiceId={facture.id}
+                statut={facture.statut}
+                resteAPayer={Number(facture.resteAPayer)}
+                aRecette={(facture.paiements ?? []).some((p) => p.type === 'PAIEMENT')}
+                documents={facture.documents ?? []}
+                peutJoindre={peut("proforma.pieces")}
+                demandeAjout={ajoutPiece}
+                onDemandeAjoutTraitee={() => setAjoutPiece(null)}
+                onChange={fetchFacture}
+            />
+            <HistoriqueProformaCard invoiceId={facture.id} version={versionHistorique} />
         </div>
 
         <div className="space-y-8">
@@ -1329,19 +1244,6 @@ export default function FactureDetailPage() {
         onClose={() => setDepenseBudget(null)}
         onSuccess={fetchFacture}
       />
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-sm border-none shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600"><AlertCircle className="w-5 h-5" /> Confirmation</DialogTitle>
-            <DialogDescription>Cette suppression est définitive. Souhaitez-vous continuer ?</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-            <Button variant="destructive" onClick={confirmDeleteFile}>Supprimer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <div className="text-[10px] text-slate-400 text-center font-bold tracking-widest uppercase py-8 opacity-50">
         Propulsé par Proforma Générateur &mdash; Réseaupub © {new Date().getFullYear()}
