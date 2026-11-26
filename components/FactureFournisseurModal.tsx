@@ -286,12 +286,12 @@ export function FactureFournisseurModal({
                         <Select value={formData.ligneBudgetId || '__AUCUNE__'} onValueChange={(v) => setFormData((prev) => ({ ...prev, ligneBudgetId: v === '__AUCUNE__' ? '' : v }))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__AUCUNE__">Aucune (choisie au moment du paiement)</SelectItem>
+                            <SelectItem value="__AUCUNE__">Aucune (paiement par la caisse seule)</SelectItem>
                             {lignesBudget.map((l) => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                          Prestataire interne / externe : la facture se règle par une dépense sur une ligne de budget (ex. budget mensuel de la comptabilité pour la paie). Elle passe « payée » une fois entièrement réglée.
+                          Prestataire interne / externe : choisissez la ligne du budget qui paie cette facture (ex. budget mensuel de la comptabilité pour la paie). Au paiement, l&apos;argent sort de la caisse et est retiré de cette ligne. Sans ligne, le paiement sort seulement de la caisse, sans toucher un budget.
                         </p>
                       </div>
                     )

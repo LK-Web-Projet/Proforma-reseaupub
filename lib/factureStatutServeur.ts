@@ -45,7 +45,7 @@ export async function controlerStatutFacture(tx: Db, factureId: string, d: Deman
   await tx.$queryRaw`SELECT id FROM "FactureFournisseur" WHERE id = ${factureId} FOR UPDATE`;
   const facture = await tx.factureFournisseur.findUnique({
     where: { id: factureId },
-    select: { id: true, reference: true, montant: true, status: true, commandeId: true, ligneBudgetId: true },
+    select: { id: true, reference: true, montant: true, status: true, commandeId: true, ligneBudgetId: true, paiementCaisseId: true },
   });
   if (!facture) throw new StatutFactureError("Facture introuvable.", 404);
   const actuel = facture.status as StatutFacture;
@@ -64,6 +64,13 @@ export async function controlerStatutFacture(tx: Db, factureId: string, d: Deman
   if (depensesActives > 0) {
     throw new StatutFactureError(
       "Cette facture est réglée (en tout ou partie) par une dépense de budget : son statut suit ses paiements. Pour le changer, annulez d'abord la dépense (l'argent revient dans la caisse)."
+    );
+  }
+
+  // Facture payée par « Appliquer le paiement » sans budget : l'argent est sorti de la caisse.
+  if (facture.paiementCaisseId && actuel === "PAYEE") {
+    throw new StatutFactureError(
+      `Cette facture a été payée par la caisse (écriture n° ${facture.paiementCaisseId}) : son statut ne se change pas à la main.`
     );
   }
 

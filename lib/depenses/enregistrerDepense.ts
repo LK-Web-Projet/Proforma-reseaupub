@@ -13,6 +13,7 @@ import { BUDGET_EPSILON, etatDepensable, getLigneDisponible, logBudget, recalcul
 import {
   controlerPaiementCommande,
   controlerPaiementFacture,
+  controlerPaiementFactureSansBudget,
   enregistrerImputations,
   majStatutCommande,
   recalculerStatutFacture,
@@ -66,6 +67,12 @@ export interface EntreeDepense {
   /** Méthode et référence du paiement de proforma (affichées dans la fiche proforma). */
   methode?: string | null;
   reference?: string | null;
+  /**
+   * Facture de prestataire payée SANS budget (aucune ligne de budget) : sortie de la caisse choisie,
+   * plus la dépense sur la proforma si `invoiceId` (campagne sans budget). La facture passe « payée »
+   * et garde l'écriture de caisse (FactureFournisseur.paiementCaisseId). Pas de dépense de budget.
+   */
+  sansBudget?: boolean;
 }
 
 /** Budgets liés à une proforma (pour la règle « avec budget, la ligne est obligatoire »). */
@@ -131,7 +138,8 @@ export async function controlerLigneBudget(
  *   dates), écriture DEPENSE dans la caisse choisie (solde contrôlé), dépense imputée à la proforma
  *   du budget, BudgetDepense, historique et statut du budget ;
  * - sans ligne de budget : seulement si la proforma n'a AUCUN budget (campagne sans budget) —
- *   écriture de caisse + dépense sur la proforma ;
+ *   écriture de caisse + dépense sur la proforma ; ou facture de prestataire payée `sansBudget`
+ *   (aucune proforma) — écriture de caisse seule ;
  * - avec bon de commande (les deux cas) : contrôles du BC, imputation sur la ligne de produit (ou
  *   prorata), facture PAYEE au solde, bon PAYEE quand il est entièrement payé.
  * À appeler dans une transaction Prisma.
@@ -173,14 +181,15 @@ export async function enregistrerDepense(tx: Db, e: EntreeDepense) {
     } else {
       invoiceId = null;
     }
-  } else {
-    if (!invoiceId) throw new DepenseError("Choisissez la ligne de budget de cette dépense.");
+  } else if (invoiceId) {
     const budgets = await budgetsDeLaProforma(tx, invoiceId);
     if (budgets.length > 0) {
       throw new DepenseError(
         `Cette campagne a un budget (${budgets.map((b) => b.numero).join(", ")}) : la dépense doit être enregistrée sur une de ses lignes.`
       );
     }
+  } else if (!e.sansBudget) {
+    throw new DepenseError("Choisissez la ligne de budget de cette dépense.");
   }
 
   // ── 2. Bon de commande ──────────────────────────────────────────────────────────────────────
@@ -198,9 +207,15 @@ export async function enregistrerDepense(tx: Db, e: EntreeDepense) {
 
   // Facture de prestataire interne / externe, sans bon de commande : réglée sur la ligne de budget.
   let paiementFacture: Awaited<ReturnType<typeof controlerPaiementFacture>> | null = null;
+  let factureSansBudget: Awaited<ReturnType<typeof controlerPaiementFactureSansBudget>> | null = null;
   if (e.factureFournisseurId && !e.commandeId) {
-    if (!ligne) throw new DepenseError("Une facture de prestataire se règle sur une ligne de budget.");
-    paiementFacture = await controlerPaiementFacture(tx, { factureFournisseurId: e.factureFournisseurId, ligneBudgetId: ligne.id, montant: e.montant });
+    if (ligne) {
+      paiementFacture = await controlerPaiementFacture(tx, { factureFournisseurId: e.factureFournisseurId, ligneBudgetId: ligne.id, montant: e.montant });
+    } else if (e.sansBudget) {
+      factureSansBudget = await controlerPaiementFactureSansBudget(tx, { factureFournisseurId: e.factureFournisseurId, montant: e.montant });
+    } else {
+      throw new DepenseError("Une facture de prestataire se règle sur une ligne de budget.");
+    }
   }
 
   // ── 3. Sortie de caisse (+ dépense sur la proforma) ─────────────────────────────────────────
@@ -272,6 +287,13 @@ export async function enregistrerDepense(tx: Db, e: EntreeDepense) {
   }
 
   if (paiementFacture) await recalculerStatutFacture(tx, paiementFacture.facture.id);
+  // Payée sans budget : réglée en une fois, elle garde l'écriture de caisse qui l'a payée.
+  if (factureSansBudget) {
+    await tx.factureFournisseur.update({
+      where: { id: factureSansBudget.facture.id },
+      data: { status: StatutFactureFournisseur.PAYEE, paiementCaisseId: cashJournalEntry.id },
+    });
+  }
 
   // ── 5. Bon de commande : imputations, facture, statut ───────────────────────────────────────
   if (paiementCommande) {
@@ -285,7 +307,8 @@ export async function enregistrerDepense(tx: Db, e: EntreeDepense) {
     if (paiementCommande.facture) {
       await tx.factureFournisseur.update({
         where: { id: paiementCommande.facture.id },
-        data: { status: StatutFactureFournisseur.PAYEE },
+        // Solde sans dépense de budget (bon sans ligne) : la facture garde l'écriture de caisse.
+        data: { status: StatutFactureFournisseur.PAYEE, ...(budgetDepense ? {} : { paiementCaisseId: cashJournalEntry.id }) },
       });
     }
     await majStatutCommande(tx, paiementCommande.commande.id);

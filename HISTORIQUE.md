@@ -25,6 +25,36 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-25 (suite 10) — Paiement des factures de prestataires : le budget suit le rattachement, caisse seule sans budget
+
+**Demande / Contexte**
+Au paiement d'une facture de prestataire, ne plus demander de choisir un budget (ne plus afficher l'option) : la ligne vient du bon de commande, ou de la facture elle-même. Avec budget : changement de statut de la facture, retrait sur le budget et, si le budget a une proforma, sortie aussi sur la proforma. Sans rien de rattaché côté budget (pas de ligne, ou bon sans ligne) : seulement la sortie sur la caisse choisie et le statut. À l'enregistrement d'une facture, la ligne de budget (facultative pour l'instant) n'est demandée qu'aux prestataires internes et externes ; pour un fournisseur, le budget passe par le bon de commande.
+Décisions : **1a** bon d'une campagne sans budget → caisse + dépense sur la proforma + facture et bon payés ; **2a** caisse seule : moyen, date et preuve obligatoires ; **3a** contrôles du bon gardés (validé, scan signé, liasse pour le solde) ; **4a** ancienne facture de fournisseur sans bon → caisse seule.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261125130000_paiement_caisse_facture/migration.sql` (ajouts seulement) : `FactureFournisseur.paiementCaisseId` (écriture de caisse qui a payé la facture sans dépense de budget).
+- `lib/depenses/enregistrerDepense.ts` : option `sansBudget` — sans ligne ni proforma, sortie de caisse seule ; facture sans bon contrôlée par `controlerPaiementFactureSansBudget` (nouveau, `lib/commandeFournisseurSuivi.ts` : en attente, sans ligne, réglée en une fois) puis « payée » avec son écriture ; solde d'un bon sans ligne : facture « payée » avec son écriture. Sans cette option, rien ne change pour les autres appels (ligne toujours exigée).
+- `app/api/factures-fournisseurs/[id]/payer/route.ts` : mode déterminé par le rattachement — `BUDGET` (ligne du bon ou de la facture), `PROFORMA` (bon d'une campagne sans budget ; un bon sans ligne dont la campagne a un budget est bloqué : « rattachez-le à une ligne »), `CAISSE` (rien) ; plus de choix de ligne (`ligneRequise` / `lignesPossibles` retirés) ; sans budget : preuves rangées dans `public/Upload/PaiementsFactures/<facture>/` et jointes à l'écriture de caisse, passage « payée » noté dans l'historique de la facture.
+- `components/fournisseurs/PayerFactureDialog.tsx` : plus de liste « ligne de budget » ; encadré « Ce paiement va : sortir … de la caisse ; le retirer de la ligne … ; l'enregistrer sur la proforma … ; passer la facture payée ».
+- `components/fournisseurs/CommandeLiasseCard.tsx` : « Payer » la facture d'un bon validé aussi sans ligne de budget (l'avance reste sur la ligne) ; textes « Financé par » ajustés.
+- `lib/factureStatutServeur.ts` : une facture payée par la caisse (avec son écriture) ne change plus de statut à la main.
+- `components/FactureFournisseurModal.tsx` : prestataire interne / externe → « Aucune (paiement par la caisse seule) » et explication ; fournisseur → bon de commande obligatoire (inchangé).
+- Guide : « Payer un prestataire » (tableau des trois cas, statut à la main).
+
+**Erreurs rencontrées & solutions**
+- Jeu d'essai incomplet (champ obligatoire d'une pièce du bon) : corrigé dans le test.
+- Ancien test du service de dépense écrit avant la règle des caisses visibles (2026-11-24) : échec attendu ; le test à jour des paiements centralisés (copie jouant la nouvelle mise à jour de la base) passe.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test (mise à jour jouée puis annulée) : **16 / 16** — facture interne sans ligne : montant partiel refusé, payée, liée à son écriture, caisse débitée, ni dépense de budget ni de proforma, statut protégé ; ancienne facture de fournisseur sans bon payée ; bon sans ligne ni proforma : scan signé toujours exigé, facture et bon payés, imputation enregistrée ; bon de campagne sans budget : dépense sur la proforma, facture et bon payés ; sans l'option, la ligne reste exigée ; facture rattachée à une ligne refusée en caisse seule ; base intacte.
+- Non-régression des paiements avec budget (paiements centralisés) : **31 / 31**.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé. Une première construction lancée le soir est restée bloquée (aucune sortie après une nuit) : arrêtée puis relancée avec une limite de 15 minutes.
+
+**À tester / points d'attention**
+- Appliquer les mises à jour de la base : `pnpm prisma migrate deploy` (applique aussi la page Budget, entrée « suite 9 » ; jamais de `reset`), puis redémarrer — **sans elle, les pages des factures de prestataires affichent une erreur**.
+- À l'écran : payer une facture d'un bon avec budget (encadré : caisse, ligne, proforma), une facture de prestataire interne sans ligne (encadré : caisse seule), une facture d'un bon de campagne sans budget ; vérifier la caisse, le budget, la proforma et l'historique de la facture.
+
 ## 2026-11-25 (suite 9) — Page « Budget » dans les droits des rôles
 
 **Demande / Contexte**

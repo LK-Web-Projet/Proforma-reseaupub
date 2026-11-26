@@ -309,6 +309,7 @@ model CashJournal {
   cashRegister         CashRegister            @relation(fields: [cashRegisterId], references: [id])
   createdBy            User?                   @relation("CashJournalCreatedBy", fields: [createdById], references: [id])
   attachments          CashJournalAttachment[]
+  facturePayee         FactureFournisseur?     @relation("FacturePaiementCaisse")
   paiement             Paiement?
   budgetDepense        BudgetDepense?          @relation("BudgetDepenseEcriture")
   // Renseigné si cette écriture (RECETTE) est la contre-écriture d'une dépense de budget annulée.
@@ -462,6 +463,10 @@ model FactureFournisseur {
   paiementManuelReference String?
   paiementManuelParEmail  String?
   historiqueStatut        FactureFournisseurStatutHistorique[]
+  // Facture réglée par « Appliquer le paiement » SANS dépense de budget (aucune ligne de budget : caisse
+  // seule, ou campagne sans budget) : l'écriture de caisse qui l'a payée. Protège son statut.
+  paiementCaisseId        Int?                                 @unique
+  paiementCaisse          CashJournal?                         @relation("FacturePaiementCaisse", fields: [paiementCaisseId], references: [id])
 }
 
 // Changements de statut faits à la main sur une facture de prestataire (marquée payée hors
