@@ -157,10 +157,9 @@ const finance = [
   },
 ];
 
-// Section à part — accessible à tout utilisateur authentifié (pas soumise aux cases à
-// cocher par page) : n'importe quel employé doit pouvoir soumettre une demande de budget,
-// la visibilité des données (ses demandes vs toutes) est filtrée côté API selon les droits
-// budget cochés sur son rôle (Paramètres > Rôles — voir lib/budgetAuth.ts).
+// Section Budget — page cochée par rôle depuis le 2026-11-25 (Paramètres > Rôles). Avec la page,
+// on fait des demandes et on voit les siennes ; la visibilité de toutes les demandes dépend des
+// droits budget du rôle (voir lib/budgetAuth.ts).
 const budget = [
   {
     title: "Faire une demande",
@@ -232,6 +231,11 @@ export function AppSidebar() {
   const allowedPages = metadata?.pages ?? [];
   const canSeePage = (key: PageKey, legacyAdminOnly: boolean) =>
     hasSyncedPermissions ? allowedPages.includes(key) : legacyAdminOnly ? role === "org:admin" : true;
+
+  // Budget : lu en base (droits à jour) dès qu'ils sont chargés — le metadata de connexion peut
+  // ne pas encore contenir cette page, ajoutée par une mise à jour de la base.
+  const { droits } = useDroits();
+  const voitBudget = droits ? droits.pages.includes("budget") : canSeePage("budget", false);
 
   const router = useRouter();
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
@@ -451,6 +455,7 @@ export function AppSidebar() {
             </CollapsibleContent>
           </Collapsible>
         )}
+        {voitBudget && (
         <Collapsible open={isBudgetOpen} onOpenChange={setIsBudgetOpen}>
           <CollapsibleTrigger asChild>
             <SidebarMenuButton>
@@ -472,6 +477,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </CollapsibleContent>
         </Collapsible>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

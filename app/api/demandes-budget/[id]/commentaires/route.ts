@@ -41,7 +41,10 @@ export async function POST(
     }
 
     const estDemandeur = isSameEmail(demande.requesterEmail, caps.email);
-    if (!estDemandeur && !isImpliqueBudget(caps)) {
+    // Budget collectif : le département de la ligne (ou qui l'a saisie) répond sur sa ligne.
+    const sonDepartement =
+      demande.collectif && ((!!ligne.departementId && caps.departementIds.includes(ligne.departementId)) || isSameEmail(ligne.ajouteeParEmail ?? "", caps.email));
+    if (!estDemandeur && !isImpliqueBudget(caps) && !sonDepartement) {
       return NextResponse.json({ error: "Accès refusé à cette demande." }, { status: 403 });
     }
 

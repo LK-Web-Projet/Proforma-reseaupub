@@ -159,6 +159,61 @@ export async function sendDemandeSoumiseNotification(demande: DemandeBudgetForEm
   });
 }
 
+// ── Budget collectif (préparation) ───────────────────────────────────────────────────────────
+// Chaque destinataire ne voit dans l'email que les lignes qui le concernent (`lignes` filtrées par
+// l'appelant) : jamais celles des autres départements.
+
+const dateFr = (d: Date | null | undefined) => (d ? new Date(d).toLocaleDateString("fr-FR", { timeZone: "UTC" }) : null);
+
+/** Ouverture ou nouvelle invitation : les membres des départements invités saisissent leurs lignes. */
+export async function sendBudgetCollectifInvitation(demande: DemandeBudgetForEmail, opts: { to: string[]; departements: string[]; auteur: string }) {
+  if (opts.to.length === 0) return;
+  const limite = dateFr(demande.dateLimiteSaisie);
+  await notifierBudget("BUDGET_COLLECTIF_INVITATION", { ...demande, lignes: [] }, {
+    to: opts.to,
+    subject: `Budget ${demande.numero} : saisissez les lignes de votre département`,
+    title: "🗂️ Budget collectif à remplir",
+    intro: `${escapeHtml(opts.auteur)} a ouvert le ${TYPE_LABELS[demande.type] ?? "budget"} <strong>${escapeHtml(demande.numero)}</strong>. Votre département (${escapeHtml(opts.departements.join(", "))}) est invité à y saisir ses lignes${limite ? ` avant le <strong>${limite}</strong>` : ""}.`,
+    footer: "Vous ne voyez dans ce budget que les lignes de votre département et leur total.",
+  });
+}
+
+/** Veille de la date limite de saisie. */
+export async function sendBudgetCollectifRappel(demande: DemandeBudgetForEmail, opts: { to: string[] }) {
+  if (opts.to.length === 0) return;
+  await notifierBudget("BUDGET_COLLECTIF_RAPPEL", { ...demande, lignes: [] }, {
+    to: opts.to,
+    subject: `Budget ${demande.numero} : date limite de saisie demain`,
+    title: "⏰ Date limite de saisie demain",
+    intro: `La saisie des lignes du budget <strong>${escapeHtml(demande.numero)}</strong> se termine le <strong>${dateFr(demande.dateLimiteSaisie)}</strong>. Pensez à saisir ou vérifier les lignes de votre département.`,
+  });
+}
+
+/** Le comptable demande une correction, ou retire une ligne, pendant la préparation. */
+export async function sendBudgetCollectifCorrection(
+  demande: DemandeBudgetForEmail,
+  opts: { to: string[]; ligne: DemandeBudgetForEmail["lignes"][number]; retiree: boolean; motif: string; auteur: string }
+) {
+  if (opts.to.length === 0) return;
+  await notifierBudget("BUDGET_COLLECTIF_CORRECTION", { ...demande, lignes: [opts.ligne] }, {
+    to: opts.to,
+    subject: opts.retiree ? `Budget ${demande.numero} : une ligne de votre département a été retirée` : `Budget ${demande.numero} : ligne à corriger`,
+    title: opts.retiree ? "➖ Ligne retirée du budget" : "✏️ Ligne à corriger",
+    intro: `${escapeHtml(opts.auteur)} ${opts.retiree ? "a retiré" : "demande de corriger"} la ligne « ${escapeHtml(opts.ligne.designation)} » du budget <strong>${escapeHtml(demande.numero)}</strong> : ${escapeHtml(opts.motif)}`,
+  });
+}
+
+/** Le responsable d'une campagne signale que le budget est prêt : le comptable vérifie et soumet. */
+export async function sendBudgetCollectifPret(demande: DemandeBudgetForEmail, opts: { to: string[]; auteur: string }) {
+  if (opts.to.length === 0) return;
+  await notifierBudget("BUDGET_COLLECTIF_PRET", demande, {
+    to: opts.to,
+    subject: `Budget ${demande.numero} prêt à soumettre`,
+    title: "📤 Budget collectif prêt à soumettre",
+    intro: `${escapeHtml(opts.auteur)} signale que le budget <strong>${escapeHtml(demande.numero)}</strong> est complet. Vérifiez les lignes des départements, puis soumettez-le à la direction.`,
+  });
+}
+
 export async function sendDemandeValideeNotification(demande: DemandeBudgetForEmail) {
   const recipients = await getBudgetRecipients("canPayBudget");
   if (recipients.length === 0) return;

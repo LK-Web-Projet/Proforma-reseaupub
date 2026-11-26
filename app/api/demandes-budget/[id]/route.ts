@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireBudgetUser, isImpliqueBudget, isSameEmail } from "@/lib/budgetAuth";
+import { requireBudgetUser } from "@/lib/budgetAuth";
+import { accesAuBudget, estResponsable, ligneVisible, refusSaisieDepartement, saisieOuverte, voitToutLeBudget } from "@/lib/budgetPortee";
 import { facturesPrestatairesPayables } from "@/lib/commandeFournisseurSuivi";
 import { typesBudgetSigneRequis } from "@/lib/budgetSuivi";
 
@@ -58,6 +59,7 @@ export async function GET(
         commentaires: { orderBy: { createdAt: "asc" } },
         depassements: { orderBy: { createdAt: "desc" } },
         historique: { orderBy: { createdAt: "desc" } },
+        departementsInvites: { include: { departement: { select: { id: true, nom: true, code: true, couleur: true, actif: true } } } },
       },
     });
 
@@ -65,11 +67,25 @@ export async function GET(
       return NextResponse.json({ error: "Demande introuvable." }, { status: 404 });
     }
 
-    // Une demande n'est consultable que par son auteur, ou par un rôle du circuit budget —
-    // jamais par un autre employé qui devinerait l'URL.
-    if (!isImpliqueBudget(caps) && !isSameEmail(demande.requesterEmail, caps.email)) {
+    // Consultable par qui voit tout, ou (budget collectif) par les départements invités / ayant une
+    // ligne visible — jamais par un autre employé qui devinerait l'URL.
+    if (!accesAuBudget(caps, demande)) {
       return NextResponse.json({ error: "Accès refusé à cette demande." }, { status: 403 });
     }
+    const toutVoir = voitToutLeBudget(caps, demande);
+    // Ce que ce compte peut faire pendant la préparation (budget collectif), pour l'écran.
+    const preparation = {
+      toutVoir,
+      responsable: estResponsable(caps, demande),
+      preparer: caps.preparer,
+      saisieOuverte: saisieOuverte(demande),
+      // Départements pour lesquels ce compte peut saisir des lignes (invités, et les siens sauf coordinateur).
+      departementsSaisie: demande.departementsInvites
+        .filter((d) => refusSaisieDepartement(caps, demande, d.departementId) === null)
+        .map((d) => d.departement),
+      mesDepartements: caps.departementIds,
+      email: caps.email,
+    };
 
     // Dépenses d'une proforma de ce budget qui ne sont sur aucun budget : reçues de Camptrack par
     // l'ancien appel (sans ligne), ou saisies sur la proforma avant le budget. À rattacher.
@@ -92,7 +108,32 @@ export async function GET(
     // Scan du budget signé exigé pour ce type (réglage Paramètres → Rôles).
     const budgetSigneRequis = (await typesBudgetSigneRequis(prisma)).includes(demande.type);
 
-    return NextResponse.json({ ...demande, depensesARattacher, facturesPrestataires, budgetSigneRequis });
+    if (!toutVoir) {
+      // Vue partielle : ses lignes, leur total et ce qui les concerne (dépenses, dépassements,
+      // commentaires, pièces de ces dépenses) ; l'historique général sans le détail des autres lignes.
+      const lignes = demande.lignes.filter((l) => ligneVisible(caps, demande, l));
+      const ids = new Set(lignes.map((l) => l.id));
+      const depenses = demande.depenses.filter((x) => ids.has(x.ligneId));
+      const idsDepenses = new Set(depenses.map((x) => x.id));
+      const ACTIONS_GENERALES = ["CREATION", "RESOUMISSION", "VALIDATION", "REJET", "CLOTURE", "PREPARATION", "SOUMISSION", "PREPARATION_ROUVERTE"];
+      return NextResponse.json({
+        ...demande,
+        lignes,
+        montantTotal: lignes.filter((l) => l.statutValidation !== "RETIREE").reduce((s, l) => s + Number(l.montant), 0),
+        depenses,
+        depassements: demande.depassements.filter((x) => ids.has(x.ligneId)),
+        commentaires: demande.commentaires.filter((x) => ids.has(x.ligneId)),
+        attachments: demande.attachments.filter((a) => a.depenseId && idsDepenses.has(a.depenseId)),
+        historique: demande.historique.filter((h) => ACTIONS_GENERALES.includes(h.action) || h.auteurEmail?.toLowerCase() === caps.email),
+        depensesARattacher: [],
+        facturesPrestataires: [],
+        budgetSigneRequis,
+        vuePartielle: true,
+        preparation,
+      });
+    }
+
+    return NextResponse.json({ ...demande, depensesARattacher, facturesPrestataires, budgetSigneRequis, vuePartielle: false, preparation });
   } catch (error) {
     console.error(`Erreur lors de la récupération de la demande ${id}:`, error);
     return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 });

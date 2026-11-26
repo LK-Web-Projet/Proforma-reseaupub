@@ -517,6 +517,38 @@ export async function controlerPaiementFacture(
 }
 
 /**
+ * Facture SANS bon de commande payée sans budget (« Appliquer le paiement » d'une facture rattachée à
+ * aucune ligne) : en attente, non rattachée à une ligne, réglée en une fois (montant = reste à régler).
+ * Tout type de prestataire (ancienne facture de fournisseur sans bon comprise).
+ */
+export async function controlerPaiementFactureSansBudget(tx: Db, opts: { factureFournisseurId: string; montant: number }) {
+  await tx.$queryRaw`SELECT id FROM "FactureFournisseur" WHERE id = ${opts.factureFournisseurId} FOR UPDATE`;
+  const facture = await tx.factureFournisseur.findUnique({
+    where: { id: opts.factureFournisseurId },
+    include: {
+      fournisseur: { select: { entreprise: true } },
+      commande: { select: { numero: true } },
+      depenses: { where: { annuleeAt: null }, select: { montant: true } },
+    },
+  });
+  if (!facture) throw new PaiementCommandeError("Facture introuvable.");
+  if (facture.commande) {
+    throw new PaiementCommandeError(`La facture ${facture.reference} répond au bon de commande ${facture.commande.numero} : réglez-la par le solde de ce bon.`);
+  }
+  if (facture.status !== StatutFactureFournisseur.EN_ATTENTE) {
+    throw new PaiementCommandeError(`La facture ${facture.reference} n'est pas en attente de paiement.`);
+  }
+  if (facture.ligneBudgetId) {
+    throw new PaiementCommandeError(`La facture ${facture.reference} est rattachée à une ligne de budget : elle se paie sur cette ligne.`);
+  }
+  const reste = Number(facture.montant) - facture.depenses.reduce((s, d) => s + Number(d.montant), 0);
+  if (Math.abs(opts.montant - reste) > BUDGET_EPSILON) {
+    throw new PaiementCommandeError(`Sans budget, la facture ${facture.reference} se règle en une fois : ${fmt(reste)}.`);
+  }
+  return { facture, reste };
+}
+
+/**
  * Statut d'une facture de prestataire réglée directement par des dépenses de budget (sans bon) :
  * PAYEE quand la somme des dépenses non annulées atteint son montant, EN_ATTENTE sinon.
  * (Une facture liée à un bon suit l'imputation du solde : voir libererFactureApresAnnulation.)

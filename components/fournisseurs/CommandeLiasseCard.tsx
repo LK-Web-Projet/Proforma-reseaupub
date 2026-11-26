@@ -114,7 +114,10 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
   const [paiement, setPaiement] = useState<CiblePaiement | null>(null);
   const [proformasBudget, setProformasBudget] = useState<ProformaBudget[]>([]);
   const [reprise, setReprise] = useState<string | null>(null);
+  // Avance : sur la ligne de budget du bon. Solde (« Payer » la facture) : aussi sans budget — le
+  // paiement sort alors de la caisse seule (ou va sur la proforma d'une campagne sans budget).
   const payable = (commande.statut === 'VALIDEE' || commande.statut === 'LIVREE') && !!commande.ligneBudget && reste > 0.004;
+  const soldePayable = (commande.statut === 'VALIDEE' || commande.statut === 'LIVREE') && reste > 0.004;
   const toutesPieces = liasse.aJoindre.length === 0;
   // Droits d'action : pièces (droit dédié, ou comptable / direction qui classent la liasse),
   // facture, ligne de budget (modifier le bon), paiements (comptable).
@@ -190,13 +193,13 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
               </Link>
             ) : (
               commande.modeValidation === 'DIRECTE' ? (
-                <p className="text-slate-700">Campagne sans budget : l&apos;avance et le solde se paient depuis la proforma de la campagne.</p>
+                <p className="text-slate-700">Campagne sans budget : la facture se paie par « Payer » (sortie de caisse et dépense sur la proforma).</p>
               ) : lieARien && brouillon ? (
                 <p className="text-amber-800">
                   Rattaché à rien : rattachez ce bon à un budget (ou à la proforma d&apos;une campagne) pour qu&apos;il puisse être validé.
                 </p>
               ) : (
-                <p className="text-amber-800">Aucune ligne de budget : l&apos;avance et le solde ne pourront pas être payés.</p>
+                <p className="text-amber-800">Aucune ligne de budget : pas d&apos;avance ; la facture se paie par la caisse seule, sans budget.</p>
               )
             )}
           </div>
@@ -349,7 +352,7 @@ export function CommandeLiasseCard({ commande, onChange }: { commande: CommandeS
                     {f.status === 'PAYEE' ? 'Payée' : f.status === 'ANNULEE' ? 'Annulée' : 'À payer'}
                   </Badge>
                   {f.pieceJointe ? <AttachmentPreviewButton url={f.pieceJointe} title={f.reference} /> : <span className="text-[11px] text-amber-700">sans pièce</span>}
-                  {f.status === 'EN_ATTENTE' && payable && peutPayer && (
+                  {f.status === 'EN_ATTENTE' && soldePayable && peutPayer && (
                     <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => setPaiement({ type: 'facture', id: f.id })}>
                       <Wallet className="h-3 w-3" /> Payer
                     </Button>

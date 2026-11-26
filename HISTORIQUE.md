@@ -25,6 +25,122 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-26 — Factures prestataires sans défilement horizontal, numéro de proforma entier, catégories Salaires et CNSS
+
+**Demande / Contexte**
+1. La liste des factures prestataires défilait sur le côté : il faut tout faire tenir dans la largeur en réduisant les éléments.
+2. Dans la liste des proformas, le numéro était coupé (« … »).
+3. Budget : ajouter des catégories de dépense, **Salaires** à part, et **Cotisations CNSS** (employés déclarés).
+
+**Modifications apportées**
+- `app/(main)/fournisseur/factures/page.tsx` : tableau en colonnes de largeur fixe (`table-fixed`) ; prestataire et référence coupés avec le texte entier au survol ; la colonne « Pièce jointe » disparaît (l'icône de la pièce passe dans les actions) ; « Bon de commande » masqué sous `xl` et « Date » sous `md`, leur contenu passe en petit sous la référence ; bouton « Appliquer le paiement » → « Payer » (info-bulle complète) ; boutons d'action 32 px ; cartes du haut : montants plus petits sous `xl`, coupés au besoin ; en-tête qui passe à la ligne. Défilement horizontal gardé seulement en secours sur téléphone (`max-md:overflow-x-auto`).
+- `components/fournisseurs/RetardPaiement.tsx` : option `compact` de `BoutonRetardPaiement` (« 12 j · Payer »), utilisée dans la liste ; la fiche prestataire garde le bouton long.
+- `components/AttachmentPreviewButton.tsx` : option `className` (taille du bouton).
+- `app/(main)/facture/page.tsx` : colonne « Numéro / date » élargie à 11,5 rem, numéro sans coupure (`whitespace-nowrap`).
+- `prisma/schema.prisma` + `lib/budgetTypes.ts` : `SALAIRES` (« Salaires ») et `COTISATION_CNSS` (« Cotisations CNSS (employés déclarés) »), placées après « Prestations ». « Primes, per diem, missions » ne change pas.
+- `prisma/migrations/20261126120000_categories_salaires_cnss/migration.sql` : deux `ALTER TYPE … ADD VALUE IF NOT EXISTS` (ajout seulement, aucune ligne existante modifiée).
+
+**Erreurs rencontrées & solutions**
+- Cause du débordement : les cellules du tableau de base refusent de passer à la ligne (`whitespace-nowrap`) et les colonnes n'avaient pas de largeur → largeurs fixes et passage à la ligne autorisé pour la date/échéance et le statut.
+
+**À tester / points d'attention**
+- **À lancer par l'utilisateur** : `pnpm prisma migrate deploy` puis `pnpm prisma generate` (dev server arrêté), sinon les nouvelles catégories sont refusées à l'enregistrement.
+- Test de la migration sur la base de test, dans une transaction annulée : 5/5 (valeurs ajoutées, ordre, 15 catégories, rejouable, base inchangée après annulation).
+- Contrôle à l'écran : liste des factures prestataires sur un portable 13 pouces et sur grand écran, facture en retard (bouton rouge compact), facture « hors plateforme » ; numéro de proforma entier.
+
+## 2026-11-26 — Budget collectif : préparation par plusieurs départements, vérification et soumission par le comptable
+
+**Demande / Contexte**
+Les budgets (surtout mensuels et de campagne) se remplissent collectivement : plusieurs départements enregistrent leurs lignes et ne voient que les leurs ; des profils précis voient toutes les lignes (droit dans les rôles). Le créateur peut cocher si d'autres interviennent. Précision : pendant la préparation, c'est le **comptable** qui vérifie tous les enregistrements et soumet définitivement à la direction ; c'est lui qui ouvre le budget mensuel, tous les départements concernés par défaut.
+Décisions : **1a** on voit les lignes de son département (même saisies par un collègue) ; **2a** départements invités par le responsable ; **3a** le responsable voit toutes les lignes de son budget ; **4a** un seul budget mensuel par mois ; **5a/2a** sur une ligne d'un autre, le comptable demande une correction ou la retire avec un motif, sans la modifier ; **6a** ponctuel et autres types toujours individuels ; **A a** après la date limite, plus d'ajout par les invités (le responsable / comptable peut prolonger) ; **B a** réouverture tant qu'aucune ligne n'est décidée ; **C a** budget individuel soumis dès sa création (inchangé) ; **D a** mensuel toujours collectif ; **1a** seul le comptable ouvre le mensuel.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261126100000_budget_collectif/migration.sql` (ajouts seulement) : statut `EN_PREPARATION` ; actions d'historique (préparation, ligne ajoutée / modifiée, soumission, réouverture) ; budget : collectif, responsable, date limite de saisie, rappel envoyé, « prêt », soumis le ; table des départements invités ; ligne : qui l'a saisie et quand ; table des départements des comptes. Reprise : budgets existants individuels, responsable = demandeur, lignes saisies par le demandeur ; droit « Voir toutes les lignes » aux rôles qui valident / paient / petites dépenses, « Préparer et soumettre » aux comptables.
+- `lib/permissions.ts` : droits **« Voir toutes les lignes de tous les départements »** (`budget.toutesLignes`) et **« Préparer et soumettre les budgets collectifs »** (`budget.preparer`), avec repli avant la grille.
+- `lib/budgetAuth.ts` : les droits budget du compte portent ces deux droits, l'administration des comptes et les départements du compte.
+- `lib/budgetPortee.ts` (nouveau, partagé) : qui voit tout un budget, quelles lignes, accès à la fiche, filtre de la liste, date limite, droit de saisir pour un département.
+- `lib/budgetCollectifServeur.ts` (nouveau) : ouverture (mensuel : comptable, un par mois, tous les départements actifs par défaut ; campagne : proforma et départements choisis) ; actions de préparation (ajouter / modifier / supprimer ses lignes, inviter / retirer un département, date limite, transfert du responsable, « prêt », correction et retrait par le comptable, soumission — refusée s'il reste une ligne à corriger —, réouverture) ; rappel la veille de la date limite.
+- Routes : `app/api/demandes-budget/collectif/route.ts` (mensuel du mois, ouverture), `app/api/demandes-budget/[id]/preparation/route.ts` (actions et notifications) ; liste et fiche filtrées selon la visibilité (`app/api/demandes-budget/route.ts`, `[id]/route.ts` : lignes, total, dépenses, dépassements, commentaires, pièces, historique ; informations de préparation pour l'écran) ; correction et commentaires d'une ligne ouverts à son département (`[id]/lignes/[ligneId]`, `[id]/commentaires`) ; recherche (`app/api/recherche`) : même visibilité, sans le total pour une vue partielle ; `app/api/users` : départements des comptes.
+- Notifications (`lib/notifications/evenements.ts`, `lib/email/demandeBudget.ts`) : invitation, rappel de la date limite, correction / retrait, prêt à soumettre (chaque email ne montre que les lignes du destinataire) ; soumission : notification « budget soumis » habituelle. Tâche du matin « rappels-saisie-budgets » (`lib/taches/planificateur.ts`).
+- Écrans : `components/budget/OuvertureBudgetCollectif.tsx` (nouveau ; dans `components/DemandeBudgetForm.tsx` pour un mensuel ou une campagne cochée « Budget collectif ») ; `components/budget/PreparationBudgetCard.tsx` (nouveau, fiche du budget : départements, lignes et totaux, ajout / modification / suppression de ses lignes, correction / retrait, invitations, date limite, responsable, « prêt », soumission, réouverture ; remplace le tableau des lignes pendant la préparation) ; statut « En préparation » (`components/DemandeBudgetStatusBadge.tsx`, liste des budgets : carte « En préparation ou à valider », mention « Collectif · vos départements ») ; `components/parametres/DepartementsUtilisateur.tsx` (nouveau) dans Paramètres → Utilisateurs.
+- Guide : nouvelle section « Budget collectif (plusieurs départements) ».
+
+**Erreurs rencontrées & solutions**
+- Le nouveau statut ne peut pas servir dans la transaction qui le crée (règle de la base) : le circuit complet a été testé après l'application de la mise à jour par l'utilisateur.
+- Défaut trouvé par le test du circuit : une ligne renvoyée en correction ne pouvait pas être corrigée après la date limite (le premier contrôle de la modification ignorait l'exception) → corrigé dans `lib/budgetCollectifServeur.ts`.
+
+**Vérifications (2026-11-26)**
+- Règles de visibilité et de saisie : **30 / 30** (comptable, membres, collègue du même département, budget individuel d'un autre, responsable et transfert, droit « préparer » seul, saisie pour son département / un autre / non invité, date limite passée, ligne à corriger après la date, saisie fermée après soumission, filtre de la liste, droits de la grille et repli).
+- **Circuit complet** sur la base de test (mise à jour appliquée, essai dans une transaction annulée) : **29 / 29** — un membre n'ouvre pas le mensuel ; ouverture en préparation par le comptable ; un seul mensuel par mois ; chacun saisit pour son département seulement ; total recalculé ; auteur enregistré ; visibilité ; le comptable et un autre département ne modifient pas la ligne ; correction demandée ; soumission refusée tant qu'une ligne est à corriger ; date limite passée (ajout refusé, correction acceptée) ; seul le comptable soumet ; département avec lignes non retirable ; soumission (statut, total) ; plus de saisie ensuite ; réouverture tant que rien n'est décidé, refusée après ; campagne : invitation par le responsable, pas par un membre, « prêt », le responsable ne soumet pas, transfert, l'ancien responsable n'agit plus ; rappel la veille ; base intacte.
+- Non-régression sur la base à jour : paiements centralisés **31 / 31**, paiement des factures sans budget **16 / 16**.
+- Mise à jour de la base jouée puis annulée sur la base de test (avant son application) : **9 / 9** (18 instructions ; 8 budgets repris avec leur responsable ; aucun collectif ; auteur et date de chaque ligne ; droits donnés aux bons rôles ; tables créées ; base intacte).
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction de l'application (dossier séparé `.next-verif`) : compilation réussie (6,4 min), vérification des types, **47 / 47 pages générées** ; la toute dernière étape (« Collecting build traces ») n'a pas fini dans la limite de 15 minutes — même blocage que la veille au soir, sans message d'erreur (lenteur du poste, pas du code). `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Mises à jour de la base appliquées sur la base de test (utilisateur) ; à faire aussi en ligne : `pnpm prisma migrate deploy` (jamais de `reset`), puis redémarrer.
+- Paramètres → Utilisateurs : rattacher chaque compte à son ou ses départements (sans cela, personne ne peut saisir dans un budget collectif).
+- Paramètres → Rôles : vérifier « Voir toutes les lignes » et « Préparer et soumettre » sur chaque rôle.
+- À l'écran : le comptable ouvre le mensuel ; deux comptes de départements différents saisissent chacun leurs lignes (chacun ne voit que les siennes) ; correction, retrait, soumission, puis validation par la direction.
+- Limite : « Reconduire au mois suivant » n'est plus proposé pour un budget collectif (le comptable ouvre le nouveau mois, les départements ressaisissent).
+
+## 2026-11-25 (suite 10) — Paiement des factures de prestataires : le budget suit le rattachement, caisse seule sans budget
+
+**Demande / Contexte**
+Au paiement d'une facture de prestataire, ne plus demander de choisir un budget (ne plus afficher l'option) : la ligne vient du bon de commande, ou de la facture elle-même. Avec budget : changement de statut de la facture, retrait sur le budget et, si le budget a une proforma, sortie aussi sur la proforma. Sans rien de rattaché côté budget (pas de ligne, ou bon sans ligne) : seulement la sortie sur la caisse choisie et le statut. À l'enregistrement d'une facture, la ligne de budget (facultative pour l'instant) n'est demandée qu'aux prestataires internes et externes ; pour un fournisseur, le budget passe par le bon de commande.
+Décisions : **1a** bon d'une campagne sans budget → caisse + dépense sur la proforma + facture et bon payés ; **2a** caisse seule : moyen, date et preuve obligatoires ; **3a** contrôles du bon gardés (validé, scan signé, liasse pour le solde) ; **4a** ancienne facture de fournisseur sans bon → caisse seule.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261125130000_paiement_caisse_facture/migration.sql` (ajouts seulement) : `FactureFournisseur.paiementCaisseId` (écriture de caisse qui a payé la facture sans dépense de budget).
+- `lib/depenses/enregistrerDepense.ts` : option `sansBudget` — sans ligne ni proforma, sortie de caisse seule ; facture sans bon contrôlée par `controlerPaiementFactureSansBudget` (nouveau, `lib/commandeFournisseurSuivi.ts` : en attente, sans ligne, réglée en une fois) puis « payée » avec son écriture ; solde d'un bon sans ligne : facture « payée » avec son écriture. Sans cette option, rien ne change pour les autres appels (ligne toujours exigée).
+- `app/api/factures-fournisseurs/[id]/payer/route.ts` : mode déterminé par le rattachement — `BUDGET` (ligne du bon ou de la facture), `PROFORMA` (bon d'une campagne sans budget ; un bon sans ligne dont la campagne a un budget est bloqué : « rattachez-le à une ligne »), `CAISSE` (rien) ; plus de choix de ligne (`ligneRequise` / `lignesPossibles` retirés) ; sans budget : preuves rangées dans `public/Upload/PaiementsFactures/<facture>/` et jointes à l'écriture de caisse, passage « payée » noté dans l'historique de la facture.
+- `components/fournisseurs/PayerFactureDialog.tsx` : plus de liste « ligne de budget » ; encadré « Ce paiement va : sortir … de la caisse ; le retirer de la ligne … ; l'enregistrer sur la proforma … ; passer la facture payée ».
+- `components/fournisseurs/CommandeLiasseCard.tsx` : « Payer » la facture d'un bon validé aussi sans ligne de budget (l'avance reste sur la ligne) ; textes « Financé par » ajustés.
+- `lib/factureStatutServeur.ts` : une facture payée par la caisse (avec son écriture) ne change plus de statut à la main.
+- `components/FactureFournisseurModal.tsx` : prestataire interne / externe → « Aucune (paiement par la caisse seule) » et explication ; fournisseur → bon de commande obligatoire (inchangé).
+- Guide : « Payer un prestataire » (tableau des trois cas, statut à la main).
+
+**Erreurs rencontrées & solutions**
+- Jeu d'essai incomplet (champ obligatoire d'une pièce du bon) : corrigé dans le test.
+- Ancien test du service de dépense écrit avant la règle des caisses visibles (2026-11-24) : échec attendu ; le test à jour des paiements centralisés (copie jouant la nouvelle mise à jour de la base) passe.
+
+**Vérifications (2026-11-25)**
+- Test sur la base de test (mise à jour jouée puis annulée) : **16 / 16** — facture interne sans ligne : montant partiel refusé, payée, liée à son écriture, caisse débitée, ni dépense de budget ni de proforma, statut protégé ; ancienne facture de fournisseur sans bon payée ; bon sans ligne ni proforma : scan signé toujours exigé, facture et bon payés, imputation enregistrée ; bon de campagne sans budget : dépense sur la proforma, facture et bon payés ; sans l'option, la ligne reste exigée ; facture rattachée à une ligne refusée en caisse seule ; base intacte.
+- Non-régression des paiements avec budget (paiements centralisés) : **31 / 31**.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé. Une première construction lancée le soir est restée bloquée (aucune sortie après une nuit) : arrêtée puis relancée avec une limite de 15 minutes.
+
+**À tester / points d'attention**
+- Appliquer les mises à jour de la base : `pnpm prisma migrate deploy` (applique aussi la page Budget, entrée « suite 9 » ; jamais de `reset`), puis redémarrer — **sans elle, les pages des factures de prestataires affichent une erreur**.
+- À l'écran : payer une facture d'un bon avec budget (encadré : caisse, ligne, proforma), une facture de prestataire interne sans ligne (encadré : caisse seule), une facture d'un bon de campagne sans budget ; vérifier la caisse, le budget, la proforma et l'historique de la facture.
+
+## 2026-11-25 (suite 9) — Page « Budget » dans les droits des rôles
+
+**Demande / Contexte**
+La section Budget était ouverte à tout utilisateur connecté (hors des cases par page). Elle doit désormais faire partie des droits : une page « Budget » à cocher par rôle.
+
+**Modifications apportées**
+- `lib/permissions.ts` : page `budget` (« Budget (demandes et suivi) »), adresses `/budget/*`, adresse d'accueil `/budget/demandes` ; le module Budget de la grille est rattaché à cette page (le PDF d'un budget suit la page ; les cases valider / payer / petites dépenses restent valables depuis la proforma et les prestataires) ; sans aucune page, l'accueil mène à « Accès refusé » (Budget n'est plus un repli).
+- `prisma/migrations/20261125120000_page_budget/migration.sql` (ajouts seulement) : tous les rôles existants reçoivent la page Budget (personne ne perd l'accès) ; un nouveau rôle ne l'a pas.
+- `components/app-sidebar.tsx` : rubrique Budget affichée seulement avec la page (lue dans les droits à jour de la base).
+- `app/api/demandes-budget/route.ts` (création) et `[id]/resoumettre/route.ts` : page Budget exigée.
+- `app/api/me/droits/route.ts` : si les pages du compte de connexion sont en retard sur la base (page ajoutée par la mise à jour), elles sont resynchronisées — sinon le contrôle des pages bloquerait `/budget` aux comptes existants.
+- Contrôle des pages (`middleware.ts`, inchangé) : `/budget` est maintenant protégé comme les autres sections (réglage `ENABLE_PAGE_PERMISSIONS=true`).
+- Guide : « Rôles et droits », point « Page Budget ».
+
+**Erreurs rencontrées & solutions**
+- Une ligne de commentaire du fichier de mise à jour coupée à l'écriture (apostrophes) : fichier réécrit.
+
+**Vérifications (2026-11-25)**
+- Test (mise à jour de la base jouée puis annulée) : **17 / 17** — page dans la liste, adresses `/budget/...` (et pas `/budgetx`), accueil (Budget seul, Proforma d'abord, aucune page → accès refusé), module rattaché, PDF refusé sans la page et accordé avec, valider / payer valables sans la page, droit retiré quand la page est décochée, les 3 rôles existants reçoivent la page sans toucher aux autres, mise à jour rejouable sans doublon ; base intacte.
+- Vérification des types et du style : aucune erreur, aucun avertissement.
+- Construction complète de l'application (dossier séparé `.next-verif`) : réussie, 46 / 46 pages ; `tsconfig.json` inchangé.
+
+**À tester / points d'attention**
+- Appliquer la mise à jour de la base : `pnpm prisma migrate deploy` (jamais de `reset`), puis redémarrer.
+- Paramètres → Rôles : la carte Budget a maintenant « Accès à la page » ; la décocher pour un rôle de test → rubrique Budget absente du menu, `/budget/demandes` → « Accès refusé », création d'une demande refusée.
+- Comptes existants : leurs pages se resynchronisent à l'ouverture de l'application ; si le menu Budget n'apparaît pas tout de suite, recharger la page (ou se reconnecter).
+
 ## 2026-11-25 (suite 8) — Fiche du bon : « Rattacher à un budget » avec la question campagne / hors campagne
 
 **Demande / Contexte**

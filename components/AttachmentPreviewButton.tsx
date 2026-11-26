@@ -11,13 +11,16 @@ import {
 } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Eye, FileText, Download, FileX } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface AttachmentPreviewButtonProps {
   url: string | null;
   title?: string;
+  /** Taille du bouton (ex. « h-8 w-8 » dans un tableau compact). */
+  className?: string;
 }
 
-export function AttachmentPreviewButton({ url, title = 'Pièce jointe' }: AttachmentPreviewButtonProps) {
+export function AttachmentPreviewButton({ url, title = 'Pièce jointe', className }: AttachmentPreviewButtonProps) {
   const [open, setOpen] = useState(false);
 
   if (!url) {
@@ -25,7 +28,7 @@ export function AttachmentPreviewButton({ url, title = 'Pièce jointe' }: Attach
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-dashed text-muted-foreground">
+            <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-md border border-dashed text-muted-foreground', className)}>
               <FileX className="h-4 w-4" />
             </span>
           </TooltipTrigger>
@@ -43,7 +46,7 @@ export function AttachmentPreviewButton({ url, title = 'Pièce jointe' }: Attach
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="outline" size="icon" onClick={() => setOpen(true)}>
+            <Button variant="outline" size="icon" className={className} onClick={() => setOpen(true)}>
               <Eye className="h-4 w-4" />
             </Button>
           </TooltipTrigger>

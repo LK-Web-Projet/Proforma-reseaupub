@@ -8,6 +8,7 @@ import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
 import { fcfa } from "@/lib/proformaHistorique";
 import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
 import { requireBudgetUser, isSameEmail } from "@/lib/budgetAuth";
+import { requirePage } from "@/lib/authz";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
@@ -20,6 +21,8 @@ export async function POST(
   const { id } = await params;
   const caps = await requireBudgetUser();
   if (caps instanceof NextResponse) return caps;
+  const refusPage = await requirePage("budget");
+  if (refusPage) return refusPage;
 
   try {
     const existing = await prisma.demandeBudget.findUnique({ where: { id } });

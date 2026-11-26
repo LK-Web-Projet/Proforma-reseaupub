@@ -8,6 +8,8 @@ const updateUserSchema = z.object({
   roleId: z.string().min(1).optional(),
   active: z.boolean().optional(),
   password: z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères.").optional(),
+  // Départements du compte (budgets collectifs) : la liste complète remplace l'ancienne.
+  departementIds: z.array(z.string()).optional(),
 });
 
 // PATCH /api/users/[id] - Changer le rôle et/ou activer/désactiver un compte
@@ -32,7 +34,17 @@ export async function PATCH(
       return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
     }
 
-    const { roleId, active, password } = validation.data;
+    const { roleId, active, password, departementIds } = validation.data;
+    if (departementIds) {
+      const uniques = [...new Set(departementIds)];
+      const trouves = await prisma.departement.count({ where: { id: { in: uniques } } });
+      if (trouves !== uniques.length) return NextResponse.json({ error: "Un département choisi n'existe plus : rechargez la page." }, { status: 400 });
+      await prisma.$transaction([
+        prisma.utilisateurDepartement.deleteMany({ where: { userId: id } }),
+        prisma.utilisateurDepartement.createMany({ data: uniques.map((departementId) => ({ userId: id, departementId })) }),
+      ]);
+      if (roleId === undefined && active === undefined && !password) return NextResponse.json({ success: true, departementIds: uniques });
+    }
 
     if (roleId) {
       const role = await prisma.role.findUnique({ where: { id: roleId } });

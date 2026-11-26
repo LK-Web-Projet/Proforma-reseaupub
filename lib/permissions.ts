@@ -18,6 +18,8 @@ export const PAGE_KEYS = [
   "commercial",
   "finance",
   "parametres",
+  // Depuis le 2026-11-25 : la section Budget n'est plus ouverte à tous, elle se coche par rôle.
+  "budget",
 ] as const;
 
 export type PageKey = (typeof PAGE_KEYS)[number];
@@ -31,6 +33,7 @@ export const PAGE_LABELS: Record<PageKey, string> = {
   commercial: "Commercial",
   finance: "Finance (journal de caisse)",
   parametres: "Paramètres",
+  budget: "Budget (demandes et suivi)",
 };
 
 export function isPageKey(value: string): value is PageKey {
@@ -53,6 +56,7 @@ export function resolvePageKeyFromPathname(pathname: string): PageKey | null {
     ["/gestionnaire", "commercial"],
     ["/journal-caisse", "finance"],
     ["/parametres", "parametres"],
+    ["/budget", "budget"],
   ];
 
   for (const [prefix, key] of rules) {
@@ -74,14 +78,15 @@ const PAGE_DEFAULT_URLS: Record<PageKey, string> = {
   commercial: "/gestionnaire",
   finance: "/journal-caisse",
   parametres: "/parametres",
+  budget: "/budget/demandes",
 };
 
 /**
  * Détermine où envoyer un utilisateur après connexion (ou depuis /acces-refuse) : la
  * première section que son rôle autorise réellement, dans l'ordre de PAGE_KEYS — plutôt que
  * de forcer systématiquement `/facture`, qui bloquait immédiatement tout rôle sans la page
- * "proforma" cochée. `/budget/demandes` est toujours accessible (voir middleware.ts), donc
- * sert de repli sûr si aucune section classique n'est autorisée.
+ * "proforma" cochée. Aucune section autorisée : la page « Accès refusé » (la section Budget se
+ * coche désormais comme les autres et n'est plus un repli sûr).
  */
 export function resolveLandingUrl(pages: PageKey[] | undefined | null): string {
   if (pages) {
@@ -89,7 +94,7 @@ export function resolveLandingUrl(pages: PageKey[] | undefined | null): string {
       if (pages.includes(key)) return PAGE_DEFAULT_URLS[key];
     }
   }
-  return "/budget/demandes";
+  return "/acces-refuse";
 }
 
 /**
@@ -288,8 +293,8 @@ export const MODULES_DROITS: ModuleDroits[] = [
   {
     id: "budget",
     label: "Budget",
-    page: null,
-    note: "Tout le monde peut faire une demande de budget et voir les siennes. Ces droits donnent accès à toutes les demandes.",
+    page: "budget",
+    note: "La page Budget permet de faire une demande et de voir les siennes. Les cases ci-dessous donnent accès à toutes les demandes ; valider et payer servent aussi depuis la proforma et les prestataires, même sans la page.",
     actions: [
       { key: "canValidateBudget", flag: "canValidateBudget", label: "Valider les budgets", description: "Ponctuels et pour tiers, jusqu'au plafond délégué." },
       {
@@ -309,6 +314,16 @@ export const MODULES_DROITS: ModuleDroits[] = [
         flag: "canSaisirPetiteDepense",
         label: "Petites dépenses",
         description: "En espèces, hors bon, jusqu'au plafond des petites dépenses.",
+      },
+      {
+        key: "budget.toutesLignes",
+        label: "Voir toutes les lignes de tous les départements",
+        description: "Sans ce droit, on ne voit que les budgets où l'on intervient et, dans un budget collectif, les lignes de ses départements, leur total et ce qui les concerne.",
+      },
+      {
+        key: "budget.preparer",
+        label: "Préparer et soumettre les budgets collectifs",
+        description: "Ouvrir le budget mensuel, demander une correction ou retirer une ligne pendant la préparation, rouvrir, et soumettre à la direction.",
       },
       {
         key: "budget.exporter",
@@ -406,6 +421,13 @@ export function permissionsAvantGrille(pages: string[], flags: Record<RoleFlag, 
           break;
         case "budget.exporter":
           cles.push(a.key);
+          break;
+        // Miroir de la reprise de la migration 20261126100000_budget_collectif.
+        case "budget.toutesLignes":
+          if (flags.canValidateBudget || flags.canValidateBudgetMensuel || flags.canPayBudget || flags.canSaisirPetiteDepense) cles.push(a.key);
+          break;
+        case "budget.preparer":
+          if (flags.canPayBudget) cles.push(a.key);
           break;
         // Avant la grille : « payée » à la main = case direction ; statut libre = administrateur.
         case "fournisseurs.facturePayeeHorsPlateforme":

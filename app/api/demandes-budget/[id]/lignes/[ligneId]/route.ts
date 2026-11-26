@@ -59,8 +59,14 @@ export async function PATCH(
     const { resultat, demande, designation } = await prisma.$transaction(async (tx) => {
       const demande = await tx.demandeBudget.findUnique({ where: { id }, include: { lignes: true } });
       if (!demande) throw new CorrectionError("Demande introuvable.");
-      if (!isSameEmail(demande.requesterEmail, caps.email) && !caps.canPay) {
-        throw new CorrectionError("Seul le demandeur (ou le comptable) peut corriger les lignes de ce budget.");
+      // Budget collectif : le département de la ligne (ou qui l'a saisie) la corrige aussi.
+      const ligneCible = demande.lignes.find((l) => l.id === ligneId);
+      const sonDepartement =
+        demande.collectif &&
+        !!ligneCible &&
+        ((!!ligneCible.departementId && caps.departementIds.includes(ligneCible.departementId)) || isSameEmail(ligneCible.ajouteeParEmail ?? "", caps.email));
+      if (!isSameEmail(demande.requesterEmail, caps.email) && !isSameEmail(demande.responsableEmail ?? "", caps.email) && !caps.canPay && !sonDepartement) {
+        throw new CorrectionError("Seuls le demandeur, le département de la ligne (budget collectif) ou le comptable peuvent corriger cette ligne.");
       }
       if (demande.statut !== StatutDemandeBudget.SOUMISE && demande.statut !== StatutDemandeBudget.VALIDATION_PARTIELLE) {
         throw new CorrectionError("Ce budget n'est plus en cours de validation.");

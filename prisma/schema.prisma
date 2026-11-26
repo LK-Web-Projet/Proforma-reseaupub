@@ -63,6 +63,7 @@ model User {
   facturesFournisseurCrees         FactureFournisseur[]          @relation("FactureFournisseurCreatedBy")
   fournisseurStatutHistoriqueCrees FournisseurStatutHistorique[] @relation("FournisseurStatutHistoriqueCreatedBy")
   fournisseurDocumentsCrees        FournisseurDocument[]         @relation("FournisseurDocumentCreatedBy")
+  departements                     UtilisateurDepartement[]
 }
 
 model EntrepriseConfig {
@@ -309,6 +310,7 @@ model CashJournal {
   cashRegister         CashRegister            @relation(fields: [cashRegisterId], references: [id])
   createdBy            User?                   @relation("CashJournalCreatedBy", fields: [createdById], references: [id])
   attachments          CashJournalAttachment[]
+  facturePayee         FactureFournisseur?     @relation("FacturePaiementCaisse")
   paiement             Paiement?
   budgetDepense        BudgetDepense?          @relation("BudgetDepenseEcriture")
   // Renseigné si cette écriture (RECETTE) est la contre-écriture d'une dépense de budget annulée.
@@ -376,10 +378,12 @@ model Departement {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  lignesBudget DemandeBudgetLigne[]
-  prestataires Fournisseur[]
-  arrivees     FournisseurDepartementHistorique[] @relation("HistoriqueNouveauDepartement")
-  departs      FournisseurDepartementHistorique[] @relation("HistoriqueAncienDepartement")
+  lignesBudget   DemandeBudgetLigne[]
+  budgetsInvites DemandeBudgetDepartement[]
+  utilisateurs   UtilisateurDepartement[]
+  prestataires   Fournisseur[]
+  arrivees       FournisseurDepartementHistorique[] @relation("HistoriqueNouveauDepartement")
+  departs        FournisseurDepartementHistorique[] @relation("HistoriqueAncienDepartement")
 }
 
 // Historique des rattachements d'un prestataire : changement de département et/ou de poste.
@@ -462,6 +466,10 @@ model FactureFournisseur {
   paiementManuelReference String?
   paiementManuelParEmail  String?
   historiqueStatut        FactureFournisseurStatutHistorique[]
+  // Facture réglée par « Appliquer le paiement » SANS dépense de budget (aucune ligne de budget : caisse
+  // seule, ou campagne sans budget) : l'écriture de caisse qui l'a payée. Protège son statut.
+  paiementCaisseId        Int?                                 @unique
+  paiementCaisse          CashJournal?                         @relation("FacturePaiementCaisse", fields: [paiementCaisseId], references: [id])
 }
 
 // Changements de statut faits à la main sur une facture de prestataire (marquée payée hors
@@ -655,6 +663,9 @@ enum StatutCommandeFournisseur {
 }
 
 enum StatutDemandeBudget {
+  // Budget collectif ouvert : les départements invités saisissent leurs lignes, puis le comptable
+  // (droit « Préparer et soumettre les budgets collectifs ») le soumet à la direction.
+  EN_PREPARATION
   SOUMISE
   VALIDEE
   VALIDATION_PARTIELLE // au moins une ligne accordée (dépensable), d'autres en attente ou à corriger
@@ -688,6 +699,13 @@ enum ActionBudget {
   LIGNE_A_CORRIGER
   LIGNE_CORRIGEE
   LIGNE_RETIREE
+  // Budget collectif (préparation) : ouverture, invitations / date limite / responsable, lignes saisies
+  // par les départements, soumission à la direction, réouverture.
+  PREPARATION
+  LIGNE_AJOUTEE
+  LIGNE_MODIFIEE
+  SOUMISSION
+  PREPARATION_ROUVERTE
 }
 
 enum CategorieDepense {
@@ -701,6 +719,8 @@ enum CategorieDepense {
   MAINTENANCE
   IMPRESSION // supports, bâches, affichage
   PRESTATION // sous-traitance, prestataires
+  SALAIRES // salaires mensuels
+  COTISATION_CNSS // cotisations sociales CNSS des employés déclarés
   PERSONNEL // primes, per diem, frais de mission
   RESTAURATION
   AUTRE
@@ -808,6 +828,17 @@ model DemandeBudget {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Budget collectif (mensuel toujours, campagne au choix) : plusieurs départements saisissent leurs
+  // lignes pendant la préparation. Responsable = créateur (transférable) ; date limite de saisie.
+  collectif            Boolean                    @default(false)
+  responsableEmail     String?
+  responsableNom       String?
+  dateLimiteSaisie     DateTime?
+  rappelSaisieEnvoyeAt DateTime?
+  pretASoumettreAt     DateTime?
+  soumiseAt            DateTime?
+  departementsInvites  DemandeBudgetDepartement[]
+
   lignes       DemandeBudgetLigne[]
   proformas    DemandeBudgetProforma[]
   attachments  DemandeBudgetAttachment[]
@@ -815,6 +846,28 @@ model DemandeBudget {
   commentaires BudgetCommentaire[]
   depassements BudgetDepassement[]
   historique   BudgetHistorique[]
+}
+
+// Départements invités à saisir leurs lignes dans un budget collectif.
+model DemandeBudgetDepartement {
+  demandeBudgetId String
+  departementId   String
+  inviteAt        DateTime      @default(now())
+  demandeBudget   DemandeBudget @relation(fields: [demandeBudgetId], references: [id], onDelete: Cascade)
+  departement     Departement   @relation(fields: [departementId], references: [id])
+
+  @@id([demandeBudgetId, departementId])
+}
+
+// Départements d'un compte : dans un budget collectif, on saisit et on voit les lignes de ses départements.
+model UtilisateurDepartement {
+  userId        String
+  departementId String
+  createdAt     DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departement   Departement @relation(fields: [departementId], references: [id], onDelete: Cascade)
+
+  @@id([userId, departementId])
 }
 
 model DemandeBudgetLigne {
@@ -850,6 +903,10 @@ model DemandeBudgetLigne {
   depenses             BudgetDepense[]
   commentaires         BudgetCommentaire[]
   depassements         BudgetDepassement[]
+  // Qui a saisi la ligne (budget collectif : chaque département saisit les siennes).
+  ajouteeParEmail      String?
+  ajouteeParNom        String?
+  ajouteeAt            DateTime              @default(now())
   commandes            CommandeFournisseur[]
   facturesPrestataires FactureFournisseur[]
 

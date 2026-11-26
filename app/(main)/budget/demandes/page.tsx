@@ -51,6 +51,10 @@ interface DemandeBudget {
   nbLignesACorriger: number;
   createdAt: string;
   proformas: { invoice: { client: { nom: string } } }[];
+  /** Budget collectif (plusieurs départements) ; vue partielle = seulement les lignes de ses départements. */
+  collectif?: boolean;
+  vuePartielle?: boolean;
+  dateLimiteSaisie?: string | null;
 }
 
 const formatMontant = (value: number) =>
@@ -78,9 +82,9 @@ const GROUPES: {
   },
   {
     value: 'SOUMISE',
-    label: 'En attente de validation',
-    detail: 'Soumis, pas encore accordés',
-    statuts: ['SOUMISE'],
+    label: 'En préparation ou à valider',
+    detail: 'Budgets collectifs en préparation, ou soumis pas encore accordés',
+    statuts: ['EN_PREPARATION', 'SOUMISE'],
     icon: Clock,
     couleur: { bordure: 'border-t-orange-500', icone: 'bg-orange-100 text-orange-700', anneau: 'ring-orange-500 bg-orange-50/40' },
   },
@@ -530,9 +534,17 @@ export default function DemandesBudgetListPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE'} />
+                    <DemandeBudgetStatusBadge status={demande.statut} animate={demande.statut === 'SOUMISE' || demande.statut === 'EN_PREPARATION'} />
                     {demande.nbLignesACorriger > 0 && (
                       <p className="text-[11px] text-amber-700 mt-1">{demande.nbLignesACorriger} ligne(s) à corriger</p>
+                    )}
+                    {demande.collectif && (
+                      <p className="text-[11px] text-violet-700 mt-1">
+                        Collectif{demande.vuePartielle ? ' · vos départements' : ''}
+                        {demande.statut === 'EN_PREPARATION' && demande.dateLimiteSaisie
+                          ? ` · saisie jusqu'au ${new Date(demande.dateLimiteSaisie).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}`
+                          : ''}
+                      </p>
                     )}
                   </TableCell>
                   <TableCell className="text-center">

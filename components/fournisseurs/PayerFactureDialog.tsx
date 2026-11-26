@@ -19,9 +19,13 @@ interface InfosPaiement {
   commande: { id: string; numero: string; montantNet: number; fournisseur?: string } | null;
   dejaPaye: number;
   reste: number;
-  ligne: { id: string; designation: string; budgetId: string; budgetNumero: string; reste: number } | null;
-  ligneRequise: boolean;
-  lignesPossibles: { id: string; designation: string; budgetId: string; budgetNumero: string; budgetType: string; reste: number }[];
+  ligne: { id: string; designation: string; budgetId: string; budgetNumero: string; reste: number; proformas?: string[] } | null;
+  /**
+   * Facture : ce que fera le paiement, d'après son rattachement (jamais choisi ici) — BUDGET (ligne du bon
+   * ou de la facture), PROFORMA (campagne sans budget), CAISSE (rien de rattaché). Absent pour une avance.
+   */
+  mode?: 'BUDGET' | 'PROFORMA' | 'CAISSE';
+  proforma?: { id: string; numero: string } | null;
   blocages: string[];
   peutPayer: boolean;
 }
@@ -31,9 +35,10 @@ export type CiblePaiement = { type: 'facture'; id: string } | { type: 'avance'; 
 
 /**
  * « Appliquer le paiement » d'une facture fournisseur (liste des factures, fiche prestataire, fiche
- * du bon) : le montant est fixé au reste à payer. « Verser une avance » sur un bon de commande :
- * montant libre jusqu'au reste du bon. La preuve de paiement est obligatoire. Le serveur passe
- * l'écriture de caisse, consomme la ligne de budget, impute la proforma et met à jour facture et bon.
+ * du bon) : le montant est fixé au reste à payer et le budget n'est jamais choisi ici — il découle du
+ * rattachement (ligne du bon de commande, ou de la facture). Sans budget : sortie de caisse seule (ou
+ * dépense sur la proforma d'une campagne sans budget). « Verser une avance » sur un bon de commande :
+ * montant libre jusqu'au reste du bon. La preuve de paiement est obligatoire.
  */
 export function PayerFactureDialog({
   cible,
@@ -60,7 +65,6 @@ export function PayerFactureDialog({
   const [modePaiement, setModePaiement] = useState('VIREMENT');
   const [datePaiement, setDatePaiement] = useState(new Date().toISOString().split('T')[0]);
   const [reference, setReference] = useState('');
-  const [ligneBudgetId, setLigneBudgetId] = useState('');
   const [preuves, setPreuves] = useState<File[]>([]);
   const [envoi, setEnvoi] = useState(false);
   const { moyens, charge: moyensCharges, caisses: caissesDuMoyen } = useMoyensPaiement();
@@ -81,7 +85,6 @@ export function PayerFactureDialog({
     setInfos(null);
     setPreuves([]);
     setReference('');
-    setLigneBudgetId('');
     setMontant('');
     setChargement(true);
     Promise.all([
@@ -106,7 +109,6 @@ export function PayerFactureDialog({
     if (!infos || !url) return;
     if (avance && !(Number(montant) > 0)) return toast.error("Indiquez le montant de l'avance.");
     if (!cashRegisterId) return toast.error('Choisissez la caisse.');
-    if (infos.ligneRequise && !ligneBudgetId) return toast.error('Choisissez la ligne de budget qui paie cette facture.');
     if (preuves.length === 0) return toast.error('Joignez la preuve de paiement.');
     setEnvoi(true);
     try {
@@ -115,13 +117,18 @@ export function PayerFactureDialog({
       data.append('datePaiement', datePaiement);
       data.append('modePaiement', modePaiement);
       if (reference) data.append('reference', reference);
-      if (ligneBudgetId) data.append('ligneBudgetId', ligneBudgetId);
       if (avance) data.append('montant', montant);
       preuves.forEach((f) => data.append('preuves', f));
       const res = await fetch(url, { method: 'POST', body: data });
       const r = await res.json();
       if (!res.ok) throw new Error(r.error || 'Paiement refusé.');
-      toast.success(avance ? `Avance de ${fcfa(r.montant)} versée.` : `Paiement de ${fcfa(r.montant)} appliqué : facture payée.`);
+      toast.success(
+        avance
+          ? `Avance de ${fcfa(r.montant)} versée.`
+          : r.mode === 'CAISSE'
+            ? `Paiement de ${fcfa(r.montant)} sorti de la caisse : facture payée.`
+            : `Paiement de ${fcfa(r.montant)} appliqué : facture payée.`
+      );
       onPaye();
       onClose();
     } catch (e) {
@@ -137,7 +144,9 @@ export function PayerFactureDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Wallet className="h-5 w-5" /> {avance ? 'Verser une avance' : 'Appliquer le paiement'}</DialogTitle>
           <DialogDescription>
-            Le paiement sort de la caisse choisie, consomme la ligne de budget et s&apos;impute à la proforma de la campagne.{avance ? ' Le solde se paiera depuis la facture, avance déduite.' : ' La facture passe « payée ».'}
+            {avance
+              ? "L'avance sort de la caisse choisie, consomme la ligne de budget et s'impute à la proforma de la campagne. Le solde se paiera depuis la facture, avance déduite."
+              : 'Le paiement sort de la caisse choisie et la facture passe « payée ». Le budget et la proforma suivent le rattachement de la facture.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -162,6 +171,23 @@ export function PayerFactureDialog({
                 </p>
               )}
               {infos.dejaPaye > 0 && <p><span className="text-muted-foreground">Déjà versé (avances)</span> {fcfa(infos.dejaPaye)}</p>}
+              {infos.mode && (
+                <div className="mt-2 rounded bg-slate-50 p-2 text-xs text-slate-700">
+                  <p className="font-semibold">Ce paiement va :</p>
+                  <ul className="list-disc pl-4">
+                    <li>sortir {infos.reste > 0 ? fcfa(infos.reste) : "l'argent"} de la caisse choisie ;</li>
+                    {infos.mode === 'BUDGET' && infos.ligne && <li>le retirer de la ligne « {infos.ligne.designation} » du budget {infos.ligne.budgetNumero} ;</li>}
+                    {infos.mode === 'BUDGET' && infos.ligne?.proformas && infos.ligne.proformas.length > 0 && (
+                      <li>l&apos;enregistrer en dépense sur la proforma {infos.ligne.proformas.join(', ')} ;</li>
+                    )}
+                    {infos.mode === 'PROFORMA' && infos.proforma && (
+                      <li>l&apos;enregistrer en dépense sur la proforma {infos.proforma.numero} (campagne sans budget) ;</li>
+                    )}
+                    <li>passer la facture « payée »{infos.commande ? ' et le bon de commande « payé »' : ''}.</li>
+                  </ul>
+                  {infos.mode === 'CAISSE' && <p className="mt-1 text-muted-foreground">Aucun budget n&apos;est rattaché à cette facture : rien n&apos;est retiré d&apos;un budget.</p>}
+                </div>
+              )}
               <p className="text-base"><span className="text-muted-foreground">{avance ? 'Reste du bon' : 'À payer'}</span> <strong>{fcfa(infos.reste)}</strong></p>
             </div>
 
@@ -176,21 +202,6 @@ export function PayerFactureDialog({
 
             {!bloque && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {infos.ligneRequise && (
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Ligne de budget qui paie cette facture *</Label>
-                    <Select value={ligneBudgetId} onValueChange={setLigneBudgetId}>
-                      <SelectTrigger><SelectValue placeholder="Ex. budget mensuel de la comptabilité" /></SelectTrigger>
-                      <SelectContent>
-                        {infos.lignesPossibles.map((l) => (
-                          <SelectItem key={l.id} value={l.id} disabled={l.reste < infos.reste}>
-                            {l.budgetNumero} — {l.designation} — reste {fcfa(l.reste)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
                 {avance && (
                   <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="pf-montant">Montant de l&apos;avance (XOF) *</Label>

@@ -37,21 +37,24 @@ export function EcheanceFacture({ echeance }: { echeance?: EtatEcheance | null }
   );
 }
 
-/** Bouton rouge clignotant d'une facture en retard : ouvre « Appliquer le paiement ». */
-export function BoutonRetardPaiement({ echeance, onClick }: { echeance: EtatEcheance; onClick: () => void }) {
+/**
+ * Bouton rouge clignotant d'une facture en retard : ouvre « Appliquer le paiement ».
+ * `compact` (liste des factures) : « 12 j · Payer », le détail du retard reste dans l'info-bulle.
+ */
+export function BoutonRetardPaiement({ echeance, onClick, compact = false }: { echeance: EtatEcheance; onClick: () => void; compact?: boolean }) {
   return (
     <Button
       size="sm"
       onClick={onClick}
       title={`${libelleRetard(echeance)} — cliquer pour appliquer le paiement`}
-      className="relative h-8 gap-1.5 bg-red-600 text-white shadow-sm shadow-red-600/40 hover:bg-red-700 animate-pulse hover:animate-none"
+      className={cn('relative h-8 gap-1.5 bg-red-600 text-white shadow-sm shadow-red-600/40 hover:bg-red-700 animate-pulse hover:animate-none', compact && 'gap-1 px-2')}
     >
       <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
       </span>
       <AlarmClock className="h-3.5 w-3.5" />
-      En retard · {echeance.joursRetard} j — Payer
+      {compact ? `${echeance.joursRetard} j · Payer` : `En retard · ${echeance.joursRetard} j — Payer`}
     </Button>
   );
 }

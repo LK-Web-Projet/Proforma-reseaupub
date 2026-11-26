@@ -106,6 +106,7 @@ Une action non cochée disparaît de l'écran, et le serveur la refuse avec un m
 - **Commerciaux** : un commercial désactivé n'est plus proposé sur les nouvelles proformas. Ses proformas existantes ne changent pas.
 - **Exports** : chaque export (Excel, PDF) a son droit. Le PDF d'un budget à faire signer reste toujours imprimable.
 - Les cases du circuit budget et de la caisse, décrites dans le tableau ci-dessus, figurent aussi dans cette grille.
+- **Page Budget** : elle se coche comme les autres (avant, tout le monde y avait accès). Sans elle, la rubrique Budget disparaît du menu, on ne peut ni faire une demande de budget ni ouvrir les budgets, et le PDF d'un budget n'est plus téléchargeable. Les cases *Valider les budgets*, *Valider au niveau direction*, *Dépenser / payer* et *Petites dépenses* restent valables depuis la proforma et les prestataires. Lors de la mise à jour, tous les rôles existants ont reçu la page : l'administrateur la retire aux rôles qui ne doivent plus la voir ; un nouveau rôle ne l'a pas.
 
 ---
 
@@ -203,7 +204,7 @@ Fin | **Facture** du prestataire (requise) | violet
 ### La facture du fournisseur
 
 - La facture d'un **Fournisseur** est toujours rattachée à **son bon de commande**, et son **montant doit être celui du bon** (montant net). Un bon n'a qu'une facture : pour la remplacer, annuler d'abord l'ancienne.
-- La facture d'un **prestataire interne ou externe** n'a pas de bon : elle est rattachée **directement à une ligne de budget** (par exemple le budget mensuel de la comptabilité pour la paie des employés). La ligne peut être choisie à l'enregistrement ou au moment de payer.
+- La facture d'un **prestataire interne ou externe** n'a pas de bon : à l'enregistrement, on choisit **la ligne de budget** qui la paie (par exemple le budget mensuel de la comptabilité pour la paie des employés). La ligne est **facultative** pour l'instant : sans ligne, la facture se paiera par la caisse seule. Le budget ne se choisit **plus jamais au moment de payer**.
 
 ### Appliquer le paiement (comptable)
 
@@ -211,7 +212,7 @@ Fin | **Facture** du prestataire (requise) | violet
 titre: Quelle facture, rattachée à quoi ?
 question: Qui est le prestataire ?
 Fournisseur | Facture rattachée à **son bon de commande**, même montant que le bon | orange
-Prestataire interne ou externe | Pas de bon : facture rattachée **directement à une ligne de budget** (ex. paie sur le budget mensuel) | violet
+Prestataire interne ou externe | Pas de bon : ligne de budget choisie à l'enregistrement (facultative) | violet
 ```
 
 ```flux
@@ -222,13 +223,20 @@ Plateforme | Contrôle : **scan du bon**, liasse, budget ouvert, solde de caisse
 Plateforme | Caisse, budget, proforma mis à jour ; **facture et bon payés** | vert
 ```
 
-Dans **Prestataires → Liste Factures**, chaque facture « en attente » a un bouton **Appliquer le paiement** (aussi sur la fiche du prestataire et sur la fiche du bon). La fenêtre indique la facture, le bon, la ligne de budget et **le montant à payer**, fixé au reste (facture − avances déjà versées). On choisit :
+Dans **Prestataires → Liste Factures**, chaque facture « en attente » a un bouton **Appliquer le paiement** (aussi sur la fiche du prestataire et sur la fiche du bon). La fenêtre indique la facture, le bon, **le montant à payer**, fixé au reste (facture − avances déjà versées), et **ce que fera le paiement**. On choisit seulement :
 
 - le moyen de paiement, puis la caisse (seules les caisses liées à ce moyen sont proposées, voir « Moyens de paiement »), la date et la référence ;
-- la ligne de budget, s'il s'agit d'une facture de prestataire interne ou externe sans ligne ;
 - **la preuve de paiement, obligatoire** (reçu Mobile Money, ordre de virement, décharge espèces).
 
-En un clic : sortie de caisse, ligne de budget consommée, dépense sur la proforma de la campagne, facture **« payée »**, et bon **« payé »** s'il ne reste rien. Si quelque chose bloque (scan du bon manquant, liasse incomplète, budget pas ouvert), la fenêtre l'indique en rouge.
+Le budget n'est **jamais choisi ici** : il découle du rattachement de la facture.
+
+| La facture est rattachée à… | Ce que fait le paiement |
+|---|---|
+| un bon de commande avec sa ligne de budget, ou directement une ligne de budget | sortie de caisse, **retrait sur la ligne**, dépense sur la **proforma** du budget s'il en a une, facture « payée » (et bon « payé » au solde) |
+| un bon d'une **campagne sans budget** | sortie de caisse, **dépense sur la proforma**, facture et bon « payés » |
+| **rien** (pas de ligne : facture sans bon ni ligne, ancienne facture de fournisseur sans bon, ancien bon sans rattachement) | **sortie de la caisse choisie seulement** et facture « payée » ; rien n'est retiré d'un budget |
+
+Avec un bon de commande, ses contrôles restent toujours : bon validé, **scan signé** joint, liasse complète pour le solde. Si quelque chose bloque, la fenêtre l'indique en rouge. Une facture payée par la caisse seule garde son écriture de caisse (preuves jointes à l'écriture) : son statut ne se change plus à la main.
 
 **Liasse** : par défaut, le solde d'un bon exige aussi le bordereau de livraison signé (ou l'attestation de service fait) et la facture avec sa pièce. La proforma fournisseur et le BAT ne bloquent jamais le paiement. Ce réglage se change dans **Paramètres → Rôles** (« Exiger la liasse complète pour payer un bon de commande »). Le scan du bon signé reste toujours exigé.
 
@@ -237,7 +245,7 @@ En un clic : sortie de caisse, ligne de budget consommée, dépense sur la profo
 Le statut d'une facture se change depuis le **menu de statut** (clic sur le statut, dans la liste des factures ou sur la fiche du prestataire). Chaque changement fait à la main est gardé dans l'**historique** de la facture (icône horloge à côté du statut) : ancien et nouveau statut, date, auteur, moyen de paiement, preuve, motif.
 
 - **Payée (réglée hors plateforme)** : pour une facture déjà réglée en dehors de la plateforme et liée à **aucun bon de commande ni ligne de budget**. Il faut le droit *Marquer une facture payée sans paiement* (au départ : l'administration ; à ouvrir à d'autres rôles dans Paramètres → Rôles). On indique **le moyen de paiement, la date et la preuve** (obligatoires) et, au besoin, une référence. Aucune sortie de caisse : la facture est seulement notée payée, avec la mention « hors plateforme ».
-- Une facture liée à un bon de commande ou à une ligne de budget passe payée **uniquement** par *Appliquer le paiement*.
+- Une facture liée à un bon de commande ou à une ligne de budget passe payée **uniquement** par *Appliquer le paiement*. Une facture liée à rien peut aussi passer par *Appliquer le paiement* : l'argent sort alors de la caisse choisie.
 - **Annuler** une facture en attente : droit *Annuler une facture*.
 - **Changer librement** (payée → annulée, annulée → payée, retour en attente) : droit *Changer librement le statut* (administrateur). Une facture réglée par une **dépense de budget** reste protégée : il faut d'abord annuler la dépense (l'argent revient dans la caisse).
 
@@ -386,6 +394,31 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
 | « Vous avez validé ce budget … séparation des tâches » | Une autre personne enregistre la dépense |
 | « Le budget … n'est pas ouvert aux dépenses » | Faire valider le budget, ou en créer un nouveau s'il est clôturé |
 | « Le budget signé n'est pas encore joint » | Le demandeur imprime le budget, le fait signer par la DG et joint le scan sur la fiche du budget |
+
+## Budget collectif (plusieurs départements)
+
+Un budget **mensuel** est toujours collectif ; un budget de **campagne** peut l'être (case « Budget collectif » du formulaire). Les autres budgets restent individuels et sont soumis dès leur création, comme avant.
+
+```flux
+titre: La vie d'un budget collectif
+Comptable (mensuel) ou chef de projet (campagne) | Ouvre le budget **en préparation** et invite les départements | violet
+Chaque département | Saisit **ses** lignes avant la date limite ; ne voit que les siennes et leur total | cyan
+Comptable | Vérifie tout : **demande une correction** ou **retire** une ligne (avec un motif) | ambre
+Comptable | **Soumet à la direction** : la validation ligne par ligne commence | vert
+```
+
+- **Ouvrir** : *Budget → Faire une demande*.
+  - **Mensuel** : seul le comptable l'ouvre (droit *Préparer et soumettre les budgets collectifs*). Il n'y a **qu'un budget mensuel par mois**, et tous les départements actifs sont invités par défaut ; le comptable retire ceux qui ne sont pas concernés. S'il est déjà ouvert, le formulaire propose « Ajouter mes lignes à ce budget ».
+  - **Campagne collective** : le chef de projet choisit la proforma et les départements invités. Il est le responsable du budget.
+  - Une **date limite de saisie** est facultative : un rappel part la veille ; après elle, seuls le responsable et le comptable peuvent encore saisir (une ligne renvoyée en correction se corrige toujours).
+- **Saisir** : sur la fiche du budget, encadré « Budget collectif en préparation » → **Ajouter une ligne**, uniquement pour ses départements (*Paramètres → Utilisateurs*, colonne « Départements »). On modifie ou supprime ses lignes tant que le budget est en préparation.
+- **Qui voit quoi** :
+  - le droit **Voir toutes les lignes de tous les départements** voit tout (au départ : ceux qui valident ou paient) ;
+  - le responsable du budget et le comptable voient tout le budget ;
+  - les autres voient **les lignes de leurs départements**, leur total et ce qui les concerne (décisions, dépenses, dépassements, commentaires).
+- **Vérifier et soumettre** (comptable) : *Correction* (le département corrige sa ligne) ou *Retirer* (avec un motif) ; il ne modifie pas lui-même la ligne d'un département. Puis **Soumettre à la direction**. Sur une campagne, le responsable peut signaler **« Prêt à soumettre »** au comptable.
+- **Département oublié** : tant qu'aucune ligne n'est décidée par la direction, le comptable peut **Rouvrir la préparation** ; ensuite, le département fait un budget ponctuel.
+- Le responsable (ou le comptable, ou l'administrateur) peut **transférer la responsabilité** du budget à un autre compte.
 
 ## Départements
 
