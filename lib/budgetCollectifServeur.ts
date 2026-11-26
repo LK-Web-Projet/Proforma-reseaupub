@@ -235,7 +235,10 @@ export async function appliquerActionPreparation(db: Db, c: CompteCollectif, id:
     case "ajouterLigne":
     case "modifierLigne": {
       exigerPreparation();
-      const refus = refusSaisieDepartement(c, b, a.ligne.departementId);
+      // Une ligne renvoyée en correction se corrige même après la date limite (pas un nouvel ajout).
+      const enCorrection =
+        a.action === "modifierLigne" && b.lignes.some((x) => x.id === a.ligneId && x.statutValidation === StatutLigneBudget.A_CORRIGER);
+      const refus = refusSaisieDepartement(c, b, a.ligne.departementId, new Date(), { ignorerDateLimite: enCorrection });
       if (refus) throw new BudgetCollectifError(refus, 403);
       const erreurMoyen = await erreurMoyensPaiement(db, [a.ligne.modePaiement]);
       if (erreurMoyen) throw new BudgetCollectifError(erreurMoyen);

@@ -43,16 +43,19 @@ Décisions : **1a** on voit les lignes de son département (même saisies par un
 - Guide : nouvelle section « Budget collectif (plusieurs départements) ».
 
 **Erreurs rencontrées & solutions**
-- Le nouveau statut ne peut pas servir dans la transaction qui le crée (règle de la base) : le circuit complet ne peut pas être testé dans une transaction annulée avant que la mise à jour soit appliquée. Testés à la place : les règles (sans base) et la mise à jour elle-même (jouée puis annulée) ; le test du circuit complet est prêt, à lancer après la mise à jour.
+- Le nouveau statut ne peut pas servir dans la transaction qui le crée (règle de la base) : le circuit complet a été testé après l'application de la mise à jour par l'utilisateur.
+- Défaut trouvé par le test du circuit : une ligne renvoyée en correction ne pouvait pas être corrigée après la date limite (le premier contrôle de la modification ignorait l'exception) → corrigé dans `lib/budgetCollectifServeur.ts`.
 
 **Vérifications (2026-11-26)**
 - Règles de visibilité et de saisie : **30 / 30** (comptable, membres, collègue du même département, budget individuel d'un autre, responsable et transfert, droit « préparer » seul, saisie pour son département / un autre / non invité, date limite passée, ligne à corriger après la date, saisie fermée après soumission, filtre de la liste, droits de la grille et repli).
-- Mise à jour de la base jouée puis annulée sur la base de test : **9 / 9** (18 instructions ; 8 budgets repris avec leur responsable ; aucun collectif ; auteur et date de chaque ligne ; droits donnés aux bons rôles ; tables créées ; base intacte).
+- **Circuit complet** sur la base de test (mise à jour appliquée, essai dans une transaction annulée) : **29 / 29** — un membre n'ouvre pas le mensuel ; ouverture en préparation par le comptable ; un seul mensuel par mois ; chacun saisit pour son département seulement ; total recalculé ; auteur enregistré ; visibilité ; le comptable et un autre département ne modifient pas la ligne ; correction demandée ; soumission refusée tant qu'une ligne est à corriger ; date limite passée (ajout refusé, correction acceptée) ; seul le comptable soumet ; département avec lignes non retirable ; soumission (statut, total) ; plus de saisie ensuite ; réouverture tant que rien n'est décidé, refusée après ; campagne : invitation par le responsable, pas par un membre, « prêt », le responsable ne soumet pas, transfert, l'ancien responsable n'agit plus ; rappel la veille ; base intacte.
+- Non-régression sur la base à jour : paiements centralisés **31 / 31**, paiement des factures sans budget **16 / 16**.
+- Mise à jour de la base jouée puis annulée sur la base de test (avant son application) : **9 / 9** (18 instructions ; 8 budgets repris avec leur responsable ; aucun collectif ; auteur et date de chaque ligne ; droits donnés aux bons rôles ; tables créées ; base intacte).
 - Vérification des types et du style : aucune erreur, aucun avertissement.
 - Construction de l'application (dossier séparé `.next-verif`) : compilation réussie (6,4 min), vérification des types, **47 / 47 pages générées** ; la toute dernière étape (« Collecting build traces ») n'a pas fini dans la limite de 15 minutes — même blocage que la veille au soir, sans message d'erreur (lenteur du poste, pas du code). `tsconfig.json` inchangé.
 
 **À tester / points d'attention**
-- Appliquer les mises à jour de la base : `pnpm prisma migrate deploy` (page Budget, paiement par la caisse et budget collectif ; jamais de `reset`), redémarrer ; puis lancer le test du circuit complet (préparé).
+- Mises à jour de la base appliquées sur la base de test (utilisateur) ; à faire aussi en ligne : `pnpm prisma migrate deploy` (jamais de `reset`), puis redémarrer.
 - Paramètres → Utilisateurs : rattacher chaque compte à son ou ses départements (sans cela, personne ne peut saisir dans un budget collectif).
 - Paramètres → Rôles : vérifier « Voir toutes les lignes » et « Préparer et soumettre » sur chaque rôle.
 - À l'écran : le comptable ouvre le mensuel ; deux comptes de départements différents saisissent chacun leurs lignes (chacun ne voit que les siennes) ; correction, retrait, soumission, puis validation par la direction.
