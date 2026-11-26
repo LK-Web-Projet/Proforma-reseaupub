@@ -25,6 +25,29 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-26 — Factures prestataires sans défilement horizontal, numéro de proforma entier, catégories Salaires et CNSS
+
+**Demande / Contexte**
+1. La liste des factures prestataires défilait sur le côté : il faut tout faire tenir dans la largeur en réduisant les éléments.
+2. Dans la liste des proformas, le numéro était coupé (« … »).
+3. Budget : ajouter des catégories de dépense, **Salaires** à part, et **Cotisations CNSS** (employés déclarés).
+
+**Modifications apportées**
+- `app/(main)/fournisseur/factures/page.tsx` : tableau en colonnes de largeur fixe (`table-fixed`) ; prestataire et référence coupés avec le texte entier au survol ; la colonne « Pièce jointe » disparaît (l'icône de la pièce passe dans les actions) ; « Bon de commande » masqué sous `xl` et « Date » sous `md`, leur contenu passe en petit sous la référence ; bouton « Appliquer le paiement » → « Payer » (info-bulle complète) ; boutons d'action 32 px ; cartes du haut : montants plus petits sous `xl`, coupés au besoin ; en-tête qui passe à la ligne. Défilement horizontal gardé seulement en secours sur téléphone (`max-md:overflow-x-auto`).
+- `components/fournisseurs/RetardPaiement.tsx` : option `compact` de `BoutonRetardPaiement` (« 12 j · Payer »), utilisée dans la liste ; la fiche prestataire garde le bouton long.
+- `components/AttachmentPreviewButton.tsx` : option `className` (taille du bouton).
+- `app/(main)/facture/page.tsx` : colonne « Numéro / date » élargie à 11,5 rem, numéro sans coupure (`whitespace-nowrap`).
+- `prisma/schema.prisma` + `lib/budgetTypes.ts` : `SALAIRES` (« Salaires ») et `COTISATION_CNSS` (« Cotisations CNSS (employés déclarés) »), placées après « Prestations ». « Primes, per diem, missions » ne change pas.
+- `prisma/migrations/20261126120000_categories_salaires_cnss/migration.sql` : deux `ALTER TYPE … ADD VALUE IF NOT EXISTS` (ajout seulement, aucune ligne existante modifiée).
+
+**Erreurs rencontrées & solutions**
+- Cause du débordement : les cellules du tableau de base refusent de passer à la ligne (`whitespace-nowrap`) et les colonnes n'avaient pas de largeur → largeurs fixes et passage à la ligne autorisé pour la date/échéance et le statut.
+
+**À tester / points d'attention**
+- **À lancer par l'utilisateur** : `pnpm prisma migrate deploy` puis `pnpm prisma generate` (dev server arrêté), sinon les nouvelles catégories sont refusées à l'enregistrement.
+- Test de la migration sur la base de test, dans une transaction annulée : 5/5 (valeurs ajoutées, ordre, 15 catégories, rejouable, base inchangée après annulation).
+- Contrôle à l'écran : liste des factures prestataires sur un portable 13 pouces et sur grand écran, facture en retard (bouton rouge compact), facture « hors plateforme » ; numéro de proforma entier.
+
 ## 2026-11-26 — Budget collectif : préparation par plusieurs départements, vérification et soumission par le comptable
 
 **Demande / Contexte**

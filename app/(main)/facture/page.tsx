@@ -493,12 +493,13 @@ export default function Home() {
       </div>
 
       {/* Tableau sans défilement horizontal : colonnes à largeur fixe, textes tronqués (info-bulle) ou
-          renvoyés à la ligne ; gestionnaire et total TTC masqués sur les écrans étroits. */}
+          renvoyés à la ligne ; gestionnaire et total TTC masqués sur les écrans étroits. Le numéro de
+          proforma n'est jamais coupé : sa colonne est assez large pour RP-PRO-AA/MM-NNNN. */}
       <div className="rounded-md bg-white border">
         <Table className="table-fixed">
           <TableHeader className="bg-rpcolor/10 sticky top-0 z-10">
             <TableRow>
-              <TableHead className="w-[9.5rem]">Numéro / date</TableHead>
+              <TableHead className="w-[11.5rem]">Numéro / date</TableHead>
               <TableHead className="w-[18%]">Client</TableHead>
               <TableHead>Objet</TableHead>
               <TableHead className="hidden xl:table-cell w-[13%]">Gestionnaire</TableHead>
@@ -545,9 +546,9 @@ export default function Home() {
                       type="button"
                       onClick={(e) => copyToClipboard(e, facture.numero, "Numéro")}
                       title="Cliquer pour copier le numéro"
-                      className="group inline-flex max-w-full items-center gap-1 rounded px-1 -mx-1 font-mono text-sm group-hover/ligne:text-primary hover:bg-white hover:shadow-sm"
+                      className="group inline-flex items-center gap-1 whitespace-nowrap rounded px-1 -mx-1 font-mono text-sm group-hover/ligne:text-primary hover:bg-white hover:shadow-sm"
                     >
-                      <span className="truncate">{facture.numero}</span>
+                      <span>{facture.numero}</span>
                       <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100" />
                     </button>
                     <span className="block text-[11px] text-muted-foreground">{formatDateFR(facture.dateCreation)}</span>

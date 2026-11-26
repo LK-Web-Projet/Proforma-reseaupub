@@ -719,6 +719,8 @@ enum CategorieDepense {
   MAINTENANCE
   IMPRESSION // supports, bâches, affichage
   PRESTATION // sous-traitance, prestataires
+  SALAIRES // salaires mensuels
+  COTISATION_CNSS // cotisations sociales CNSS des employés déclarés
   PERSONNEL // primes, per diem, frais de mission
   RESTAURATION
   AUTRE

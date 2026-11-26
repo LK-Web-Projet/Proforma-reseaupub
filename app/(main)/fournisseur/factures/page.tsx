@@ -218,7 +218,7 @@ export default function FacturesListPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold">Liste des Factures Prestataires</h1>
           <p className="text-sm text-muted-foreground mt-1">{summary.count} facture(s) sur la période sélectionnée</p>
@@ -255,30 +255,30 @@ export default function FacturesListPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="border-t-4 border-t-blue-500">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
+          <CardContent className="pt-6 flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-sm text-muted-foreground">Total facturé</p>
-              <p className="text-xl font-bold">{formatMontant(summary.total)}</p>
+              <p className="truncate text-lg font-bold tabular-nums xl:text-xl">{formatMontant(summary.total)}</p>
             </div>
-            <div className="p-3 rounded-xl bg-blue-100 text-blue-700"><Wallet className="w-5 h-5" /></div>
+            <div className="shrink-0 p-3 rounded-xl bg-blue-100 text-blue-700"><Wallet className="w-5 h-5" /></div>
           </CardContent>
         </Card>
         <Card className="border-t-4 border-t-green-500">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
+          <CardContent className="pt-6 flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-sm text-muted-foreground">Payé</p>
-              <p className="text-xl font-bold">{formatMontant(summary.paye)}</p>
+              <p className="truncate text-lg font-bold tabular-nums xl:text-xl">{formatMontant(summary.paye)}</p>
             </div>
-            <div className="p-3 rounded-xl bg-green-100 text-green-700"><CheckCircle2 className="w-5 h-5" /></div>
+            <div className="shrink-0 p-3 rounded-xl bg-green-100 text-green-700"><CheckCircle2 className="w-5 h-5" /></div>
           </CardContent>
         </Card>
         <Card className="border-t-4 border-t-amber-500">
-          <CardContent className="pt-6 flex items-center justify-between">
-            <div>
+          <CardContent className="pt-6 flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-sm text-muted-foreground">En attente</p>
-              <p className="text-xl font-bold">{formatMontant(summary.enAttente)}</p>
+              <p className="truncate text-lg font-bold tabular-nums xl:text-xl">{formatMontant(summary.enAttente)}</p>
             </div>
-            <div className="p-3 rounded-xl bg-amber-100 text-amber-700"><Clock className="w-5 h-5" /></div>
+            <div className="shrink-0 p-3 rounded-xl bg-amber-100 text-amber-700"><Clock className="w-5 h-5" /></div>
           </CardContent>
         </Card>
         {/* Retards de paiement (toutes périodes) : clignote tant qu'il en reste ; un clic filtre la liste. */}
@@ -293,14 +293,14 @@ export default function FacturesListPage() {
             retards.nombre > 0 ? 'border-t-red-600 bg-red-50 hover:bg-red-100' : 'border-t-slate-300',
             filters.retard && 'ring-2 ring-red-500'
           )}>
-            <CardContent className="pt-6 flex items-center justify-between">
-              <div>
+            <CardContent className="pt-6 flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className={cn('text-sm', retards.nombre > 0 ? 'font-semibold text-red-700' : 'text-muted-foreground')}>
                   En retard de paiement{retards.nombre > 0 ? ` (${retards.nombre})` : ''}
                 </p>
-                <p className={cn('text-xl font-bold', retards.nombre > 0 && 'text-red-700')}>{formatMontant(retards.montant)}</p>
+                <p className={cn('truncate text-lg font-bold tabular-nums xl:text-xl', retards.nombre > 0 && 'text-red-700')}>{formatMontant(retards.montant)}</p>
               </div>
-              <div className={cn('p-3 rounded-xl', retards.nombre > 0 ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-100 text-slate-500')}>
+              <div className={cn('shrink-0 p-3 rounded-xl', retards.nombre > 0 ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-100 text-slate-500')}>
                 <AlarmClock className="w-5 h-5" />
               </div>
             </CardContent>
@@ -396,44 +396,60 @@ export default function FacturesListPage() {
           </Card>
         )}
       </div>
-      <div className="rounded-md border bg-white overflow-x-auto">
-        <Table>
+      {/* Tableau sans défilement horizontal : colonnes à largeur fixe, textes longs coupés (texte entier
+          au survol). Sur écran étroit, le bon de commande et la date passent sous la référence ; la
+          pièce jointe est une icône dans les actions. Le défilement ne reste qu'en secours sur téléphone. */}
+      <div className="rounded-md border bg-white max-md:overflow-x-auto">
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead>Prestataire</TableHead>
+              <TableHead className="w-[22%]">Prestataire</TableHead>
               <TableHead>Référence</TableHead>
-              <TableHead>Bon de commande</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="text-right">Montant</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead>Pièce jointe</TableHead>
-              <TableHead className="text-center">Actions</TableHead>
+              <TableHead className="hidden xl:table-cell w-[9rem]">Bon de commande</TableHead>
+              <TableHead className="hidden md:table-cell w-[8rem]">Date</TableHead>
+              <TableHead className="w-[8.5rem] text-right">Montant</TableHead>
+              <TableHead className="w-[9.5rem]">Statut</TableHead>
+              <TableHead className="w-[12rem] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={8} className="h-24 text-center">Chargement...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="h-24 text-center">Chargement...</TableCell></TableRow>
             ) : factures.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucune facture trouvée.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="h-24 text-center">Aucune facture trouvée.</TableCell></TableRow>
             ) : (
               factures.map((facture) => {
                 const isLocked = facture.status === 'PAYEE' || facture.status === 'ANNULEE';
                 return (
                 <TableRow key={facture.id} className={facture.echeance?.enRetard ? classeLigneRetard(facture.echeance) : 'hover:bg-muted/30'}>
                   <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="hidden sm:flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                         <Building2 className="h-3.5 w-3.5" />
                       </span>
-                      <span className="truncate max-w-[160px]">{facture.fournisseur.entreprise}</span>
+                      <span className="truncate" title={facture.fournisseur.entreprise}>{facture.fournisseur.entreprise}</span>
                     </div>
                   </TableCell>
-                  <TableCell>{facture.reference}</TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell>
+                    <span className="block truncate" title={facture.reference}>{facture.reference}</span>
+                    {facture.commande && (
+                      <Link
+                        href={`/fournisseur/${facture.commande.fournisseurId}/commandes/${facture.commande.id}`}
+                        className="block truncate text-[11px] font-medium text-primary hover:underline xl:hidden"
+                        title={`Bon de commande ${facture.commande.numero}`}
+                      >
+                        BC {facture.commande.numero}
+                      </Link>
+                    )}
+                    <span className="block text-[11px] text-muted-foreground md:hidden">{format(new Date(facture.date), "dd/MM/yyyy")}</span>
+                    <div className="md:hidden"><EcheanceFacture echeance={facture.echeance} /></div>
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell">
                     {facture.commande ? (
                       <Link
                         href={`/fournisseur/${facture.commande.fournisseurId}/commandes/${facture.commande.id}`}
-                        className="text-primary hover:underline font-medium"
+                        className="block truncate text-primary hover:underline font-medium"
+                        title={facture.commande.numero}
                       >
                         {facture.commande.numero}
                       </Link>
@@ -441,31 +457,29 @@ export default function FacturesListPage() {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="hidden md:table-cell whitespace-normal">
                     {format(new Date(facture.date), "dd/MM/yyyy")}
                     <EcheanceFacture echeance={facture.echeance} />
                   </TableCell>
-                  <TableCell className="text-right font-medium whitespace-nowrap">{formatMontant(facture.montant)}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{formatMontant(facture.montant)}</TableCell>
+                  <TableCell className="whitespace-normal">
                     <FactureStatutControl facture={facture} onChange={() => { fetchFactures(); fetchRetards(); }} />
                   </TableCell>
                   <TableCell>
-                    <AttachmentPreviewButton url={facture.pieceJointe} title={`Facture ${facture.reference}`} />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-end gap-1.5">
                     {!peut("canPayBudget") ? null : facture.echeance?.enRetard ? (
-                      <BoutonRetardPaiement echeance={facture.echeance} onClick={() => setFactureAPayer(facture.id)} />
+                      <BoutonRetardPaiement compact echeance={facture.echeance} onClick={() => setFactureAPayer(facture.id)} />
                     ) : facture.status === 'EN_ATTENTE' && (
-                      <Button size="sm" className="h-8 gap-1" onClick={() => setFactureAPayer(facture.id)}>
-                        <Wallet className="h-3.5 w-3.5" /> Appliquer le paiement
+                      <Button size="sm" className="h-8 gap-1 px-2.5" title="Appliquer le paiement" onClick={() => setFactureAPayer(facture.id)}>
+                        <Wallet className="h-3.5 w-3.5" /> Payer
                       </Button>
                     )}
+                    <AttachmentPreviewButton className="h-8 w-8" url={facture.pieceJointe} title={`Facture ${facture.reference}`} />
                     {(isLocked || peut("fournisseurs.factureModifier")) && (
 <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="outline" size="icon" onClick={() => setEditingFacture(facture)}>
+                          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setEditingFacture(facture)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
