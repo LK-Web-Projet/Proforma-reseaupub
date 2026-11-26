@@ -55,6 +55,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, FileText, CheckCircle2, XCircle, Wallet, Paperclip, Pencil, Plus, Lock, FileWarning, FileCheck2, MessageSquare, TrendingUp, Undo2, Repeat, Copy, Check, Scale, AlertTriangle, Trash2, Printer, FileSignature, Clock, CalendarClock, NotebookText } from 'lucide-react';
 import type { DocumentUploadType } from '@/lib/demandeBudgetAttachmentTypes';
 import { useDroits } from '@/components/DroitsProvider';
+import { PreparationBudgetCard, type BudgetPreparation } from '@/components/budget/PreparationBudgetCard';
 
 interface BudgetDepense {
   id: string;
@@ -104,6 +105,9 @@ interface BudgetRole {
 const EMPTY_ROLE: BudgetRole = { email: null, canValidateMensuel: false, canValidate: false, canPay: false, isImplique: false, plafond: 0 };
 
 interface DemandeBudgetDetail {
+  /** Budget collectif (préparation par plusieurs départements) et vue partielle (ses départements). */
+  collectif?: boolean;
+  vuePartielle?: boolean;
   id: string;
   numero: string;
   statut: DemandeBudgetStatus;
@@ -444,7 +448,8 @@ export default function DemandeBudgetDetailPage() {
 
   // Validation ligne par ligne : qui décide (matrice ci-dessus) et qui corrige (demandeur ou comptable).
   const peutDeciderLignes = enValidation && peutValider;
-  const peutCorrigerLignes = enValidation && (estDemandeur || role.canPay);
+  // Budget collectif : chaque département corrige ses lignes (il ne voit que les siennes).
+  const peutCorrigerLignes = enValidation && (estDemandeur || role.canPay || (!!demande.collectif && !!demande.vuePartielle));
   const lignesActives = demande.lignes.filter((l) => l.statutValidation !== 'RETIREE');
   const nbLignesEnAttente = lignesActives.filter((l) => l.statutValidation === 'EN_ATTENTE').length;
   const nbLignesACorriger = lignesActives.filter((l) => l.statutValidation === 'A_CORRIGER').length;
@@ -516,7 +521,7 @@ export default function DemandeBudgetDetailPage() {
           Retour aux demandes
         </Button>
         <div className="flex items-center gap-2">
-          {(role.isImplique || estDemandeur) && demande.statut !== 'REJETEE' && (
+          {(role.isImplique || estDemandeur) && demande.statut !== 'REJETEE' && !demande.collectif && (
             <Button
               variant="outline"
               size="sm"
@@ -528,7 +533,7 @@ export default function DemandeBudgetDetailPage() {
               {demande.type === 'MENSUEL' ? 'Reconduire au mois suivant' : 'Dupliquer'}
             </Button>
           )}
-          {peut('budget.exporter') && (
+          {peut('budget.exporter') && !demande.vuePartielle && demande.statut !== 'EN_PREPARATION' && (
           <Button variant="outline" size="sm" className="gap-2" onClick={handleImprimer} loading={isPrinting} disabled={isPrinting} title="Imprimer le budget pour signature">
             <Printer className="h-4 w-4" /> {isPrinting ? 'Génération...' : 'Imprimer'}
           </Button>
@@ -550,11 +555,15 @@ export default function DemandeBudgetDetailPage() {
           </div>
           <h1 className="text-3xl font-bold">{demande.numero}</h1>
           <p className="text-indigo-100 text-sm mt-2">
-            Soumise le {format(new Date(demande.createdAt), 'dd MMMM yyyy', { locale: fr })} par{' '}
+            {demande.statut === 'EN_PREPARATION' ? 'Ouvert' : 'Soumise'} le {format(new Date(demande.createdAt), 'dd MMMM yyyy', { locale: fr })} par{' '}
             <span className="text-white font-medium">{demande.requesterName || demande.requesterEmail}</span>
           </p>
         </div>
       </Card>
+
+      {demande.collectif && (
+        <PreparationBudgetCard demande={demande as unknown as BudgetPreparation} onChange={fetchDemande} />
+      )}
 
       {demande.statut === 'REJETEE' && (
         <Card className="border-t-4 border-t-amber-500 shadow-sm">
@@ -769,6 +778,7 @@ export default function DemandeBudgetDetailPage() {
         </Card>
       </div>
 
+      {demande.statut !== 'EN_PREPARATION' && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2 text-indigo-700">
@@ -1044,6 +1054,7 @@ export default function DemandeBudgetDetailPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       <BudgetRattacherCard
         demandeId={id}

@@ -7,8 +7,9 @@ import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
 import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
 import { fcfa } from "@/lib/proformaHistorique";
 import { typeBudgetDisponible, typeBudgetLabel } from "@/lib/budgetTypes";
-import { requireBudgetUser, isImpliqueBudget } from "@/lib/budgetAuth";
+import { requireBudgetUser } from "@/lib/budgetAuth";
 import { requirePage } from "@/lib/authz";
+import { filtreListeBudgets, ligneVisible, voitToutLeBudget } from "@/lib/budgetPortee";
 import { parseDemandeBudgetFormData, toPeriodeMois, firstZodMessage, lignesAvecMode } from "@/lib/budgetSchema";
 import { saveTypedDemandeBudgetAttachments, assertTypedAttachmentsAllowed, describeFsError, UploadRejectedError } from "@/lib/uploadDemandeBudget";
 import { sendDemandeSoumiseNotification } from "@/lib/email/demandeBudget";
@@ -34,11 +35,10 @@ export async function GET(request: NextRequest) {
 
     const where: Prisma.DemandeBudgetWhereInput = {};
 
-    // Un utilisateur sans aucun droit budget ne voit que ses propres demandes — filtre
-    // imposé côté serveur (pas de paramètre client possible pour le contourner).
-    if (!isImpliqueBudget(caps)) {
-      where.requesterEmail = { equals: caps.email, mode: "insensitive" };
-    }
+    // Sans le droit « Voir toutes les lignes » : ses budgets, et les budgets collectifs de ses
+    // départements — filtre imposé côté serveur (pas de paramètre client pour le contourner).
+    const filtre = filtreListeBudgets(caps);
+    if (filtre) where.AND = [filtre];
 
     if (statut && Object.values(StatutDemandeBudget).includes(statut as StatutDemandeBudget)) {
       where.statut = statut as StatutDemandeBudget;
@@ -84,15 +84,27 @@ export async function GET(request: NextRequest) {
         lignes: { include: { departement: { select: { id: true, nom: true, code: true } } } },
         bonCommande: { select: { id: true, numero: true } },
         proformas: { include: { invoice: { include: { client: true } } } },
-        depenses: { where: { annuleeAt: null }, select: { montant: true, createdAt: true, source: true, _count: { select: { attachments: true } } } },
-        depassements: { where: { statut: { in: [StatutDepassement.APPROUVE, StatutDepassement.EN_ATTENTE] } }, select: { montant: true, statut: true } },
+        depenses: { where: { annuleeAt: null }, select: { ligneId: true, montant: true, createdAt: true, source: true, _count: { select: { attachments: true } } } },
+        depassements: { where: { statut: { in: [StatutDepassement.APPROUVE, StatutDepassement.EN_ATTENTE] } }, select: { ligneId: true, montant: true, statut: true } },
+        departementsInvites: { select: { departementId: true, departement: { select: { nom: true } } } },
       },
     });
 
     const maintenant = new Date();
     return NextResponse.json(
-      demandes.map(({ depenses, depassements, ...d }) => ({
+      demandes.map(({ depenses: toutesDepenses, depassements: tousDepassements, ...budget }) => {
+        // Vue partielle (budget collectif d'autres départements) : seulement ses lignes et ce qui les concerne.
+        const toutVoir = voitToutLeBudget(caps, budget);
+        const lignes = toutVoir ? budget.lignes : budget.lignes.filter((l) => ligneVisible(caps, budget, l));
+        const ids = new Set(lignes.map((l) => l.id));
+        const depenses = toutVoir ? toutesDepenses : toutesDepenses.filter((x) => ids.has(x.ligneId));
+        const depassements = toutVoir ? tousDepassements : tousDepassements.filter((x) => ids.has(x.ligneId));
+        const d = toutVoir
+          ? budget
+          : { ...budget, lignes, montantTotal: lignes.filter((l) => l.statutValidation !== "RETIREE").reduce((s, l) => s + Number(l.montant), 0) };
+        return {
         ...d,
+        vuePartielle: !toutVoir,
         // Plafond effectif = prévu + dépassements approuvés ; consommé = dépenses non annulées.
         // Plafond effectif = Σ montants accordés + dépassements approuvés (0 tant que rien n'est accordé).
         montantPlafond:
@@ -108,7 +120,8 @@ export async function GET(request: NextRequest) {
         nbLignesACorriger: d.lignes.filter((l) => l.statutValidation === "A_CORRIGER").length,
         // Départements des lignes (non retirées), du plus gros montant au plus petit.
         departements: departementsDuBudget(d.lignes),
-      }))
+        };
+      })
     );
   } catch (error) {
     console.error("Erreur lors de la récupération des demandes de budget:", error);

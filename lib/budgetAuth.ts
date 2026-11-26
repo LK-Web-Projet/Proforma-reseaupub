@@ -4,6 +4,7 @@ import type { TypeBudget } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { getEntrepriseConfig } from "@/lib/entreprise";
 import { typeValideParAdmin } from "@/lib/budgetTypes";
+import { aLeDroit, isPageKey, permissionsAvantGrille, type RoleFlag } from "@/lib/permissions";
 
 /**
  * Droits du circuit budget de l'utilisateur connecté. Ils viennent UNIQUEMENT des cases
@@ -29,6 +30,31 @@ export interface BudgetCapabilities {
   canPetiteDepense: boolean;
   plafond: number;
   plafondPetiteDepense: number;
+  /** Droit « Voir toutes les lignes de tous les départements » (sinon : budgets où l'on intervient, lignes de ses départements). */
+  toutesLignes: boolean;
+  /** Droit « Préparer et soumettre les budgets collectifs » (comptable). */
+  preparer: boolean;
+  /** Administrateur des comptes (transfert du responsable d'un budget). */
+  canManageUsers: boolean;
+  /** Départements du compte (Paramètres → Utilisateurs). */
+  departementIds: string[];
+}
+
+/** Table absente tant que la mise à jour de la base correspondante n'est pas appliquée. */
+const tableAbsente = (e: unknown) => {
+  const code = (e as { code?: string } | null)?.code;
+  return code === "P2021" || code === "P2022";
+};
+
+/** Droits d'action du rôle (grille), avec repli sur les droits d'avant la grille. */
+async function droitsDuRole(roleId: string, pages: string[], flags: Record<RoleFlag, boolean>) {
+  try {
+    const lignes = await prisma.rolePermission.findMany({ where: { roleId }, select: { permission: true } });
+    return { pages: pages.filter(isPageKey), permissions: lignes.map((l) => l.permission), flags };
+  } catch (e) {
+    if (!tableAbsente(e)) throw e;
+    return { pages: pages.filter(isPageKey), permissions: permissionsAvantGrille(pages, flags), flags };
+  }
 }
 
 export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null> {
@@ -37,7 +63,7 @@ export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null
 
   const clerkUser = await currentUser();
   const [dbUser, config] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, include: { role: true } }),
+    prisma.user.findUnique({ where: { id: userId }, include: { role: { include: { pages: true } } } }),
     getEntrepriseConfig(),
   ]);
 
@@ -51,6 +77,24 @@ export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null
 
   const role = dbUser && dbUser.active ? dbUser.role : null;
 
+  const flags: Record<RoleFlag, boolean> = {
+    canManageUsers: !!role?.canManageUsers,
+    canValidateBudgetMensuel: !!role?.canValidateBudgetMensuel,
+    canValidateBudget: !!role?.canValidateBudget,
+    canPayBudget: !!role?.canPayBudget,
+    canSaisirCaisse: !!role?.canSaisirCaisse,
+    canSaisirPetiteDepense: !!role?.canSaisirPetiteDepense,
+  };
+  const droits = role ? await droitsDuRole(role.id, role.pages.map((p) => p.page), flags) : null;
+  let departementIds: string[] = [];
+  if (dbUser) {
+    try {
+      departementIds = (await prisma.utilisateurDepartement.findMany({ where: { userId }, select: { departementId: true } })).map((d) => d.departementId);
+    } catch (e) {
+      if (!tableAbsente(e)) throw e;
+    }
+  }
+
   return {
     userId,
     email,
@@ -62,6 +106,10 @@ export async function getBudgetCapabilities(): Promise<BudgetCapabilities | null
     canPetiteDepense: !!role?.canSaisirPetiteDepense,
     plafond: Number(config.plafondValidationDeleguee),
     plafondPetiteDepense: Number(config.plafondPetiteDepense),
+    toutesLignes: aLeDroit(droits, "budget.toutesLignes"),
+    preparer: aLeDroit(droits, "budget.preparer"),
+    canManageUsers: flags.canManageUsers,
+    departementIds,
   };
 }
 

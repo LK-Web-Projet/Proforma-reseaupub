@@ -316,6 +316,16 @@ export const MODULES_DROITS: ModuleDroits[] = [
         description: "En espèces, hors bon, jusqu'au plafond des petites dépenses.",
       },
       {
+        key: "budget.toutesLignes",
+        label: "Voir toutes les lignes de tous les départements",
+        description: "Sans ce droit, on ne voit que les budgets où l'on intervient et, dans un budget collectif, les lignes de ses départements, leur total et ce qui les concerne.",
+      },
+      {
+        key: "budget.preparer",
+        label: "Préparer et soumettre les budgets collectifs",
+        description: "Ouvrir le budget mensuel, demander une correction ou retirer une ligne pendant la préparation, rouvrir, et soumettre à la direction.",
+      },
+      {
         key: "budget.exporter",
         label: "Télécharger le PDF d'un budget",
         description: "L'impression pour signature, quand le budget signé est exigé, reste toujours possible.",
@@ -411,6 +421,13 @@ export function permissionsAvantGrille(pages: string[], flags: Record<RoleFlag, 
           break;
         case "budget.exporter":
           cles.push(a.key);
+          break;
+        // Miroir de la reprise de la migration 20261126100000_budget_collectif.
+        case "budget.toutesLignes":
+          if (flags.canValidateBudget || flags.canValidateBudgetMensuel || flags.canPayBudget || flags.canSaisirPetiteDepense) cles.push(a.key);
+          break;
+        case "budget.preparer":
+          if (flags.canPayBudget) cles.push(a.key);
           break;
         // Avant la grille : « payée » à la main = case direction ; statut libre = administrateur.
         case "fournisseurs.facturePayeeHorsPlateforme":

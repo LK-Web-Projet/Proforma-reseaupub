@@ -31,6 +31,8 @@ import { NotebookPen, Plus, Trash2 } from 'lucide-react';
 import { SANS_DEPARTEMENT, type DepartementOption } from '@/lib/departements';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next-nprogress-bar';
+import { OuvertureBudgetCollectif } from '@/components/budget/OuvertureBudgetCollectif';
 
 // 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts), pour éviter d'envoyer
 // une requête qui échouerait sur un fichier trop volumineux (photos mobile notamment).
@@ -196,6 +198,9 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
   // Type du budget modifié (ou reconduit) : reste sélectionnable même s'il est indisponible.
   const [typeDeDepart, setTypeDeDepart] = useState<TypeBudgetValue | null>(null);
   const [periodeMois, setPeriodeMois] = useState(() => new Date().toISOString().slice(0, 7));
+  // Budget collectif (2026-11-26) : le mensuel l'est toujours ; une campagne l'est au choix.
+  const router = useRouter();
+  const [campagneCollective, setCampagneCollective] = useState(false);
   // Le bénéficiaire découle du type : campagne / tiers → un client ou une entreprise externe ;
   // mensuel / ponctuel → RESEAUPUB (dépense interne).
   const beneficiaireType: BeneficiaireType = typeBudget === 'CAMPAGNE' || typeBudget === 'TIERS' ? 'CAMPAGNE_CLIENT' : 'RESEAUPUB';
@@ -488,55 +493,84 @@ export function DemandeBudgetForm({ onSuccess, onCancel, mode = 'create', demand
     }
   };
 
+  const selecteurType = (
+        <div className="space-y-2">
+          <label>Type de budget *</label>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {TYPE_BUDGET_VALUES.map((t) => {
+              // Type indisponible (Tiers) : carte grisée, sauf pour un budget déjà de ce type (modification).
+              const indisponible = !typeBudgetDisponible(t) && typeDeDepart !== t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => !indisponible && setTypeBudget(t)}
+                  disabled={indisponible}
+                  aria-disabled={indisponible || undefined}
+                  title={indisponible ? 'Indisponible pour le moment' : undefined}
+                  className={cn(
+                    'rounded-lg border p-3 text-left transition-colors',
+                    indisponible
+                      ? 'cursor-not-allowed bg-muted/40 opacity-60'
+                      : typeBudget === t ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted/50'
+                  )}
+                >
+                  <p className="text-sm font-semibold flex items-center justify-between gap-2">
+                    {TYPE_BUDGET_META[t].label}
+                    {indisponible && <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Bientôt</span>}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                    {indisponible ? 'Indisponible pour le moment.' : TYPE_BUDGET_META[t].description}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+          {typeBudget === 'MENSUEL' && (
+            <div className="flex items-center gap-2 pt-1">
+              <label htmlFor="periodeMois" className="text-sm whitespace-nowrap">Mois concerné *</label>
+              <Input
+                id="periodeMois"
+                type="month"
+                className="max-w-[200px]"
+                min={moisMensuelMinimum()}
+                value={periodeMois}
+                onChange={(e) => setPeriodeMois(e.target.value)}
+                required
+              />
+            </div>
+          )}
+          {mode === 'create' && typeBudget === 'CAMPAGNE' && (
+            <label className="flex items-start gap-2 pt-1 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={campagneCollective} onChange={(e) => setCampagneCollective(e.target.checked)} />
+              <span>
+                <span className="font-medium">Budget collectif</span>
+                <span className="block text-xs text-muted-foreground">Plusieurs départements saisissent leurs lignes ; le comptable vérifie puis soumet à la direction.</span>
+              </span>
+            </label>
+          )}
+        </div>
+  );
+
+  // Mensuel (toujours) ou campagne collective, à la création : ouverture « en préparation ».
+  const ouvertureCollective = mode === 'create' && (typeBudget === 'MENSUEL' || (typeBudget === 'CAMPAGNE' && campagneCollective));
+  if (ouvertureCollective) {
+    return (
+      <div className="space-y-6">
+        {selecteurType}
+        <OuvertureBudgetCollectif
+          type={typeBudget === 'MENSUEL' ? 'MENSUEL' : 'CAMPAGNE'}
+          periodeMois={periodeMois}
+          invoices={invoices}
+          onOuvert={(id) => router.push(`/budget/demandes/${id}`)}
+        />
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-2">
-        <label>Type de budget *</label>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          {TYPE_BUDGET_VALUES.map((t) => {
-            // Type indisponible (Tiers) : carte grisée, sauf pour un budget déjà de ce type (modification).
-            const indisponible = !typeBudgetDisponible(t) && typeDeDepart !== t;
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => !indisponible && setTypeBudget(t)}
-                disabled={indisponible}
-                aria-disabled={indisponible || undefined}
-                title={indisponible ? 'Indisponible pour le moment' : undefined}
-                className={cn(
-                  'rounded-lg border p-3 text-left transition-colors',
-                  indisponible
-                    ? 'cursor-not-allowed bg-muted/40 opacity-60'
-                    : typeBudget === t ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-muted/50'
-                )}
-              >
-                <p className="text-sm font-semibold flex items-center justify-between gap-2">
-                  {TYPE_BUDGET_META[t].label}
-                  {indisponible && <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Bientôt</span>}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                  {indisponible ? 'Indisponible pour le moment.' : TYPE_BUDGET_META[t].description}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-        {typeBudget === 'MENSUEL' && (
-          <div className="flex items-center gap-2 pt-1">
-            <label htmlFor="periodeMois" className="text-sm whitespace-nowrap">Mois concerné *</label>
-            <Input
-              id="periodeMois"
-              type="month"
-              className="max-w-[200px]"
-              min={moisMensuelMinimum()}
-              value={periodeMois}
-              onChange={(e) => setPeriodeMois(e.target.value)}
-              required
-            />
-          </div>
-        )}
-      </div>
+      {selecteurType}
 
       <div className="space-y-2">
         <label>Contexte et motivation de la demande *</label>

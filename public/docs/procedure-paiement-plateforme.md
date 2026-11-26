@@ -395,6 +395,31 @@ Ajout | *Ajouter le justificatif* : **Oui**, fichier protégé | vert
 | « Le budget … n'est pas ouvert aux dépenses » | Faire valider le budget, ou en créer un nouveau s'il est clôturé |
 | « Le budget signé n'est pas encore joint » | Le demandeur imprime le budget, le fait signer par la DG et joint le scan sur la fiche du budget |
 
+## Budget collectif (plusieurs départements)
+
+Un budget **mensuel** est toujours collectif ; un budget de **campagne** peut l'être (case « Budget collectif » du formulaire). Les autres budgets restent individuels et sont soumis dès leur création, comme avant.
+
+```flux
+titre: La vie d'un budget collectif
+Comptable (mensuel) ou chef de projet (campagne) | Ouvre le budget **en préparation** et invite les départements | violet
+Chaque département | Saisit **ses** lignes avant la date limite ; ne voit que les siennes et leur total | cyan
+Comptable | Vérifie tout : **demande une correction** ou **retire** une ligne (avec un motif) | ambre
+Comptable | **Soumet à la direction** : la validation ligne par ligne commence | vert
+```
+
+- **Ouvrir** : *Budget → Faire une demande*.
+  - **Mensuel** : seul le comptable l'ouvre (droit *Préparer et soumettre les budgets collectifs*). Il n'y a **qu'un budget mensuel par mois**, et tous les départements actifs sont invités par défaut ; le comptable retire ceux qui ne sont pas concernés. S'il est déjà ouvert, le formulaire propose « Ajouter mes lignes à ce budget ».
+  - **Campagne collective** : le chef de projet choisit la proforma et les départements invités. Il est le responsable du budget.
+  - Une **date limite de saisie** est facultative : un rappel part la veille ; après elle, seuls le responsable et le comptable peuvent encore saisir (une ligne renvoyée en correction se corrige toujours).
+- **Saisir** : sur la fiche du budget, encadré « Budget collectif en préparation » → **Ajouter une ligne**, uniquement pour ses départements (*Paramètres → Utilisateurs*, colonne « Départements »). On modifie ou supprime ses lignes tant que le budget est en préparation.
+- **Qui voit quoi** :
+  - le droit **Voir toutes les lignes de tous les départements** voit tout (au départ : ceux qui valident ou paient) ;
+  - le responsable du budget et le comptable voient tout le budget ;
+  - les autres voient **les lignes de leurs départements**, leur total et ce qui les concerne (décisions, dépenses, dépassements, commentaires).
+- **Vérifier et soumettre** (comptable) : *Correction* (le département corrige sa ligne) ou *Retirer* (avec un motif) ; il ne modifie pas lui-même la ligne d'un département. Puis **Soumettre à la direction**. Sur une campagne, le responsable peut signaler **« Prêt à soumettre »** au comptable.
+- **Département oublié** : tant qu'aucune ligne n'est décidée par la direction, le comptable peut **Rouvrir la préparation** ; ensuite, le département fait un budget ponctuel.
+- Le responsable (ou le comptable, ou l'administrateur) peut **transférer la responsabilité** du budget à un autre compte.
+
 ## Départements
 
 - Les départements se gèrent dans **Prestataires → Départements** : nom (toujours en MAJUSCULES), code court, description, contact, code comptable, couleur, montant mensuel indicatif. Un département ne se supprime pas : on le **désactive** (il n'est plus proposé sur les nouvelles lignes).

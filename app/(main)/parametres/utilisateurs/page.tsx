@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useActionEnCours } from "@/lib/useActionEnCours";
 import { Indicateur } from "@/components/ui/indicateur";
 import { ChevronLeft, Users, Plus, KeyRound } from "lucide-react";
+import { DepartementsUtilisateur, type DepartementOption } from "@/components/parametres/DepartementsUtilisateur";
 
 interface Role {
   id: string;
@@ -34,6 +35,8 @@ interface AppUser {
   active: boolean;
   createdAt: string;
   role: { id: string; nom: string };
+  /** Départements du compte (budgets collectifs). */
+  departements?: { departementId: string }[];
 }
 
 const emptyForm = { email: "", nom: "", password: "", roleId: "" };
@@ -42,6 +45,7 @@ export default function UtilisateursPage() {
   const { enCours, lancer } = useActionEnCours();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [departements, setDepartements] = useState<DepartementOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -65,6 +69,8 @@ export default function UtilisateursPage() {
       if (!usersRes.ok || !rolesRes.ok) throw new Error();
       setUsers(await usersRes.json());
       setRoles(await rolesRes.json());
+      const depRes = await fetch("/api/departements");
+      if (depRes.ok) setDepartements(await depRes.json());
     } catch {
       toast.error("Erreur lors de la récupération des utilisateurs.");
     } finally {
@@ -197,15 +203,16 @@ export default function UtilisateursPage() {
                 <TableHead>Nom</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Rôle</TableHead>
+                <TableHead>Départements</TableHead>
                 <TableHead className="text-center">Actif</TableHead>
                 <TableHead className="text-center">Mot de passe</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={5} className="text-center h-24">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center h-24">Chargement...</TableCell></TableRow>
               ) : users.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">Aucun utilisateur.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center h-24 text-muted-foreground">Aucun utilisateur.</TableCell></TableRow>
               ) : (
                 users.map((user) => (
                   <TableRow key={user.id}>
@@ -221,6 +228,16 @@ export default function UtilisateursPage() {
                       </Select>
                       {enCours(`role:${user.id}`) && <Indicateur label="Changement de rôle…" />}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <DepartementsUtilisateur
+                        userId={user.id}
+                        valeur={(user.departements ?? []).map((d) => d.departementId)}
+                        departements={departements}
+                        onChange={(ids) =>
+                          setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, departements: ids.map((departementId) => ({ departementId })) } : u)))
+                        }
+                      />
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">

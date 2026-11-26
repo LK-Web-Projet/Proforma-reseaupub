@@ -1,11 +1,18 @@
 import { cn } from '@/lib/utils';
 
-export type DemandeBudgetStatus = 'SOUMISE' | 'VALIDATION_PARTIELLE' | 'VALIDEE' | 'EN_COURS' | 'REJETEE' | 'PAYEE';
+export type DemandeBudgetStatus = 'EN_PREPARATION' | 'SOUMISE' | 'VALIDATION_PARTIELLE' | 'VALIDEE' | 'EN_COURS' | 'REJETEE' | 'PAYEE';
 
 export const DEMANDE_BUDGET_STATUS_META: Record<
   DemandeBudgetStatus,
   { label: string; dot: string; bg: string; text: string; ring: string }
 > = {
+  EN_PREPARATION: {
+    label: 'En préparation',
+    dot: 'bg-violet-500',
+    bg: 'bg-violet-50',
+    text: 'text-violet-700',
+    ring: 'ring-violet-600/20',
+  },
   SOUMISE: {
     label: 'Soumise',
     dot: 'bg-orange-500',

@@ -4,6 +4,7 @@ import { cloturerBudgetsMensuelsEchus } from "@/lib/budgetSuivi";
 import { construireEtatSoir, envoyerEtatSoir } from "@/lib/rapports/etatSoir";
 import { notifierRetardsPaiement } from "@/lib/retardPaiementServeur";
 import { notifierRelancesProforma } from "@/lib/relanceProformaServeur";
+import { notifierRappelsSaisie } from "@/lib/budgetCollectifServeur";
 
 /**
  * Minuterie interne : l'application déclenche elle-même ses tâches à heure fixe, sans crontab.
@@ -51,6 +52,13 @@ const TACHES: Tache[] = [
     heure: 8,
     joursOuvresSeulement: true,
     executer: () => notifierRelancesProforma(),
+  },
+  {
+    // Budgets collectifs : rappel aux départements invités la veille de la date limite de saisie.
+    nom: "rappels-saisie-budgets",
+    heure: 8,
+    joursOuvresSeulement: false,
+    executer: () => notifierRappelsSaisie(),
   },
   {
     nom: "etat-soir",

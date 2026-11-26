@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { isImpliqueBudget, requireBudgetUser } from "@/lib/budgetAuth";
+import { requireBudgetUser } from "@/lib/budgetAuth";
+import { filtreListeBudgets } from "@/lib/budgetPortee";
 
 /**
  * GET /api/recherche?q= — recherche par mot-clé dans les documents classés (procédure de paiement,
@@ -36,7 +37,9 @@ export async function GET(request: NextRequest) {
 
   const user = await prisma.user.findUnique({ where: { id: caps.userId }, include: { role: { include: { pages: true } } } });
   const pages = new Set(user?.active ? user.role.pages.map((p) => p.page) : []);
-  const tousLesBudgets = isImpliqueBudget(caps);
+  // Même visibilité que la liste des budgets (droit « Voir toutes les lignes », ou ses budgets et les
+  // budgets collectifs de ses départements — sans le montant total, qui couvre d'autres départements).
+  const tousLesBudgets = caps.toutesLignes;
   const fmt = (n: unknown) => `${new Intl.NumberFormat("fr-FR").format(Number(n))} F`;
   const dateFr = (d: Date) => d.toLocaleDateString("fr-FR");
 
@@ -44,7 +47,7 @@ export async function GET(request: NextRequest) {
     const rubriques: Record<string, ResultatRecherche[]> = {};
 
     // ── Budgets ─────────────────────────────────────────────────────────────
-    const visibiliteBudget: Prisma.DemandeBudgetWhereInput = tousLesBudgets ? {} : { requesterEmail: { equals: caps.email, mode: "insensitive" } };
+    const visibiliteBudget: Prisma.DemandeBudgetWhereInput = filtreListeBudgets(caps) ?? {};
     const budgets = await prisma.demandeBudget.findMany({
       where: {
         ...visibiliteBudget,
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest) {
     });
     rubriques.budgets = budgets.map((b) => ({
       titre: `${b.numero} — ${b.contexteMotivation.slice(0, 80)}`,
-      detail: `${b.type.toLowerCase()} · ${b.statut.toLowerCase().replace("_", " ")} · ${fmt(b.montantTotal)} · ${dateFr(b.createdAt)}`,
+      detail: `${b.type.toLowerCase()} · ${b.statut.toLowerCase().replace("_", " ")}${tousLesBudgets ? ` · ${fmt(b.montantTotal)}` : ""} · ${dateFr(b.createdAt)}`,
       lien: `/budget/demandes/${b.id}`,
     }));
 
