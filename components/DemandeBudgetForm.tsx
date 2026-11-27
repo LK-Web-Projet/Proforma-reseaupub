@@ -33,6 +33,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next-nprogress-bar';
 import { OuvertureBudgetCollectif } from '@/components/budget/OuvertureBudgetCollectif';
+import { ChampAutoHauteur } from '@/components/budget/ChampAutoHauteur';
 
 // 10 Mo — même limite que côté serveur (lib/uploadDemandeBudget.ts), pour éviter d'envoyer
 // une requête qui échouerait sur un fichier trop volumineux (photos mobile notamment).
@@ -108,27 +109,6 @@ const LIBELLE_CHAMP = 'block text-xs font-medium text-muted-foreground @5xl:hidd
 // Liste déroulante dont le texte passe à la ligne au lieu d'être coupé ou de déborder.
 const SELECT_QUI_PASSE_A_LA_LIGNE =
   'w-full min-h-9 data-[size=default]:h-auto whitespace-normal text-left *:data-[slot=select-value]:line-clamp-none';
-
-/** Zone de texte d'une ligne qui grandit avec son contenu (le texte passe à la ligne, jamais de défilement). */
-function ChampAutoHauteur({ className, ...props }: React.ComponentProps<typeof Textarea>) {
-  const ref = React.useRef<HTMLTextAreaElement>(null);
-  const ajuster = React.useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight + 2}px`;
-  }, []);
-  React.useLayoutEffect(ajuster, [props.value, ajuster]);
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    // La largeur change (fenêtre, passage en 2 colonnes) : la hauteur nécessaire aussi.
-    const observateur = new ResizeObserver(ajuster);
-    observateur.observe(el);
-    return () => observateur.disconnect();
-  }, [ajuster]);
-  return <Textarea ref={ref} rows={1} {...props} className={cn('min-h-9 resize-none overflow-hidden py-1.5 leading-snug', className)} />;
-}
 
 /** « Nom de la campagne (Nom du client) » — sans parenthèses si le client n'est pas (encore) connu. */
 function nomAvecClient(nomCampagne: string, client: string): string {

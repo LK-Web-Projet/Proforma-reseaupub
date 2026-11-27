@@ -123,7 +123,8 @@ export async function GET(
         depenses,
         depassements: demande.depassements.filter((x) => ids.has(x.ligneId)),
         commentaires: demande.commentaires.filter((x) => ids.has(x.ligneId)),
-        attachments: demande.attachments.filter((a) => a.depenseId && idsDepenses.has(a.depenseId)),
+        // Pièces de ses dépenses, et documents qui justifient ses lignes (budget collectif).
+        attachments: demande.attachments.filter((a) => (a.depenseId && idsDepenses.has(a.depenseId)) || (!!a.ligneId && ids.has(a.ligneId))),
         historique: demande.historique.filter((h) => ACTIONS_GENERALES.includes(h.action) || h.auteurEmail?.toLowerCase() === caps.email),
         depensesARattacher: [],
         facturesPrestataires: [],
