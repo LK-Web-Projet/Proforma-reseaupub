@@ -1,20 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { AlertTriangle, CalendarClock, Check, Info, Pencil, Plus, RotateCcw, Send, Trash2, UserCog, Users, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Check, Info, RotateCcw, Send, UserCog, Users, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { CATEGORIE_DEPENSE_LABELS, CATEGORIE_DEPENSE_VALUES, categorieLabel } from '@/lib/budgetTypes';
-import { moyensProposes } from '@/lib/moyensPaiement';
+import { totauxParModePaiement } from '@/lib/budgetTypes';
 import { useMoyensPaiement } from '@/lib/useMoyensPaiement';
+import { LignesDepartementEditables, type EtatSection } from '@/components/budget/LignesDepartementEditables';
+import { DocumentsLigneDialog, type DocumentLigne } from '@/components/budget/DocumentsLigneDialog';
 import { cn } from '@/lib/utils';
 
 export interface LignePreparation {
@@ -46,6 +46,8 @@ export interface BudgetPreparation {
   pretASoumettreAt?: string | null;
   departementsInvites?: { departementId: string; departement: { id: string; nom: string } }[];
   lignes: LignePreparation[];
+  /** Documents du budget ; ceux qui ont un `ligneId` justifient une ligne (joints pendant la préparation). */
+  attachments?: DocumentLigne[];
   vuePartielle?: boolean;
   preparation?: {
     toutVoir: boolean;
@@ -73,131 +75,6 @@ async function envoyerAction(id: string, corps: Record<string, unknown>) {
 }
 
 /** Ajout ou modification d'une ligne de son département pendant la préparation. */
-function LigneDialog({
-  budgetId,
-  departements,
-  ligne,
-  open,
-  onClose,
-  onFait,
-}: {
-  budgetId: string;
-  departements: { id: string; nom: string }[];
-  ligne: LignePreparation | null;
-  open: boolean;
-  onClose: () => void;
-  onFait: () => void;
-}) {
-  const { moyens } = useMoyensPaiement();
-  const [v, setV] = useState({ departementId: '', designation: '', categorie: '', modePaiement: 'ESPECES', montant: '', detail: '', dateLimite: '' });
-  const [envoi, setEnvoi] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setV(
-      ligne
-        ? {
-            departementId: ligne.departementId ?? '',
-            designation: ligne.designation,
-            categorie: ligne.categorie ?? '',
-            modePaiement: ligne.modePaiement ?? 'ESPECES',
-            montant: String(Number(ligne.montant)),
-            detail: ligne.detail ?? '',
-            dateLimite: ligne.dateLimite ? ligne.dateLimite.slice(0, 10) : '',
-          }
-        : { departementId: departements.length === 1 ? departements[0].id : '', designation: '', categorie: '', modePaiement: 'ESPECES', montant: '', detail: '', dateLimite: '' }
-    );
-  }, [open, ligne, departements]);
-
-  const enregistrer = async () => {
-    if (!v.departementId) return void toast.error('Choisissez le département.');
-    if (!v.designation.trim()) return void toast.error('Indiquez la désignation.');
-    if (!v.categorie) return void toast.error('Choisissez une catégorie.');
-    if (!(Number(v.montant) > 0)) return void toast.error('Indiquez un montant supérieur à 0.');
-    setEnvoi(true);
-    try {
-      const donnees = {
-        departementId: v.departementId,
-        designation: v.designation.trim(),
-        categorie: v.categorie,
-        modePaiement: v.modePaiement,
-        montant: Number(v.montant),
-        detail: v.detail.trim() || undefined,
-        dateLimite: v.dateLimite || undefined,
-      };
-      toast.success(await envoyerAction(budgetId, ligne ? { action: 'modifierLigne', ligneId: ligne.id, ligne: donnees } : { action: 'ajouterLigne', ligne: donnees }));
-      onFait();
-      onClose();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erreur.');
-    } finally {
-      setEnvoi(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && !envoi && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{ligne ? 'Modifier la ligne' : 'Ajouter une ligne'}</DialogTitle>
-          {ligne?.statutValidation === 'A_CORRIGER' && ligne.motifDecision && (
-            <DialogDescription className="text-amber-800">À corriger : {ligne.motifDecision}</DialogDescription>
-          )}
-        </DialogHeader>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1.5 sm:col-span-2">
-            <label className="text-sm font-medium">Département *</label>
-            <Select value={v.departementId} onValueChange={(x) => setV((p) => ({ ...p, departementId: x }))}>
-              <SelectTrigger><SelectValue placeholder="Choisir le département" /></SelectTrigger>
-              <SelectContent>
-                {departements.map((d) => <SelectItem key={d.id} value={d.id}>{d.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <label className="text-sm font-medium">Désignation *</label>
-            <Input value={v.designation} onChange={(e) => setV((p) => ({ ...p, designation: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Catégorie *</label>
-            <Select value={v.categorie} onValueChange={(x) => setV((p) => ({ ...p, categorie: x }))}>
-              <SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger>
-              <SelectContent>
-                {CATEGORIE_DEPENSE_VALUES.map((c) => <SelectItem key={c} value={c}>{CATEGORIE_DEPENSE_LABELS[c]}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Moyen de paiement prévu *</label>
-            <Select value={v.modePaiement} onValueChange={(x) => setV((p) => ({ ...p, modePaiement: x }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {moyensProposes(moyens, v.modePaiement).map((m) => <SelectItem key={m.code} value={m.code}>{m.nom}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Montant (XOF) *</label>
-            <Input type="number" min={0} value={v.montant} onChange={(e) => setV((p) => ({ ...p, montant: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Délai (facultatif)</label>
-            <Input type="date" value={v.dateLimite} onChange={(e) => setV((p) => ({ ...p, dateLimite: e.target.value }))} />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <label className="text-sm font-medium">Détail (facultatif)</label>
-            <Textarea rows={2} maxLength={2000} value={v.detail} onChange={(e) => setV((p) => ({ ...p, detail: e.target.value }))} placeholder="Quantités, prix unitaires, fournisseur pressenti…" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={envoi}>Annuler</Button>
-          <Button onClick={enregistrer} loading={envoi} disabled={envoi}>Enregistrer</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 type DialogueAction =
   | { type: 'correction' | 'retirerLigne'; ligne: LignePreparation }
   | { type: 'inviter' }
@@ -214,7 +91,9 @@ type DialogueAction =
 export function PreparationBudgetCard({ demande, onChange }: { demande: BudgetPreparation; onChange: () => void }) {
   const p = demande.preparation;
   const enPreparation = demande.statut === 'EN_PREPARATION';
-  const [ligneDialog, setLigneDialog] = useState<{ open: boolean; ligne: LignePreparation | null }>({ open: false, ligne: null });
+  const [documentsDe, setDocumentsDe] = useState<{ ligne: LignePreparation; modifiable: boolean } | null>(null);
+  const [etats, setEtats] = useState<Record<string, EtatSection>>({});
+  const { moyens } = useMoyensPaiement();
   const [dialogue, setDialogue] = useState<DialogueAction>(null);
   const [texte, setTexte] = useState('');
   const [selection, setSelection] = useState<string[]>([]);
@@ -235,7 +114,23 @@ export function PreparationBudgetCard({ demande, onChange }: { demande: BudgetPr
       return { departement: d, lignes, total: actives.reduce((s, l) => s + Number(l.montant), 0), nb: actives.length };
     });
   }, [invites, demande.lignes, p]);
-  const total = sections.reduce((s, x) => s + x.total, 0);
+  // Totaux en direct : montants saisis (même pas encore enregistrés) remontés par chaque département.
+  const onEtat = useCallback((depId: string, etat: EtatSection) => setEtats((p) => ({ ...p, [depId]: etat })), []);
+  const montantsAffiches = sections.flatMap((s) => etats[s.departement.id]?.montants ?? s.lignes.filter((l) => l.statutValidation !== 'RETIREE').map((l) => ({ montant: Number(l.montant), modePaiement: l.modePaiement })));
+  const total = montantsAffiches.reduce((s, x) => s + x.montant, 0);
+  const totauxParMode = totauxParModePaiement(montantsAffiches, 'ESPECES', moyens).filter((x) => x.demande > 0);
+  const nonEnregistre = sections.some((s) => etats[s.departement.id]?.modifie);
+  useEffect(() => {
+    if (!nonEnregistre) return;
+    const prevenir = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', prevenir);
+    return () => window.removeEventListener('beforeunload', prevenir);
+  }, [nonEnregistre]);
+  const documentsLigne = (ligneId: string) => (demande.attachments ?? []).filter((a) => a.ligneId === ligneId);
+  const saisiePour = new Set(p?.departementsSaisie.map((d) => d.id) ?? []);
+  // Modifiable par ce compte : sa ligne, non retirée, et saisie ouverte (une ligne à corriger le reste après la date limite).
+  const estModifiable = (l: LignePreparation) =>
+    enPreparation && l.statutValidation !== 'RETIREE' && saLigne(l) && !!l.departementId && (saisiePour.has(l.departementId) || l.statutValidation === 'A_CORRIGER');
   const sansSaisie = sections.filter((s) => s.nb === 0).length;
   const aCorriger = demande.lignes.filter((l) => l.statutValidation === 'A_CORRIGER').length;
 
@@ -266,11 +161,6 @@ export function PreparationBudgetCard({ demande, onChange }: { demande: BudgetPr
     }
   };
 
-  const supprimer = (l: LignePreparation) => {
-    if (!window.confirm(`Supprimer la ligne « ${l.designation} » ?`)) return;
-    void executer({ action: 'supprimerLigne', ligneId: l.id });
-  };
-
   if (!demande.collectif || !p) return null;
 
   return (
@@ -293,11 +183,6 @@ export function PreparationBudgetCard({ demande, onChange }: { demande: BudgetPr
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {enPreparation && p.departementsSaisie.length > 0 && (
-              <Button size="sm" className="gap-1" onClick={() => setLigneDialog({ open: true, ligne: null })}>
-                <Plus className="h-4 w-4" /> Ajouter une ligne
-              </Button>
-            )}
             {enPreparation && coordinateur && (
               <>
                 <Button size="sm" variant="outline" className="gap-1" onClick={() => ouvrir({ type: 'inviter' })}><Users className="h-4 w-4" /> Inviter</Button>
@@ -343,73 +228,48 @@ export function PreparationBudgetCard({ demande, onChange }: { demande: BudgetPr
           {sections.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucun de vos départements n&apos;est invité à ce budget.</p>
           ) : (
-            sections.map(({ departement, lignes, total: totalDep, nb }) => (
-              <div key={departement.id} className="rounded-md border">
-                <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
-                  <p className="text-sm font-semibold">{departement.nom}</p>
-                  <p className="text-sm">
-                    <span className="text-muted-foreground">{nb} ligne(s) · </span>
-                    <strong>{fcfa(totalDep)}</strong>
-                  </p>
-                </div>
-                {lignes.length === 0 ? (
-                  <p className="px-3 py-3 text-xs text-muted-foreground italic">Aucune ligne saisie pour le moment.</p>
-                ) : (
-                  <ul className="divide-y">
-                    {lignes.map((l) => {
-                      const retiree = l.statutValidation === 'RETIREE';
-                      const modifiable = !retiree && saLigne(l);
-                      return (
-                        <li key={l.id} className={cn('flex flex-col sm:flex-row sm:items-start gap-2 px-3 py-2 text-sm', retiree && 'opacity-60')}>
-                          <div className="min-w-0 flex-1">
-                            <p className={cn('font-medium break-words', retiree && 'line-through')}>{l.designation}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {categorieLabel(l.categorie)}
-                              {l.dateLimite ? ` · délai ${jourFr(l.dateLimite)}` : ''}
-                              {l.ajouteeParNom || l.ajouteeParEmail ? ` · saisie par ${l.ajouteeParNom || l.ajouteeParEmail}` : ''}
-                            </p>
-                            {l.detail && <p className="text-[11px] text-muted-foreground whitespace-pre-line">{l.detail}</p>}
-                            {l.statutValidation === 'A_CORRIGER' && (
-                              <Badge variant="outline" className="mt-1 border-amber-300 bg-amber-50 text-amber-800 font-normal whitespace-normal">À corriger : {l.motifDecision}</Badge>
-                            )}
-                            {retiree && l.motifDecision && <p className="text-[11px] text-red-700">Retirée : {l.motifDecision}</p>}
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <span className={cn('font-semibold whitespace-nowrap', retiree && 'line-through')}>{fcfa(Number(l.montant))}</span>
-                            {modifiable && (
-                              <>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => setLigneDialog({ open: true, ligne: l })}><Pencil className="h-3.5 w-3.5" /></Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600" title="Supprimer" onClick={() => supprimer(l)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                              </>
-                            )}
-                            {p.preparer && !retiree && !saLigne(l) && (
-                              <>
-                                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-amber-700" onClick={() => ouvrir({ type: 'correction', ligne: l })}>Correction</Button>
-                                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-red-700" onClick={() => ouvrir({ type: 'retirerLigne', ligne: l })}>Retirer</Button>
-                              </>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
+            sections.map(({ departement, lignes }) => (
+              <LignesDepartementEditables
+                key={departement.id}
+                budgetId={demande.id}
+                departement={departement}
+                lignes={lignes}
+                peutAjouter={saisiePour.has(departement.id)}
+                estModifiable={estModifiable}
+                peutCorriger={(l) => p.preparer && l.statutValidation !== 'RETIREE' && !saLigne(l)}
+                nbDocuments={(id) => documentsLigne(id).length}
+                onDocuments={(ligne, modifiable) => setDocumentsDe({ ligne, modifiable })}
+                onCorrection={(ligne) => ouvrir({ type: 'correction', ligne })}
+                onRetirer={(ligne) => ouvrir({ type: 'retirerLigne', ligne })}
+                onEtat={onEtat}
+                onEnregistre={onChange}
+              />
             ))
           )}
-          <div className="flex justify-end text-sm">
-            <span className="text-muted-foreground mr-2">{p.toutVoir ? 'Total du budget' : 'Total de vos départements'} :</span>
-            <strong>{fcfa(total)}</strong>
+          <div className="flex flex-col items-end gap-1">
+            <div className="text-base">
+              <span className="text-muted-foreground mr-2">{p.toutVoir ? 'Total du budget' : 'Total de vos départements'} :</span>
+              <strong className="tabular-nums">{fcfa(total)}</strong>
+            </div>
+            {totauxParMode.length > 1 && (
+              <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {totauxParMode.map((x) => (
+                  <span key={x.mode}>{x.label} : <span className="font-medium text-foreground">{fcfa(x.demande)}</span></span>
+                ))}
+              </div>
+            )}
+            {nonEnregistre && <p className="text-xs text-amber-700">Certaines lignes ne sont pas encore enregistrées : les totaux en tiennent compte.</p>}
           </div>
         </CardContent>
       )}
 
-      <LigneDialog
+      <DocumentsLigneDialog
         budgetId={demande.id}
-        departements={ligneDialog.ligne?.departement ? [ligneDialog.ligne.departement, ...p.departementsSaisie.filter((d) => d.id !== ligneDialog.ligne?.departementId)] : p.departementsSaisie}
-        ligne={ligneDialog.ligne}
-        open={ligneDialog.open}
-        onClose={() => setLigneDialog({ open: false, ligne: null })}
+        ligne={documentsDe?.ligne ?? null}
+        documents={documentsDe ? documentsLigne(documentsDe.ligne.id) : []}
+        modifiable={!!documentsDe?.modifiable}
+        open={!!documentsDe}
+        onClose={() => setDocumentsDe(null)}
         onFait={onChange}
       />
 

@@ -6,7 +6,7 @@ import { erreurDepartementsLignes } from "@/lib/departementsServeur";
 import { codeMoyenSchema } from "@/lib/moyensPaiement";
 import { erreurMoyensPaiement } from "@/lib/moyensPaiementServeur";
 import { journaliserProforma } from "@/lib/proformaHistoriqueServeur";
-import { estResponsable, refusSaisieDepartement, type CompteBudget } from "@/lib/budgetPortee";
+import { estResponsable, estSaLigne, refusSaisieDepartement, type CompteBudget } from "@/lib/budgetPortee";
 import { CategorieDepense } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { sendBudgetCollectifRappel } from "@/lib/email/demandeBudget";
@@ -176,10 +176,20 @@ const ligneSchema = z.object({
   dateLimite: z.string().optional().refine((v) => !v || toDateJour(v) !== null, "Le délai n'est pas une date valide."),
 });
 
-export const actionSchema = z.discriminatedUnion("action", [
+// Opérations sur les lignes, seules ou regroupées (« Enregistrer » d'un département : tableau modifiable).
+const operationLigneSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("ajouterLigne"), ligne: ligneSchema }),
   z.object({ action: z.literal("modifierLigne"), ligneId: z.string(), ligne: ligneSchema }),
   z.object({ action: z.literal("supprimerLigne"), ligneId: z.string() }),
+]);
+type OperationLigne = z.infer<typeof operationLigneSchema>;
+
+export const actionSchema = z.discriminatedUnion("action", [
+  ...operationLigneSchema.options,
+  z.object({
+    action: z.literal("enregistrerLignes"),
+    operations: z.array(operationLigneSchema).min(1, "Aucune modification à enregistrer.").max(200, "200 modifications au plus à la fois."),
+  }),
   z.object({ action: z.literal("inviter"), departementIds: z.array(z.string()).min(1, "Choisissez au moins un département.") }),
   z.object({ action: z.literal("retirerInvitation"), departementId: z.string() }),
   z.object({ action: z.literal("dateLimite"), dateLimiteSaisie: z.string().nullable() }),
@@ -223,8 +233,7 @@ export async function appliquerActionPreparation(db: Db, c: CompteCollectif, id:
   const exigerPreparation = () => {
     if (!enPreparation) throw new BudgetCollectifError("Ce budget n'est plus en préparation.");
   };
-  const saLigne = (l: { departementId: string | null; ajouteeParEmail: string | null }) =>
-    (!!l.departementId && c.departementIds.includes(l.departementId)) || l.ajouteeParEmail?.toLowerCase() === c.email.toLowerCase();
+  const saLigne = (l: { departementId: string | null; ajouteeParEmail: string | null }) => estSaLigne(c, l);
   const ligneDuBudget = (ligneId: string) => {
     const l = b.lignes.find((x) => x.id === ligneId);
     if (!l) throw new BudgetCollectifError("Cette ligne n'appartient pas à ce budget.", 404);
@@ -232,6 +241,24 @@ export async function appliquerActionPreparation(db: Db, c: CompteCollectif, id:
   };
 
   switch (a.action) {
+    case "enregistrerLignes": {
+      // Tout ou rien : chaque opération passe par les mêmes contrôles qu'une ligne seule, dans la même
+      // transaction ; la première refusée annule tout, avec le nom de la ligne dans le message.
+      exigerPreparation();
+      const nom = (op: OperationLigne) =>
+        op.action === "supprimerLigne" ? b.lignes.find((l) => l.id === op.ligneId)?.designation ?? "ligne" : op.ligne.designation || "nouvelle ligne";
+      for (const op of a.operations) {
+        try {
+          await appliquerActionPreparation(db, c, id, op);
+        } catch (e) {
+          if (e instanceof BudgetCollectifError) throw new BudgetCollectifError(`« ${nom(op)} » : ${e.message}`, e.status);
+          throw e;
+        }
+      }
+      const n = a.operations.length;
+      return { suite: null, message: n === 1 ? "Modification enregistrée." : `${n} modifications enregistrées.` };
+    }
+
     case "ajouterLigne":
     case "modifierLigne": {
       exigerPreparation();
@@ -287,9 +314,18 @@ export async function appliquerActionPreparation(db: Db, c: CompteCollectif, id:
       const refus = l.departementId ? refusSaisieDepartement(c, b, l.departementId) : "Ligne sans département.";
       if (refus) throw new BudgetCollectifError(refus, 403);
       if (!saLigne(l)) throw new BudgetCollectifError("Retirez la ligne d'un département avec un motif (« Retirer »).", 403);
+      // Ses documents justificatifs partent avec elle (ils ne justifient plus rien).
+      const docs = await db.demandeBudgetAttachment.findMany({ where: { ligneId: l.id }, select: { fileName: true } });
+      await db.demandeBudgetAttachment.deleteMany({ where: { ligneId: l.id } });
       await db.demandeBudgetLigne.delete({ where: { id: l.id } });
       await recalculerMontant(db, id);
-      await logBudget(db, { demandeBudgetId: id, action: ActionBudget.LIGNE_RETIREE, ...auteur, montant: Number(l.montant), details: `${l.designation} — supprimée par son département pendant la préparation` });
+      await logBudget(db, {
+        demandeBudgetId: id,
+        action: ActionBudget.LIGNE_RETIREE,
+        ...auteur,
+        montant: Number(l.montant),
+        details: `${l.designation} — supprimée par son département pendant la préparation${docs.length ? ` (documents retirés : ${docs.map((d) => d.fileName).join(", ")})` : ""}`,
+      });
       return { suite: null, message: "Ligne supprimée." };
     }
 

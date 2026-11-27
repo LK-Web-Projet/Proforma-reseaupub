@@ -103,3 +103,26 @@ export function refusSaisieDepartement(
   if (!opts.ignorerDateLimite && !saisieOuverte(b, maintenant)) return "La date limite de saisie est passée : voyez le comptable pour la prolonger.";
   return null;
 }
+
+/** Ligne « à soi » : de l'un de ses départements, ou saisie par soi (seules celles-là se modifient). */
+export function estSaLigne(c: Pick<CompteBudget, "email" | "departementIds">, l: LigneVisible): boolean {
+  return (!!l.departementId && c.departementIds.includes(l.departementId)) || meme(l.ajouteeParEmail, c.email);
+}
+
+/**
+ * Joindre ou retirer un document justificatif d'une ligne (budget collectif, pendant la préparation) :
+ * mêmes conditions que modifier la ligne — sa ligne, non retirée, saisie ouverte pour son département
+ * (une ligne à corriger reste modifiable après la date limite). Renvoie le motif du refus, ou null.
+ */
+export function refusDocumentLigne(
+  c: CompteBudget,
+  b: BudgetVisible & { statut: string; dateLimiteSaisie?: Date | string | null; departementsInvites: { departementId: string }[] },
+  l: LigneVisible & { statutValidation: string },
+  maintenant: Date = new Date()
+): string | null {
+  if (!b.collectif) return "Les documents d'une ligne ne concernent que les budgets collectifs.";
+  if (l.statutValidation === "RETIREE") return "Cette ligne a été retirée.";
+  if (!l.departementId) return "Ligne sans département.";
+  if (!estSaLigne(c, l)) return "Seul le département de la ligne joint ou retire ses documents.";
+  return refusSaisieDepartement(c, b, l.departementId, maintenant, { ignorerDateLimite: l.statutValidation === "A_CORRIGER" });
+}

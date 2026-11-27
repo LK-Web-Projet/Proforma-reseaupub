@@ -146,7 +146,7 @@ interface DemandeBudgetDetail {
     motifDecision: string | null;
     commandes: (CommandeDeLigne & { fournisseurId: string })[];
   }[];
-  attachments: { id: string; kind: string; url: string; fileName: string; depenseId: string | null }[];
+  attachments: { id: string; kind: string; url: string; fileName: string; depenseId: string | null; ligneId?: string | null; ajouteParNom?: string | null; ajouteParEmail?: string | null }[];
   bonCommande: { id: string; numero: string; fournisseur: { entreprise: string } } | null;
   proformas: { invoice: { id: string; numero: string; objet: string; client: { nom: string } } }[];
   depenses: BudgetDepense[];
@@ -1257,6 +1257,12 @@ export default function DemandeBudgetDetailPage() {
                       {ATTACHMENT_TYPE_LABELS[a.kind] ?? a.kind}
                     </Badge>
                     <p className="text-sm truncate" title={a.fileName}>{a.fileName}</p>
+                    {a.ligneId && (
+                      <p className="text-[11px] text-muted-foreground truncate" title="Document qui justifie cette ligne">
+                        Ligne : {demande.lignes.find((l) => l.id === a.ligneId)?.designation ?? '—'}
+                        {a.ajouteParNom || a.ajouteParEmail ? ` · ${a.ajouteParNom || a.ajouteParEmail}` : ''}
+                      </p>
+                    )}
                   </div>
                   <AttachmentPreviewButton url={a.url} title={a.fileName} />
                 </div>

@@ -25,6 +25,35 @@ Ce qui a été demandé et pourquoi.
 
 ## REBUILD
 
+## 2026-11-26 — Budget collectif : saisie des lignes en tableau (comme le ponctuel) et documents justificatifs par ligne
+
+**Demande / Contexte**
+Sur la fiche d'un budget collectif, chaque département saisissait ses lignes une par une dans une fenêtre, puis les voyait en simple liste : on veut le même tableau que le budget ponctuel (lignes modifiables directement, totaux calculés). On avait aussi perdu la possibilité de joindre des documents annexes pour justifier les prix (refusés pendant la préparation et réservés au créateur).
+Décisions : **1a** un bouton « Enregistrer » par département (tout d'un coup) ; **2a** document rattaché à une ligne précise ; **3a** jamais obligatoire.
+
+**Modifications apportées**
+- `prisma/schema.prisma` + `prisma/migrations/20261126130000_documents_lignes_budget/migration.sql` : `DemandeBudgetAttachment.ligneId` (→ `DemandeBudgetLigne`, `onDelete: SetNull`, index), `ajouteParEmail`, `ajouteParNom` ; relation `DemandeBudgetLigne.documents`. Ajout seulement : les documents existants restent sur le budget entier.
+- `lib/budgetCollectifServeur.ts` : action **`enregistrerLignes`** (1 à 200 opérations ajouter / modifier / supprimer) — chaque opération repasse par les contrôles d'une ligne seule, dans la même transaction : la première refusée annule tout, message préfixé par le nom de la ligne. `supprimerLigne` retire aussi les documents de la ligne (cités dans l'historique). `saLigne` → `estSaLigne` partagé.
+- `lib/budgetPortee.ts` : `estSaLigne`, `refusDocumentLigne` (budget collectif, sa ligne, non retirée, saisie ouverte ; ligne à corriger permise après la date limite).
+- `app/api/demandes-budget/[id]/preparation/documents/route.ts` (nouveau) : POST (multipart `ligneId`, `kind` DEVIS / FACTURE / AUTRE, `precision` = fournisseur obligatoire pour un devis, `fichiers` ≤ 10) et DELETE `?documentId=` (fichier effacé du disque s'il est dans le dossier du budget). Journal `DOCUMENTS`.
+- `app/api/demandes-budget/[id]/route.ts` : en vue partielle, les documents des lignes visibles sont aussi renvoyés.
+- `lib/demandeBudgetAttachmentTypes.ts` : `DOCUMENTS_LIGNE_TYPES`.
+- `components/budget/LignesDepartementEditables.tsx` (nouveau) : tableau d'un département, même grille adaptative que `DemandeBudgetForm` (jamais de défilement horizontal) ; ses lignes en champs, celles des autres en lecture (boutons Correction / Retirer du comptable) ; nouvelles lignes, suppression à l'enregistrement (« Garder la ligne »), ligne à corriger « Corrigée telle quelle » ; total du département en direct ; « Enregistrer (n) » / « Annuler » ; trombone avec le nombre de documents (désactivé sur une ligne pas encore enregistrée).
+- `components/budget/DocumentsLigneDialog.tsx` (nouveau) : liste avec aperçu, envoi (type, fournisseur pour un devis, plusieurs fichiers ≤ 10 Mo) et retrait.
+- `components/budget/PreparationBudgetCard.tsx` : la fenêtre « Ajouter / Modifier une ligne » et le bouton d'en-tête disparaissent ; totaux général et par moyen de paiement en direct (montants non enregistrés compris), alerte en quittant la page avec des modifications non enregistrées.
+- `components/budget/ChampAutoHauteur.tsx` (nouveau, sorti de `DemandeBudgetForm.tsx`) : zone de texte qui grandit, partagée.
+- `app/(main)/budget/demandes/[id]/page.tsx` : carte « Documents » — « Ligne : … · qui l'a joint » sous un document de ligne.
+- Guide (`public/docs/procedure-paiement-plateforme.md`, Budget collectif) : saisie en tableau, Enregistrer, trombone.
+
+**Erreurs rencontrées & solutions**
+- Le shell a mangé un gabarit de texte avec `${…}` dans un remplacement → corrigé à la main dans la fiche du budget.
+
+**À tester / points d'attention**
+- **À lancer par l'utilisateur** : `pnpm prisma migrate deploy` (le client a déjà été régénéré ici).
+- Tests sur la base de test, transaction annulée : nouveau scénario 19/19 (migration, enregistrement groupé, refus avec le nom de la ligne, droits des documents, document supprimé avec sa ligne, document gardé si la ligne est supprimée autrement) ; non-régression circuit collectif 29/29, portée 30/30.
+- Les fichiers d'une ligne supprimée pendant la préparation restent sur le disque (seule la fiche en base est retirée) ; le retrait d'un document par le trombone, lui, efface le fichier.
+- Contrôle à l'écran : saisie de plusieurs lignes puis Enregistrer, erreur sur une ligne (rien n'est enregistré), totaux en direct, trombone (devis avec fournisseur), vue d'un autre département, comptable (Correction / Retirer), ligne à corriger après la date limite.
+
 ## 2026-11-26 — Factures prestataires sans défilement horizontal, numéro de proforma entier, catégories Salaires et CNSS
 
 **Demande / Contexte**
